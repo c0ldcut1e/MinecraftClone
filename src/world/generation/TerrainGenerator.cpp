@@ -35,22 +35,20 @@ TerrainGenerator::TerrainGenerator(uint32_t seed) : m_random(seed) {
 }
 
 int TerrainGenerator::getHeightAt(int worldX, int worldZ) {
-    float cont  = m_continental.GetNoise((float) worldX, (float) worldZ);
-    float mount = m_mountains.GetNoise((float) worldX, (float) worldZ);
-    float surf  = m_surface.GetNoise((float) worldX, (float) worldZ);
+    float continental  = m_continental.GetNoise((float) worldX, (float) worldZ);
+    float mountinental = m_mountains.GetNoise((float) worldX, (float) worldZ);
+    float surfinental  = m_surface.GetNoise((float) worldX, (float) worldZ);
 
-    cont  = (cont + 1.0f) * 0.5f;
-    mount = (mount + 1.0f) * 0.5f;
-    surf  = (surf + 1.0f) * 0.5f;
+    continental  = (continental + 1.0f) * 0.5f;
+    mountinental = (mountinental + 1.0f) * 0.5f;
+    surfinental  = (surfinental + 1.0f) * 0.5f;
 
-    float mountainMask = cont * cont;
+    float mountainMask = continental * continental;
 
-    int height = 28 + (int) (cont * 40.0f) + (int) (mount * mountainMask * 80.0f);
-    height += (int) ((surf - 0.5f) * 8.0f);
-
+    int height = 28 + (int) (continental * 40.0f) + (int) (mountinental * mountainMask * 80.0f);
+    height += (int) ((surfinental - 0.5f) * 8.0f);
     if (height < 6) height = 6;
     if (height >= Chunk::SIZE_Y) height = Chunk::SIZE_Y - 1;
-
     return height;
 }
 
@@ -92,7 +90,6 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos) {
                 if (y > height) continue;
 
                 bool inSurfaceShell = (y >= height - surfaceProtect);
-
                 if (!inSurfaceShell && y > bedrockCeil + 2) {
                     float caveValue = getCaveValue(worldX, y, worldZ);
 
@@ -109,14 +106,12 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos) {
                     if (caveValue > threshold) continue;
                 }
 
-                if (y == height) {
-                    chunk.setBlock(x, y, z, Block::byName("grass"));
-                } else if (y >= height - 4) {
+                if (y == height) chunk.setBlock(x, y, z, Block::byName("grass"));
+                else if (y >= height - 4)
                     chunk.setBlock(x, y, z, Block::byName("dirt"));
-                } else {
+                else {
                     float rockNoise = m_rock.GetNoise((float) worldX, (float) y, (float) worldZ);
                     rockNoise       = (rockNoise + 1.0f) * 0.5f;
-
                     if (rockNoise > 0.6f) chunk.setBlock(x, y, z, Block::byName("andesite"));
                     else
                         chunk.setBlock(x, y, z, Block::byName("stone"));
@@ -126,7 +121,7 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos) {
 }
 
 void TerrainGenerator::generate(World &world, const ChunkPos &center) {
-    int radius = 5;
+    int radius = 1;
 
     for (int dz = -radius; dz < radius; dz++)
         for (int dx = -radius; dx < radius; dx++) {

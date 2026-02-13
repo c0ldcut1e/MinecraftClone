@@ -39,13 +39,11 @@ static void getFaceLight(World *world, int worldX, int worldY, int worldZ, Direc
     baseB = baseB > minLight ? baseB : minLight;
 
     float shade = 1.0f;
-    if (direction == Direction::NORTH || direction == Direction::SOUTH) {
-        shade = 0.8f;
-    } else if (direction == Direction::EAST || direction == Direction::WEST) {
+    if (direction == Direction::NORTH || direction == Direction::SOUTH) shade = 0.8f;
+    else if (direction == Direction::EAST || direction == Direction::WEST)
         shade = 0.6f;
-    } else if (direction == Direction::DOWN) {
+    else if (direction == Direction::DOWN)
         shade = 0.5f;
-    }
 
     *r = baseR * shade;
     *g = baseG * shade;

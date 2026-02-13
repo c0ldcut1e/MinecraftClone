@@ -149,6 +149,10 @@ void ChunkManager::generateChunk(const ChunkPos &pos) {
     int worldY = pos.y * Chunk::SIZE_Y;
     int worldZ = pos.z * Chunk::SIZE_Z;
     m_world->markChunkDirty(worldX, worldY, worldZ);
+    m_world->markChunkDirty(worldX - Chunk::SIZE_X, worldY, worldZ);
+    m_world->markChunkDirty(worldX + Chunk::SIZE_X, worldY, worldZ);
+    m_world->markChunkDirty(worldX, worldY, worldZ - Chunk::SIZE_Z);
+    m_world->markChunkDirty(worldX, worldY, worldZ + Chunk::SIZE_Z);
 }
 
 void ChunkManager::queueChunkGeneration(const ChunkPos &pos, int priority) {

@@ -42,6 +42,7 @@ $(BUILDDIR)/%.o: $(SRCDIR)/%.c
 
 clean:
 	rm -rf $(BUILDDIR)
+	rm -rf $(BINDIR)/logs
 	rm -f $(BINDIR)/$(TARGET)
 
 start: $(BINDIR)/$(TARGET)

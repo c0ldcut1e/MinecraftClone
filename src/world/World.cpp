@@ -14,8 +14,7 @@
 World::World() : m_emptyChunksSolid(true), m_sunPosition(0.0, 1000.0, 0.0), m_renderDistance(12) {}
 
 void World::tick() {
-    int maxLightUpdates = 5;
-    while (!m_lightUpdates.empty() && maxLightUpdates-- > 0) {
+    while (!m_lightUpdates.empty()) {
         Vec3 pos = m_lightUpdates.front();
         m_lightUpdates.erase(m_lightUpdates.begin());
         LightEngine::updateFrom(this, (int) pos.x, (int) pos.y, (int) pos.z);

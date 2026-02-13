@@ -8,15 +8,19 @@
 #include "../block/Block.h"
 #include "../chunk/Chunk.h"
 
-static const int DIRECTIONS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+static constexpr int DIRECTIONS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
 
 struct LightRemovalNode {
-    int x, y, z;
+    int x;
+    int y;
+    int z;
     uint8_t value;
 };
 
 struct ColoredLightRemovalNode {
-    int x, y, z;
+    int x;
+    int y;
+    int z;
     uint8_t r, g, b;
 };
 
@@ -59,14 +63,10 @@ void LightEngine::propagateSkyLight(World *world, int cx, int cy, int cz) {
             int wx = pos.x * Chunk::SIZE_X + x;
             int wz = pos.z * Chunk::SIZE_Z + z;
 
-            bool hitSolid = false;
             for (int y = Chunk::SIZE_Y - 1; y >= 0; y--) {
                 Block *block = Block::byId(chunk->getBlockId(x, y, z));
 
-                if (block->isSolid()) {
-                    hitSolid = true;
-                    break;
-                }
+                if (block->isSolid()) break;
 
                 setSkyLight(world, wx, y, wz, 15);
                 lightQueue.push({wx, y, wz, 15});
@@ -200,160 +200,10 @@ void LightEngine::propagateBlockLight(World *world, int cx, int cy, int cz) {
 void LightEngine::rebuild(World *world) {
     if (!world) return;
 
-    const std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> &chunks = world->getChunks();
-
-    for (auto it = chunks.begin(); it != chunks.end(); ++it) {
-        Chunk *chunk = it->second.get();
-        for (int y = 0; y < Chunk::SIZE_Y; y++) {
-            for (int z = 0; z < Chunk::SIZE_Z; z++) {
-                for (int x = 0; x < Chunk::SIZE_X; x++) {
-                    chunk->setBlockLight(x, y, z, 0, 0, 0);
-                    chunk->setSkyLight(x, y, z, 0);
-                }
-            }
-        }
-    }
-
-    std::queue<SkyLightNode> skyQueue;
-    std::queue<LightNode> blockQueue;
-
-    for (auto it = chunks.begin(); it != chunks.end(); ++it) {
-        ChunkPos pos = it->first;
-        Chunk *chunk = it->second.get();
-
-        for (int z = 0; z < Chunk::SIZE_Z; z++) {
-            for (int x = 0; x < Chunk::SIZE_X; x++) {
-                int wx = pos.x * Chunk::SIZE_X + x;
-                int wz = pos.z * Chunk::SIZE_Z + z;
-
-                bool hitSolid = false;
-                for (int y = Chunk::SIZE_Y - 1; y >= 0; y--) {
-                    Block *block = Block::byId(chunk->getBlockId(x, y, z));
-
-                    if (block->isSolid()) {
-                        hitSolid = true;
-                        break;
-                    }
-
-                    setSkyLight(world, wx, y, wz, 15);
-                    skyQueue.push({wx, y, wz, 15});
-                }
-            }
-        }
-
-        for (int y = 0; y < Chunk::SIZE_Y; y++) {
-            for (int z = 0; z < Chunk::SIZE_Z; z++) {
-                for (int x = 0; x < Chunk::SIZE_X; x++) {
-                    Block *block     = Block::byId(chunk->getBlockId(x, y, z));
-                    uint8_t emission = block->getLightEmission();
-
-                    if (emission == 0) continue;
-
-                    uint8_t lr, lg, lb;
-                    block->getLightColor(lr, lg, lb);
-
-                    uint8_t finalR = (uint8_t) ((lr / 255.0f) * emission);
-                    uint8_t finalG = (uint8_t) ((lg / 255.0f) * emission);
-                    uint8_t finalB = (uint8_t) ((lb / 255.0f) * emission);
-
-                    int wx = pos.x * Chunk::SIZE_X + x;
-                    int wy = y;
-                    int wz = pos.z * Chunk::SIZE_Z + z;
-
-                    setBlockLight(world, wx, wy, wz, finalR, finalG, finalB);
-                    blockQueue.push({wx, wy, wz, finalR, finalG, finalB});
-                }
-            }
-        }
-    }
-
-    while (!skyQueue.empty()) {
-        SkyLightNode node = skyQueue.front();
-        skyQueue.pop();
-
-        uint8_t currentLevel = getSkyLight(world, node.x, node.y, node.z);
-        if (currentLevel == 0) continue;
-
-        for (int i = 0; i < 6; i++) {
-            int nx = node.x + DIRECTIONS[i][0];
-            int ny = node.y + DIRECTIONS[i][1];
-            int nz = node.z + DIRECTIONS[i][2];
-
-            if (ny < 0 || ny >= Chunk::SIZE_Y) continue;
-
-            int ncx              = Math::floorDiv(nx, Chunk::SIZE_X);
-            int ncy              = Math::floorDiv(ny, Chunk::SIZE_Y);
-            int ncz              = Math::floorDiv(nz, Chunk::SIZE_Z);
-            Chunk *neighborChunk = world->getChunk({ncx, ncy, ncz});
-            if (!neighborChunk) continue;
-
-            int lx = Math::floorMod(nx, Chunk::SIZE_X);
-            int lz = Math::floorMod(nz, Chunk::SIZE_Z);
-
-            Block *neighborBlock = Block::byId(neighborChunk->getBlockId(lx, ny, lz));
-            if (neighborBlock->isSolid()) continue;
-
-            uint8_t neighborLevel = getSkyLight(world, nx, ny, nz);
-
-            uint8_t newLevel;
-            if (DIRECTIONS[i][1] == -1 && currentLevel == 15) {
-                newLevel = 15;
-            } else {
-                newLevel = currentLevel > 1 ? currentLevel - 1 : 0;
-            }
-
-            if (newLevel > neighborLevel) {
-                setSkyLight(world, nx, ny, nz, newLevel);
-                skyQueue.push({nx, ny, nz, newLevel});
-            }
-        }
-    }
-
-    while (!blockQueue.empty()) {
-        LightNode node = blockQueue.front();
-        blockQueue.pop();
-
-        uint8_t cr, cg, cb;
-        getBlockLight(world, node.x, node.y, node.z, &cr, &cg, &cb);
-
-        uint8_t maxCurrent = maxComponent(cr, cg, cb);
-        if (maxCurrent <= 1) continue;
-
-        for (int i = 0; i < 6; i++) {
-            int nx = node.x + DIRECTIONS[i][0];
-            int ny = node.y + DIRECTIONS[i][1];
-            int nz = node.z + DIRECTIONS[i][2];
-
-            if (ny < 0 || ny >= Chunk::SIZE_Y) continue;
-
-            int ncx              = Math::floorDiv(nx, Chunk::SIZE_X);
-            int ncy              = Math::floorDiv(ny, Chunk::SIZE_Y);
-            int ncz              = Math::floorDiv(nz, Chunk::SIZE_Z);
-            Chunk *neighborChunk = world->getChunk({ncx, ncy, ncz});
-            if (!neighborChunk) continue;
-
-            int lx = Math::floorMod(nx, Chunk::SIZE_X);
-            int lz = Math::floorMod(nz, Chunk::SIZE_Z);
-
-            Block *neighborBlock = Block::byId(neighborChunk->getBlockId(lx, ny, lz));
-            if (neighborBlock->isSolid()) continue;
-
-            uint8_t nr, ng, nb;
-            getBlockLight(world, nx, ny, nz, &nr, &ng, &nb);
-
-            uint8_t newR = cr > 1 ? cr - 1 : 0;
-            uint8_t newG = cg > 1 ? cg - 1 : 0;
-            uint8_t newB = cb > 1 ? cb - 1 : 0;
-
-            if (newR > nr || newG > ng || newB > nb) {
-                uint8_t finalR = newR > nr ? newR : nr;
-                uint8_t finalG = newG > ng ? newG : ng;
-                uint8_t finalB = newB > nb ? newB : nb;
-
-                setBlockLight(world, nx, ny, nz, finalR, finalG, finalB);
-                blockQueue.push({nx, ny, nz, finalR, finalG, finalB});
-            }
-        }
+    const auto &chunks = world->getChunks();
+    for (const auto &[pos, chunk] : chunks) {
+        if (!chunk) continue;
+        rebuildChunk(world, pos.x, pos.y, pos.z);
     }
 }
 
@@ -384,8 +234,6 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
         }
     }
 
-    bool blockIsSolid = changedBlock ? changedBlock->isSolid() : false;
-
     for (int y = worldY; y < Chunk::SIZE_Y; y++) {
         uint8_t oldLevel = getSkyLight(world, worldX, y, worldZ);
         if (oldLevel > 0) {
@@ -402,7 +250,6 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
             int nx = node.x + DIRECTIONS[i][0];
             int ny = node.y + DIRECTIONS[i][1];
             int nz = node.z + DIRECTIONS[i][2];
-
             if (ny < 0 || ny >= Chunk::SIZE_Y) continue;
 
             int ncx              = Math::floorDiv(nx, Chunk::SIZE_X);
@@ -453,6 +300,23 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
             setSkyLight(world, worldX, y, worldZ, 15);
             skyAddQueue.push({worldX, y, worldZ, 15});
         }
+    }
+
+    for (int i = 0; i < 6; i++) {
+        int nx = worldX + DIRECTIONS[i][0];
+        int ny = worldY + DIRECTIONS[i][1];
+        int nz = worldZ + DIRECTIONS[i][2];
+
+        if (ny < 0 || ny >= Chunk::SIZE_Y) continue;
+
+        int ncx              = Math::floorDiv(nx, Chunk::SIZE_X);
+        int ncy              = Math::floorDiv(ny, Chunk::SIZE_Y);
+        int ncz              = Math::floorDiv(nz, Chunk::SIZE_Z);
+        Chunk *neighborChunk = world->getChunk({ncx, ncy, ncz});
+        if (!neighborChunk) continue;
+
+        uint8_t neighborLevel = getSkyLight(world, nx, ny, nz);
+        if (neighborLevel > 0) skyAddQueue.push({nx, ny, nz, neighborLevel});
     }
 
     while (!skyAddQueue.empty()) {
@@ -568,6 +432,33 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
 
         setBlockLight(world, worldX, worldY, worldZ, finalR, finalG, finalB);
         blockAddQueue.push({worldX, worldY, worldZ, finalR, finalG, finalB});
+    }
+
+    if (changedBlock && !changedBlock->isSolid()) {
+        for (int i = 0; i < 6; i++) {
+            int nx = worldX + DIRECTIONS[i][0];
+            int ny = worldY + DIRECTIONS[i][1];
+            int nz = worldZ + DIRECTIONS[i][2];
+
+            if (ny < 0 || ny >= Chunk::SIZE_Y) continue;
+
+            int ncx              = Math::floorDiv(nx, Chunk::SIZE_X);
+            int ncy              = Math::floorDiv(ny, Chunk::SIZE_Y);
+            int ncz              = Math::floorDiv(nz, Chunk::SIZE_Z);
+            Chunk *neighborChunk = world->getChunk({ncx, ncy, ncz});
+            if (!neighborChunk) continue;
+
+            int lx = Math::floorMod(nx, Chunk::SIZE_X);
+            int lz = Math::floorMod(nz, Chunk::SIZE_Z);
+
+            Block *neighborBlock = Block::byId(neighborChunk->getBlockId(lx, ny, lz));
+            if (neighborBlock->isSolid()) continue;
+
+            uint8_t nr, ng, nb;
+            getBlockLight(world, nx, ny, nz, &nr, &ng, &nb);
+
+            if (nr || ng || nb) { blockAddQueue.push({nx, ny, nz, nr, ng, nb}); }
+        }
     }
 
     while (!blockAddQueue.empty()) {

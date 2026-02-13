@@ -22,15 +22,13 @@ public:
     void unbindTexture();
 
     void setViewProjection(const Mat4 &view, const Mat4 &projection);
-    void setScreenSize(int width, int height);
+    void setScreenProjection(const Mat4 &projection);
 
     void end();
 
 private:
     ImmediateRenderer(uint16_t type);
     ~ImmediateRenderer();
-
-    Mat4 createProjection();
 
     struct Vertex {
         float x;
@@ -60,7 +58,5 @@ private:
 
     Mat4 m_view;
     Mat4 m_projection;
-
-    int m_screenWidth;
-    int m_screenHeight;
+    Mat4 m_screenProjection;
 };

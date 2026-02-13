@@ -12,8 +12,10 @@ BlockRegistry *BlockRegistry::get() {
 void BlockRegistry::init() {
     BlockRegistry *registry = get();
     registry->registerValue("air", Block("air", false, ""));
-    registry->registerValue("stone", Block("stone", true, "textures/stone.png"));
     registry->registerValue("bedrock", Block("bedrock", true, "textures/bedrock.png"));
+    registry->registerValue("stone", Block("stone", true, "textures/stone.png"));
+    registry->registerValue("cobblestone", Block("cobblestone", true, "textures/cobblestone.png"));
+    registry->registerValue("andesite", Block("andesite", true, "textures/andesite.png"));
     registry->registerValue("dirt", Block("dirt", true, "textures/dirt.png"));
 
     Block grass("grass", true, "textures/grass_side.png");
@@ -22,7 +24,7 @@ void BlockRegistry::init() {
     registry->registerValue("grass", grass);
 
     Block glowstone("glowstone", true, "textures/glowstone.png");
-    glowstone.setLightEmission(20);
+    glowstone.setLightEmission(15);
     glowstone.setLightColor(0xE3, 0x9F, 0x00);
     registry->registerValue("glowstone", glowstone);
 

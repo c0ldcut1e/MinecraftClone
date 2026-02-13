@@ -1,5 +1,8 @@
 #pragma once
 
+#include <string>
+
+#include "../utils/UUID.h"
 #include "../utils/math/AABB.h"
 #include "../utils/math/Vec3.h"
 #include "../world/World.h"
@@ -31,6 +34,11 @@ public:
 
     const AABB &getBoundingBox() const;
     const AABB &getAABB() const;
+
+    const UUID &getUUID() const;
+
+    void setName(const std::wstring &name);
+    const std::wstring &getName() const;
 
     static constexpr uint64_t TYPE = 0x1000000000000001;
 
@@ -67,4 +75,7 @@ protected:
 
     AABB m_boundingBox;
     AABB m_aabb;
+
+    UUID m_uuid;
+    std::wstring m_name;
 };

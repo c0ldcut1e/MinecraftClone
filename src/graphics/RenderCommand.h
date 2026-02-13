@@ -60,6 +60,9 @@
 #define RC_ARRAY_BUFFER              0x8892
 #define RC_FRAMEBUFFER               0x8D40
 
+#define RC_UNPACK_ALIGNMENT          0x0CF5
+#define RC_FILL                      0x1B02
+
 class RenderCommand {
 public:
     static bool initialize();

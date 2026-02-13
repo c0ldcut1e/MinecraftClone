@@ -69,12 +69,19 @@ void ChunkManager::update(const Vec3 &playerPosition) {
     m_queueCondition.notify_all();
 }
 
+void ChunkManager::drainFinished(std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> &out) {
+    std::lock_guard<std::mutex> lock(m_finishedMutex);
+
+    out.swap(m_finished);
+}
+
 void ChunkManager::workerThread() {
     while (m_running.load()) {
         GenerationTask task;
 
         {
             std::unique_lock<std::mutex> lock(m_queueMutex);
+
             m_queueCondition.wait(lock, [this] { return !m_running.load() || !m_taskQueue.empty(); });
 
             if (!m_running.load()) break;
@@ -95,11 +102,9 @@ void ChunkManager::workerThread() {
 }
 
 void ChunkManager::generateChunk(const ChunkPos &pos) {
-    if (m_world->hasChunk(pos)) return;
-
     TerrainGenerator generator(0xDEADCAFE);
 
-    Chunk &chunk = m_world->createChunk(pos);
+    std::unique_ptr<Chunk> chunk = std::make_unique<Chunk>(pos);
 
     for (int z = 0; z < Chunk::SIZE_Z; z++)
         for (int x = 0; x < Chunk::SIZE_X; x++) {
@@ -108,7 +113,7 @@ void ChunkManager::generateChunk(const ChunkPos &pos) {
 
             int height = generator.getHeightAt(worldX, worldZ);
 
-            chunk.setBlock(x, 0, z, Block::byName("bedrock"));
+            chunk->setBlock(x, 0, z, Block::byName("bedrock"));
 
             for (int y = 1; y <= height && y < Chunk::SIZE_Y; y++) {
                 if (y < height - 4) {
@@ -117,11 +122,11 @@ void ChunkManager::generateChunk(const ChunkPos &pos) {
                     if (caveValue > threshold) continue;
                 }
 
-                if (y == height) chunk.setBlock(x, y, z, Block::byName("grass"));
+                if (y == height) chunk->setBlock(x, y, z, Block::byName("grass"));
                 else if (y >= height - 4)
-                    chunk.setBlock(x, y, z, Block::byName("dirt"));
+                    chunk->setBlock(x, y, z, Block::byName("dirt"));
                 else
-                    chunk.setBlock(x, y, z, Block::byName("stone"));
+                    chunk->setBlock(x, y, z, Block::byName("stone"));
             }
         }
 
@@ -131,28 +136,25 @@ void ChunkManager::generateChunk(const ChunkPos &pos) {
 
             for (int y = Chunk::SIZE_Y - 1; y >= 0; y--) {
                 if (blocked) {
-                    chunk.setSkyLight(x, y, z, 0);
+                    chunk->setSkyLight(x, y, z, 0);
                     continue;
                 }
 
-                Block *block = Block::byId(chunk.getBlockId(x, y, z));
+                Block *block = Block::byId(chunk->getBlockId(x, y, z));
 
                 if (block->isSolid()) {
                     blocked = true;
-                    chunk.setSkyLight(x, y, z, 0);
+                    chunk->setSkyLight(x, y, z, 0);
                 } else
-                    chunk.setSkyLight(x, y, z, 15);
+                    chunk->setSkyLight(x, y, z, 15);
             }
         }
 
-    int worldX = pos.x * Chunk::SIZE_X;
-    int worldY = pos.y * Chunk::SIZE_Y;
-    int worldZ = pos.z * Chunk::SIZE_Z;
-    m_world->markChunkDirty(worldX, worldY, worldZ);
-    m_world->markChunkDirty(worldX - Chunk::SIZE_X, worldY, worldZ);
-    m_world->markChunkDirty(worldX + Chunk::SIZE_X, worldY, worldZ);
-    m_world->markChunkDirty(worldX, worldY, worldZ - Chunk::SIZE_Z);
-    m_world->markChunkDirty(worldX, worldY, worldZ + Chunk::SIZE_Z);
+    {
+        std::lock_guard<std::mutex> lock(m_finishedMutex);
+
+        m_finished.emplace_back(pos, std::move(chunk));
+    }
 }
 
 void ChunkManager::queueChunkGeneration(const ChunkPos &pos, int priority) {

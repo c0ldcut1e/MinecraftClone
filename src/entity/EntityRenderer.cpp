@@ -1,8 +1,11 @@
 #include "EntityRenderer.h"
 
+#include "../core/Logger.h"
 #include "../core/Minecraft.h"
 #include "../graphics/ImmediateRenderer.h"
 #include "Entity.h"
+
+EntityRenderer::EntityRenderer() : m_drawBoundingBox(false) {}
 
 void EntityRenderer::draw(const Entity *entity) const {
     const AABB &box = entity->getAABB();
@@ -29,7 +32,11 @@ void EntityRenderer::draw(const Entity *entity) const {
     renderer->vertex(x, y, z);
 
     renderer->end();
+
+    if (m_drawBoundingBox) drawBoundingBox(entity);
 }
+
+void EntityRenderer::setDrawBoundingBox(bool value) { m_drawBoundingBox = value; }
 
 void EntityRenderer::drawBoundingBox(const Entity *entity) const {
     const AABB &box = entity->getAABB();

@@ -9,7 +9,7 @@
 #include "../world/block/Block.h"
 #include "../world/lighting/LightEngine.h"
 
-LocalPlayer::LocalPlayer(World *world, Camera *camera) : Player(world), m_camera(camera), m_mouseSensitivity(0.08f), m_jumpHeld(false) {}
+LocalPlayer::LocalPlayer(World *world, const std::wstring &name, Camera *camera) : Player(world, name), m_camera(camera), m_mouseSensitivity(0.08f), m_jumpHeld(false) {}
 
 uint64_t LocalPlayer::getType() { return TYPE; }
 

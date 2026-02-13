@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../entity/LocalPlayer.h"
+#include "../graphics/Font.h"
 #include "../graphics/Shader.h"
 #include "../scene/Camera.h"
 #include "../utils/math/Mat4.h"
@@ -15,12 +16,19 @@ public:
     static Minecraft *getInstance();
 
     void start();
+    void shutdown();
 
     const Camera *getCamera() const;
+
     LocalPlayer *getLocalPlayer() const;
+
     WorldRenderer *getWorldRenderer() const;
+
     const Mat4 &getProjection() const;
+
     ChunkManager *getChunkManager() const;
+
+    Font *getDefaultFont() const;
 
 private:
     Minecraft();
@@ -41,19 +49,19 @@ private:
     int m_height;
     Window m_window;
 
-    Shader *m_shader;
+    bool m_shutdown = false;
 
     Camera *m_camera;
     World *m_world;
 
-    LocalPlayer *m_player;
+    LocalPlayer *m_localPlayer;
 
     WorldRenderer *m_worldRenderer;
     ChunkManager *m_chunkManager;
+    Font *m_defaultFont;
 
     double m_farPlane;
     Mat4 m_projection;
-    Mat4 m_model;
 
     bool m_mouseLocked;
 };

@@ -58,6 +58,52 @@ Mat4 Mat4::orthographic(double left, double right, double bottom, double top, do
     return result;
 }
 
+Mat4 Mat4::translation(double x, double y, double z) {
+    Mat4 result       = identity();
+    result.m_data[12] = x;
+    result.m_data[13] = y;
+    result.m_data[14] = z;
+    return result;
+}
+
+Mat4 Mat4::scale(double x, double y, double z) {
+    Mat4 result;
+    result.m_data[0]  = x;
+    result.m_data[5]  = y;
+    result.m_data[10] = z;
+    result.m_data[15] = 1.0;
+    return result;
+}
+
+Mat4 Mat4::rotation(double angleRadians, double x, double y, double z) {
+    double len = sqrt(x * x + y * y + z * z);
+    if (len == 0.0) return identity();
+
+    x /= len;
+    y /= len;
+    z /= len;
+
+    double c = cos(angleRadians);
+    double s = sin(angleRadians);
+    double t = 1.0 - c;
+
+    Mat4 result = identity();
+
+    result.m_data[0] = t * x * x + c;
+    result.m_data[1] = t * x * y + s * z;
+    result.m_data[2] = t * x * z - s * y;
+
+    result.m_data[4] = t * x * y - s * z;
+    result.m_data[5] = t * y * y + c;
+    result.m_data[6] = t * y * z + s * x;
+
+    result.m_data[8]  = t * x * z + s * y;
+    result.m_data[9]  = t * y * z - s * x;
+    result.m_data[10] = t * z * z + c;
+
+    return result;
+}
+
 Mat4 Mat4::multiply(const Mat4 &other) const {
     Mat4 result;
 

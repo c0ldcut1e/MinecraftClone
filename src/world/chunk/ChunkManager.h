@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -20,6 +21,8 @@ public:
     void start();
     void stop();
     void update(const Vec3 &playerPosition);
+
+    void drainFinished(std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> &out);
 
 private:
     struct GenerationTask {
@@ -46,6 +49,9 @@ private:
 
     std::unordered_set<ChunkPos, ChunkPosHash> m_generatingChunks;
     std::mutex m_generatingMutex;
+
+    std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> m_finished;
+    std::mutex m_finishedMutex;
 
     ChunkPos m_lastPlayerChunk;
 };

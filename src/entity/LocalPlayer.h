@@ -5,7 +5,7 @@
 
 class LocalPlayer : public Player {
 public:
-    LocalPlayer(World *world, Camera *camera);
+    LocalPlayer(World *world, const std::wstring &name, Camera *camera);
 
     uint64_t getType() override;
     void tick() override;

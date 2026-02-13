@@ -5,8 +5,8 @@
 #include "../utils/Time.h"
 
 Entity::Entity(World *world)
-    : m_world(world), m_position(0.0, 0.0, 0.0), m_velocity(0.0, 0.0, 0.0), m_moveIntent(0.0, 0.0, 0.0), m_front(0.0, 0.0, -1.0), m_up(0.0, 1.0, 0.0), m_yaw(-90.0f), m_pitch(0.0f), m_gravity(-32.0f), m_jumpVelocity(9.2f), m_maxSpeed(100.0f),
-      m_acceleration(80.0f), m_friction(10.0f), m_onGround(false), m_jumpQueued(false), m_noGravity(false), m_noCollision(false), m_flying(false), m_boundingBox(Vec3(-0.3, 0.0, -0.3), Vec3(0.3, 1.8, 0.3)), m_aabb() {}
+    : m_world(world), m_position(0.0, 0.0, 0.0), m_velocity(0.0, 0.0, 0.0), m_moveIntent(0.0, 0.0, 0.0), m_front(0.0, 0.0, -1.0), m_up(0.0, 1.0, 0.0), m_yaw(-90.0f), m_pitch(0.0f), m_gravity(-32.0f), m_jumpVelocity(9.2f), m_maxSpeed(15.0f),
+      m_acceleration(80.0f), m_friction(10.0f), m_onGround(false), m_jumpQueued(false), m_noGravity(false), m_noCollision(false), m_flying(false), m_boundingBox(Vec3(-0.3, 0.0, -0.3), Vec3(0.3, 1.8, 0.3)), m_aabb(), m_uuid(UUID::random()), m_name(L"") {}
 
 Entity::~Entity() {}
 
@@ -167,3 +167,9 @@ void Entity::applyPhysics(double deltaTime) {
         remainingZ -= step;
     }
 }
+
+const UUID &Entity::getUUID() const { return m_uuid; }
+
+void Entity::setName(const std::wstring &name) { m_name = name; }
+
+const std::wstring &Entity::getName() const { return m_name; }

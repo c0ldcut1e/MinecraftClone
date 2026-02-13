@@ -1,4 +1,6 @@
 #include "ImmediateRenderer.h"
+
+#include "GlStateManager.h"
 #include "RenderCommand.h"
 
 ImmediateRenderer *ImmediateRenderer::getForScreen() {
@@ -12,7 +14,8 @@ ImmediateRenderer *ImmediateRenderer::getForWorld() {
 }
 
 ImmediateRenderer::ImmediateRenderer(uint16_t type)
-    : m_vao(0), m_vbo(0), m_mode(RC_TRIANGLES), m_texture(nullptr), m_shader("shaders/immediate.vert", "shaders/immediate.frag"), m_type(type), m_view(Mat4::identity()), m_projection(Mat4::identity()), m_screenWidth(1920), m_screenHeight(1080) {
+    : m_vao(0), m_vbo(0), m_mode(RC_TRIANGLES), m_texture(nullptr), m_shader("shaders/immediate.vert", "shaders/immediate.frag"), m_type(type), m_view(Mat4::identity()), m_projection(Mat4::identity()),
+      m_screenProjection(Mat4::orthographic(0.0, 1920.0, 1080.0, 0.0, -1.0, 1.0)) {
     m_currentColor[0] = 1.0f;
     m_currentColor[1] = 1.0f;
     m_currentColor[2] = 1.0f;
@@ -81,15 +84,12 @@ void ImmediateRenderer::setViewProjection(const Mat4 &view, const Mat4 &projecti
     m_projection = projection;
 }
 
-void ImmediateRenderer::setScreenSize(int width, int height) {
-    m_screenWidth  = width;
-    m_screenHeight = height;
-}
+void ImmediateRenderer::setScreenProjection(const Mat4 &projection) { m_screenProjection = projection; }
 
 void ImmediateRenderer::end() {
     if (m_vertices.empty()) return;
 
-    RenderCommand::disableCull();
+    GlStateManager::disableCull();
 
     RenderCommand::bindVertexArray(m_vao);
     RenderCommand::bindArrayBuffer(m_vbo);
@@ -102,8 +102,10 @@ void ImmediateRenderer::end() {
 
     if (m_type == 0) {
         finalView       = Mat4::identity();
-        finalProjection = createProjection();
+        finalProjection = m_screenProjection;
     }
+
+    finalView = finalView.multiply(GlStateManager::getMatrix());
 
     m_shader.setMat4("u_view", finalView.data());
     m_shader.setMat4("u_projection", finalProjection.data());
@@ -111,13 +113,10 @@ void ImmediateRenderer::end() {
     if (m_texture) {
         m_shader.setInt("u_useTexture", 1);
         m_texture->bind(0);
-    } else {
+    } else
         m_shader.setInt("u_useTexture", 0);
-    }
 
     RenderCommand::drawArrays(m_mode, 0, (int) m_vertices.size());
 
-    RenderCommand::enableCull();
+    GlStateManager::enableCull();
 }
-
-Mat4 ImmediateRenderer::createProjection() { return Mat4::orthographic(0.0, (double) m_screenWidth, (double) m_screenHeight, 0.0, -1.0, 1.0); }

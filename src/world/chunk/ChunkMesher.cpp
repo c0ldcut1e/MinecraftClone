@@ -98,6 +98,8 @@ static bool isSolid(World *world, const Chunk *chunk, int x, int y, int z) {
 }
 
 void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<MeshBuildResult> &outMeshes) {
+    std::shared_lock<std::shared_mutex> lock(world->getChunkDataMutex());
+
     std::unordered_map<Texture *, std::vector<float>> buckets;
 
     ChunkPos pos = chunk->getPos();

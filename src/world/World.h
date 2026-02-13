@@ -3,6 +3,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <unordered_map>
 
 #include "chunk/Chunk.h"
@@ -43,11 +44,14 @@ public:
     void setRenderDistance(int distance);
     int getRenderDistance() const;
 
+    std::shared_mutex &getChunkDataMutex();
+
 private:
     std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> m_chunks;
     std::deque<ChunkPos> m_dirtyChunks;
     std::mutex m_dirtyMutex;
-    std::vector<Vec3> m_lightUpdates;
+    std::shared_mutex m_chunkDataMutex;
+    std::deque<Vec3> m_lightUpdates;
     bool m_emptyChunksSolid;
 
     std::vector<std::unique_ptr<Entity>> m_entities;

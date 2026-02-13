@@ -8,6 +8,8 @@ public:
     Camera();
 
     void setPosition(const Vec3 &position);
+    const Vec3 &getPosition() const;
+
     void setDirection(const Vec3 &front, const Vec3 &up);
 
     Mat4 getViewMatrix() const;

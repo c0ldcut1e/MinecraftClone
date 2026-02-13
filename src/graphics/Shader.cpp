@@ -36,6 +36,11 @@ void Shader::setInt(const char *name, int value) const {
     RenderCommand::setUniform1i(location, value);
 }
 
+void Shader::setFloat(const char *name, float value) const {
+    int location = RenderCommand::getUniformLocation(m_program, name);
+    RenderCommand::setUniform1f(location, value);
+}
+
 void Shader::setVec2(const char *name, float x, float y) const {
     int location = RenderCommand::getUniformLocation(m_program, name);
     RenderCommand::setUniform2f(location, x, y);

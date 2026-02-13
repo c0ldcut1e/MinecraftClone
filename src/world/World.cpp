@@ -14,13 +14,39 @@
 World::World() : m_emptyChunksSolid(true), m_sunPosition(0.0, 1000.0, 0.0), m_renderDistance(12) {}
 
 void World::tick() {
+    if (ChunkManager *chunkManager = Minecraft::getInstance()->getChunkManager()) {
+        std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> ready;
+
+        chunkManager->drainFinished(ready);
+
+        while (!ready.empty()) {
+            auto [pos, chunkPtr] = std::move(ready.front());
+            ready.pop_front();
+
+            if (m_chunks.find(pos) != m_chunks.end()) continue;
+            m_chunks.emplace(pos, std::move(chunkPtr));
+
+            int worldX = pos.x * Chunk::SIZE_X;
+            int worldY = pos.y * Chunk::SIZE_Y;
+            int worldZ = pos.z * Chunk::SIZE_Z;
+            markChunkDirty(worldX, worldY, worldZ);
+            markChunkDirty(worldX - Chunk::SIZE_X, worldY, worldZ);
+            markChunkDirty(worldX + Chunk::SIZE_X, worldY, worldZ);
+            markChunkDirty(worldX, worldY, worldZ - Chunk::SIZE_Z);
+            markChunkDirty(worldX, worldY, worldZ + Chunk::SIZE_Z);
+        }
+    }
+
     while (!m_lightUpdates.empty()) {
         Vec3 pos = m_lightUpdates.front();
-        m_lightUpdates.erase(m_lightUpdates.begin());
+        m_lightUpdates.pop_front();
+
+        std::unique_lock<std::shared_mutex> lock(m_chunkDataMutex);
+
         LightEngine::updateFrom(this, (int) pos.x, (int) pos.y, (int) pos.z);
     }
 
-    {
+    if (m_lightUpdates.empty()) {
         std::lock_guard<std::mutex> lock(m_dirtyMutex);
 
         if (!m_dirtyChunks.empty()) {
@@ -99,6 +125,8 @@ void World::tickEntities() {
 const std::vector<std::unique_ptr<Entity>> &World::getEntities() const { return m_entities; }
 
 void World::setBlock(int worldX, int worldY, int worldZ, Block *block) {
+    std::unique_lock<std::shared_mutex> lock(m_chunkDataMutex);
+
     int cx = Math::floorDiv(worldX, Chunk::SIZE_X);
     int cy = Math::floorDiv(worldY, Chunk::SIZE_Y);
     int cz = Math::floorDiv(worldZ, Chunk::SIZE_Z);
@@ -111,16 +139,7 @@ void World::setBlock(int worldX, int worldY, int worldZ, Block *block) {
     if (!chunk) return;
 
     chunk->setBlock(lx, worldY, lz, block);
-
-    LightEngine::updateFrom(this, worldX, worldY, worldZ);
-
-    WorldRenderer *renderer = Minecraft::getInstance()->getWorldRenderer();
-    Minecraft::getInstance()->getWorldRenderer()->rebuildChunk(cx, cy, cz);
-
-    if (lx == 0) renderer->rebuildChunk(cx - 1, cy, cz);
-    if (lx == Chunk::SIZE_X - 1) renderer->rebuildChunk(cx + 1, cy, cz);
-    if (lz == 0) renderer->rebuildChunk(cx, cy, cz - 1);
-    if (lz == Chunk::SIZE_Z - 1) renderer->rebuildChunk(cx, cy, cz + 1);
+    m_lightUpdates.push_front(Vec3(worldX, worldY, worldZ));
 }
 
 int World::getSurfaceHeight(int worldX, int worldZ) const {
@@ -255,3 +274,5 @@ void World::setRenderDistance(int distance) {
 }
 
 int World::getRenderDistance() const { return m_renderDistance; }
+
+std::shared_mutex &World::getChunkDataMutex() { return m_chunkDataMutex; }

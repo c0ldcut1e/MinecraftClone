@@ -4,13 +4,17 @@
 
 class Random {
 public:
-    explicit Random(uint32_t seed);
+    Random();
+    explicit Random(uint64_t seed);
 
     uint32_t nextUInt();
+    uint64_t nextUInt64();
     int nextInt(int min, int max);
     float nextFloat();
     double nextDouble();
 
 private:
-    uint32_t m_state;
+    uint64_t m_state;
+
+    static uint64_t seedFromSystem();
 };

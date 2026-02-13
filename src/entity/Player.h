@@ -4,7 +4,7 @@
 
 class Player : public LivingEntity {
 public:
-    explicit Player(World *world);
+    explicit Player(World *world, const std::wstring &name);
 
     uint64_t getType() override;
     void tick() override;

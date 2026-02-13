@@ -22,15 +22,11 @@
 #include "events/WindowResizedEvent.h"
 
 Minecraft::Minecraft()
-    : m_width(1280), m_height(720), m_window(m_width, m_height, "game"), m_shader(nullptr), m_camera(nullptr), m_world(nullptr), m_player(nullptr), m_worldRenderer(nullptr), m_chunkManager(nullptr), m_farPlane(3000.0), m_projection(), m_model(),
+    : m_width(1280), m_height(720), m_window(m_width, m_height, "game"), m_camera(nullptr), m_world(nullptr), m_localPlayer(nullptr), m_worldRenderer(nullptr), m_chunkManager(nullptr), m_defaultFont(nullptr), m_farPlane(3000.0), m_projection(),
       m_mouseLocked(true) {
     RenderCommand::enableExperimentalFeatures();
     if (!RenderCommand::initialize()) throw std::runtime_error("Failed to initialize OpenGL");
     Logger::logInfo("OpenGL initialized: %s", glGetString(GL_VERSION));
-
-    RenderCommand::enableCull();
-    RenderCommand::setFrontFace(GL_CCW);
-    RenderCommand::setCullFace(GL_BACK);
 
     initGlfwEventBridge(m_window.getHandle());
     Logger::logInfo("GLFW event bridge initialized");
@@ -38,33 +34,38 @@ Minecraft::Minecraft()
     m_camera        = new Camera();
     m_world         = new World();
     m_worldRenderer = new WorldRenderer(m_world);
-    m_shader        = new Shader("shaders/block.vert", "shaders/block.frag");
     m_chunkManager  = new ChunkManager(m_world);
+    m_defaultFont   = new Font("fonts/default.ttf", 24);
+    m_defaultFont->setScreenProjection(Mat4::orthographic(0.0, (double) m_width, (double) m_height, 0.0, -1.0, 1.0));
+
+    ImmediateRenderer::getForScreen()->setScreenProjection(Mat4::orthographic(0.0, (double) m_width, (double) m_height, 0.0, -1.0, 1.0));
 
     EventManager::addListener([this](Event &event) {
         EventDispatcher dispatcher(event);
 
         dispatcher.dispatch<KeyPressedEvent>([this](KeyPressedEvent &event) {
             if (event.getKey() == GLFW_KEY_C) toggleMouseLock();
-            else if (m_player)
-                m_player->onKeyPressed(event.getKey());
+            else if (m_localPlayer)
+                m_localPlayer->onKeyPressed(event.getKey());
         });
 
         dispatcher.dispatch<KeyReleasedEvent>([this](KeyReleasedEvent &event) {
-            if (m_player) m_player->onKeyReleased(event.getKey());
+            if (m_localPlayer) m_localPlayer->onKeyReleased(event.getKey());
         });
 
         dispatcher.dispatch<MouseButtonPressedEvent>([this](MouseButtonPressedEvent &event) {
-            if (m_player) m_player->onMouseButtonPressed(event.getButton());
+            if (m_localPlayer) m_localPlayer->onMouseButtonPressed(event.getButton());
         });
 
         dispatcher.dispatch<MouseMovedEvent>([this](MouseMovedEvent &event) {
-            if (m_mouseLocked && m_player) m_player->onMouseMoved(event.getDeltaX(), event.getDeltaY());
+            if (m_mouseLocked && m_localPlayer) m_localPlayer->onMouseMoved(event.getDeltaX(), event.getDeltaY());
         });
 
         dispatcher.dispatch<WindowResizedEvent>([this](WindowResizedEvent &event) {
             glViewport(0, 0, event.getWidth(), event.getHeight());
             m_projection = Mat4::perspective(70.0 * (M_PI / 180.0), (double) event.getWidth() / (double) event.getHeight(), 0.1, m_farPlane);
+            ImmediateRenderer::getForScreen()->setScreenProjection(Mat4::orthographic(0.0, (double) event.getWidth(), (double) event.getHeight(), 0.0, -1.0, 1.0));
+            m_defaultFont->setScreenProjection(Mat4::orthographic(0.0, (double) event.getWidth(), (double) event.getHeight(), 0.0, -1.0, 1.0));
         });
     });
 
@@ -73,26 +74,22 @@ Minecraft::Minecraft()
     initRegistries();
 
     m_projection = Mat4::perspective(70.0 * (M_PI / 180.0), (double) m_width / (double) m_height, 0.1, m_farPlane);
-    m_model      = Mat4::identity();
 
-    int spawnX = 0;
-    int spawnZ = 0;
-    int spawnY = 64;
-    m_player   = new LocalPlayer(m_world, m_camera);
-    m_player->setPosition(Vec3(spawnX + 0.5, spawnY, spawnZ + 0.5));
-    m_world->addEntity(std::unique_ptr<Entity>(m_player));
+    int spawnX    = 0;
+    int spawnZ    = 0;
+    int spawnY    = 64;
+    m_localPlayer = new LocalPlayer(m_world, L"", m_camera);
+    m_localPlayer->setPosition(Vec3(spawnX + 0.5, spawnY, spawnZ + 0.5));
+    m_world->addEntity(std::unique_ptr<Entity>(m_localPlayer));
+
+    std::unique_ptr<Entity> entity = std::make_unique<Entity>(m_world);
+    entity->setPosition(Vec3((int) spawnX, (int) spawnY, (int) spawnZ));
+    m_world->addEntity(std::move(entity));
 
     m_chunkManager->start();
 }
 
-Minecraft::~Minecraft() {
-    delete m_chunkManager;
-    delete m_worldRenderer;
-    delete m_shader;
-    delete m_camera;
-
-    delete m_world;
-}
+Minecraft::~Minecraft() { shutdown(); }
 
 Minecraft *Minecraft::getInstance() {
     static Minecraft instance;
@@ -107,7 +104,7 @@ void Minecraft::start() {
 
         EventManager::process();
 
-        if (m_player) m_chunkManager->update(m_player->getPosition());
+        if (m_localPlayer) m_chunkManager->update(m_localPlayer->getPosition());
 
         m_world->tick();
 
@@ -116,17 +113,47 @@ void Minecraft::start() {
         m_window.swapBuffers();
         m_window.pollEvents();
     }
+
+    shutdown();
+}
+
+void Minecraft::shutdown() {
+    if (m_shutdown) return;
+    m_shutdown = true;
+
+    if (m_chunkManager) {
+        m_chunkManager->stop();
+        delete m_chunkManager;
+        m_chunkManager = nullptr;
+    }
+
+    if (m_worldRenderer) {
+        delete m_worldRenderer;
+        m_worldRenderer = nullptr;
+    }
+
+    if (m_camera) {
+        delete m_camera;
+        m_camera = nullptr;
+    }
+
+    if (m_world) {
+        delete m_world;
+        m_world = nullptr;
+    }
 }
 
 const Camera *Minecraft::getCamera() const { return m_camera; }
 
-LocalPlayer *Minecraft::getLocalPlayer() const { return m_player; }
+LocalPlayer *Minecraft::getLocalPlayer() const { return m_localPlayer; }
 
 WorldRenderer *Minecraft::getWorldRenderer() const { return m_worldRenderer; }
 
 const Mat4 &Minecraft::getProjection() const { return m_projection; }
 
 ChunkManager *Minecraft::getChunkManager() const { return m_chunkManager; }
+
+Font *Minecraft::getDefaultFont() const { return m_defaultFont; }
 
 void Minecraft::initRegistries() {
     BlockRegistry::init();
@@ -149,16 +176,10 @@ void Minecraft::toggleMouseLock() {
 }
 
 void Minecraft::renderFrame() {
-    RenderCommand::setClearColor(0.6f, 0.9f, 1.0f, 1.0f);
+    RenderCommand::setClearColor(0.85f, 0.85f, 0.85f, 1.0f);
     RenderCommand::clearAll();
 
-    m_shader->bind();
-    m_shader->setInt("u_texture", 0);
-
-    m_shader->setMat4("u_model", m_model.data());
-    m_shader->setMat4("u_view", m_camera->getViewMatrix().data());
-    m_shader->setMat4("u_projection", m_projection.data());
-
-    RenderCommand::enableDepthTest();
     m_worldRenderer->draw();
+
+    m_defaultFont->drawShadow(L"testing", 20.0f, 30.0f, 1.0f, -1);
 }

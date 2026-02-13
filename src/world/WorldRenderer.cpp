@@ -1,18 +1,74 @@
 #include "WorldRenderer.h"
 
 #include <cmath>
+#include <thread>
 
 #include "../core/Minecraft.h"
 #include "../entity/EntityRendererRegistry.h"
+#include "../graphics/GlStateManager.h"
 #include "../graphics/ImmediateRenderer.h"
-#include "../graphics/RenderCommand.h"
 #include "../utils/math/Math.h"
 
-WorldRenderer::WorldRenderer(World *world) : m_world(world), m_drawBoundingBoxes(false), m_drawChunkGrid(false) {}
+WorldRenderer::WorldRenderer(World *world) : m_shader(nullptr), m_world(world), m_drawChunkGrid(false) {
+    m_shader = new Shader("shaders/world.vert", "shaders/world.frag");
+
+    m_mesherRunning = true;
+    m_mesherThread  = std::thread([this]() {
+        while (m_mesherRunning) {
+            ChunkPos pos;
+
+            {
+                std::unique_lock<std::mutex> lock(m_rebuildQueueMutex);
+                m_rebuildCondition.wait(lock, [this]() { return !m_mesherRunning || !m_rebuildQueue.empty(); });
+
+                if (!m_mesherRunning) break;
+                if (m_rebuildQueue.empty()) continue;
+
+                pos = m_rebuildQueue.front();
+                m_rebuildQueue.pop();
+            }
+
+            auto it = m_world->getChunks().find(pos);
+            if (it == m_world->getChunks().end()) continue;
+
+            std::vector<ChunkMesher::MeshBuildResult> results;
+            ChunkMesher::buildMeshes(m_world, it->second.get(), results);
+
+            submitMesh(pos, std::move(results));
+        }
+    });
+}
+
+WorldRenderer::~WorldRenderer() {
+    m_mesherRunning = false;
+    m_rebuildCondition.notify_all();
+    if (m_mesherThread.joinable()) m_mesherThread.join();
+
+    if (m_shader) {
+        delete m_shader;
+        m_shader = nullptr;
+    }
+}
 
 void WorldRenderer::draw() {
     Minecraft *minecraft = Minecraft::getInstance();
-    ImmediateRenderer::getForWorld()->setViewProjection(minecraft->getCamera()->getViewMatrix(), minecraft->getProjection());
+    Mat4 viewMatrix      = minecraft->getCamera()->getViewMatrix();
+    Mat4 projection      = minecraft->getProjection();
+    ImmediateRenderer::getForWorld()->setViewProjection(viewMatrix, projection);
+    minecraft->getDefaultFont()->setNearest(true);
+    minecraft->getDefaultFont()->setWorldViewProjection(viewMatrix, projection);
+
+    m_shader->bind();
+    m_shader->setInt("u_texture", 0);
+    m_shader->setMat4("u_model", GlStateManager::getMatrix().data());
+    m_shader->setMat4("u_view", viewMatrix.data());
+    m_shader->setMat4("u_projection", projection.data());
+
+    GlStateManager::enableCull();
+    GlStateManager::setFrontFace(GL_CCW);
+    GlStateManager::setCullFace(GL_BACK);
+
+    GlStateManager::enableDepthTest();
 
     int uploadsPerFrame = 2;
     while (uploadsPerFrame-- > 0) {
@@ -48,15 +104,20 @@ void WorldRenderer::draw() {
         int dz = pos.z - playerChunkZ;
 
         if (dx * dx + dz * dz > renderDistance * renderDistance) continue;
-        for (const auto &mesh : meshes) mesh.mesh->draw();
+        for (const RenderMesh &mesh : meshes) mesh.mesh->draw();
     }
 
     for (const std::unique_ptr<Entity> &entity : m_world->getEntities()) {
-        EntityRendererRegistry::get()->getValue(entity->getType())->draw(entity.get());
-        if (m_drawBoundingBoxes) m_entityRenderer.drawBoundingBox(entity.get());
+        EntityRenderer *renderer = EntityRendererRegistry::get()->getValue(entity->getType());
+        renderer->setDrawBoundingBox(false);
+        renderer->draw(entity.get());
     }
 
+    drawEntityNameTags();
+
     if (m_drawChunkGrid) drawChunkGrid();
+
+    GlStateManager::pushMatrix();
 }
 
 void WorldRenderer::drawChunkGrid() const {
@@ -65,7 +126,7 @@ void WorldRenderer::drawChunkGrid() const {
     ImmediateRenderer *renderer = ImmediateRenderer::getForWorld();
     renderer->setViewProjection(Minecraft::getInstance()->getCamera()->getViewMatrix(), Minecraft::getInstance()->getProjection());
 
-    renderer->begin(RC_LINES);
+    renderer->begin(GL_LINES);
     renderer->color(0xFF00FF00);
 
     for (const auto &[pos, chunkPtr] : m_world->getChunks()) {
@@ -144,26 +205,36 @@ void WorldRenderer::rebuildChunk(int cx, int cy, int cz) {
     auto it = m_world->getChunks().find(pos);
     if (it == m_world->getChunks().end()) return;
 
-    std::vector<ChunkMesher::MeshBuildResult> results;
-    ChunkMesher::buildMeshes(m_world, it->second.get(), results);
+    {
+        std::lock_guard<std::mutex> lock(m_rebuildQueueMutex);
 
-    std::vector<RenderMesh> meshes;
-    meshes.reserve(results.size());
-
-    for (ChunkMesher::MeshBuildResult &result : results) {
-        RenderMesh renderMesh;
-        renderMesh.mesh = std::make_unique<ChunkMesh>(result.texture);
-        renderMesh.mesh->upload(result.vertices.data(), (uint32_t) result.vertices.size());
-        meshes.push_back(std::move(renderMesh));
+        m_rebuildQueue.push(pos);
     }
 
-    m_chunks[pos] = std::move(meshes);
-
-    Logger::logInfo("Rebuilt chunk mesh (%d, %d, %d)", cx, cy, cz);
+    m_rebuildCondition.notify_one();
 }
 
 void WorldRenderer::submitMesh(const ChunkPos &pos, std::vector<ChunkMesher::MeshBuildResult> &&results) {
     std::lock_guard<std::mutex> lock(m_meshQueueMutex);
 
     m_pendingMeshes.emplace_back(pos, std::move(results));
+}
+
+void WorldRenderer::drawEntityNameTags() {
+    Minecraft *minecraft = Minecraft::getInstance();
+    Font *font           = minecraft->getDefaultFont();
+
+    for (const std::unique_ptr<Entity> &entity : m_world->getEntities()) {
+        std::string strUuid   = entity->getUUID().toString();
+        std::wstring wstrUuid = std::wstring(strUuid.begin(), strUuid.end());
+        if (wstrUuid.empty()) continue;
+
+        const AABB &box = entity->getAABB();
+        float height    = box.getMax().y - box.getMin().y;
+
+        Vec3 pos     = entity->getPosition();
+        Vec3 textPos = pos.add(Vec3(0.0, height + 0.5, 0.0));
+
+        font->worldDrawShadow(wstrUuid, textPos, 0.015f, 0xFFFFFFFF);
+    }
 }

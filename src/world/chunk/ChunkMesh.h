@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include "../../graphics/Texture.h"
+#include "../../rendering/Texture.h"
 
 class ChunkMesh {
 public:

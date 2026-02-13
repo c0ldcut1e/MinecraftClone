@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "../entity/EntityRenderer.h"
-#include "../graphics/Shader.h"
+#include "../rendering/Shader.h"
 #include "World.h"
 #include "chunk/ChunkMesh.h"
 #include "chunk/ChunkMesher.h"

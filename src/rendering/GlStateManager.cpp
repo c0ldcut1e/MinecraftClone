@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include <GL/glew.h>
+
 #include "RenderCommand.h"
 
 std::vector<Mat4> GlStateManager::s_matrixStack;
@@ -9,15 +11,15 @@ Mat4 GlStateManager::s_matrix = Mat4::identity();
 
 bool GlStateManager::s_depthTest     = true;
 bool GlStateManager::s_depthMask     = true;
-uint32_t GlStateManager::s_depthFunc = RC_LESS;
+uint32_t GlStateManager::s_depthFunc = GL_LESS;
 
 bool GlStateManager::s_cull          = true;
-uint32_t GlStateManager::s_cullFace  = RC_BACK;
-uint32_t GlStateManager::s_frontFace = RC_CCW;
+uint32_t GlStateManager::s_cullFace  = GL_BACK;
+uint32_t GlStateManager::s_frontFace = GL_CCW;
 
 bool GlStateManager::s_blend        = false;
-uint32_t GlStateManager::s_blendSrc = RC_BLEND_SRC_ALPHA;
-uint32_t GlStateManager::s_blendDst = RC_BLEND_ONE_MINUS_SRC_ALPHA;
+uint32_t GlStateManager::s_blendSrc = GL_SRC_ALPHA;
+uint32_t GlStateManager::s_blendDst = GL_ONE_MINUS_SRC_ALPHA;
 
 bool GlStateManager::s_stencil         = false;
 uint32_t GlStateManager::s_stencilMask = 0xFFFFFFFF;
@@ -31,8 +33,8 @@ bool GlStateManager::s_colorMaskG = true;
 bool GlStateManager::s_colorMaskB = true;
 bool GlStateManager::s_colorMaskA = true;
 
-uint32_t GlStateManager::s_polygonFace = RC_FRONT_AND_BACK;
-uint32_t GlStateManager::s_polygonMode = RC_FILL;
+uint32_t GlStateManager::s_polygonFace = GL_FRONT_AND_BACK;
+uint32_t GlStateManager::s_polygonMode = GL_FILL;
 
 float GlStateManager::s_lineWidth = 1.0f;
 float GlStateManager::s_pointSize = 1.0f;

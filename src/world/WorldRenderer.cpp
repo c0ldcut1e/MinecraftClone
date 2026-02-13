@@ -5,8 +5,8 @@
 
 #include "../core/Minecraft.h"
 #include "../entity/EntityRendererRegistry.h"
-#include "../graphics/GlStateManager.h"
-#include "../graphics/ImmediateRenderer.h"
+#include "../rendering/GlStateManager.h"
+#include "../rendering/ImmediateRenderer.h"
 #include "../utils/math/Math.h"
 
 WorldRenderer::WorldRenderer(World *world) : m_shader(nullptr), m_world(world), m_drawChunkGrid(false) {

@@ -5,8 +5,8 @@
 #include <GLFW/glfw3.h>
 
 #include "../entity/EntityRendererRegistry.h"
-#include "../graphics/ImmediateRenderer.h"
-#include "../graphics/RenderCommand.h"
+#include "../rendering/ImmediateRenderer.h"
+#include "../rendering/RenderCommand.h"
 #include "../utils/Time.h"
 #include "../utils/Utils.h"
 #include "../world/WorldRenderer.h"

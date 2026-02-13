@@ -1,8 +1,8 @@
 #pragma once
 
 #include "../entity/LocalPlayer.h"
-#include "../graphics/Font.h"
-#include "../graphics/Shader.h"
+#include "../rendering/Font.h"
+#include "../rendering/Shader.h"
 #include "../scene/Camera.h"
 #include "../utils/math/Mat4.h"
 #include "../world/World.h"

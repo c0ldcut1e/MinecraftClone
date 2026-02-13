@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "../../graphics/Texture.h"
+#include "../../rendering/Texture.h"
 #include "../World.h"
 #include "Chunk.h"
 

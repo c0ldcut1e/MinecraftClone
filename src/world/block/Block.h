@@ -4,7 +4,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "../../graphics/Texture.h"
+#include "../../rendering/Texture.h"
 #include "../../utils/Direction.h"
 #include "../../utils/math/AABB.h"
 

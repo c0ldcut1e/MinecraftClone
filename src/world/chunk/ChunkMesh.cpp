@@ -1,5 +1,5 @@
 #include "ChunkMesh.h"
-#include "../../graphics/RenderCommand.h"
+#include "../../rendering/RenderCommand.h"
 
 ChunkMesh::ChunkMesh(Texture *texture) : m_texture(texture), m_vao(0), m_vbo(0), m_vertexCount(0) {
     m_vao = RenderCommand::createVertexArray();

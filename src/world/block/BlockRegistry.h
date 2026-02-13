@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../graphics/TextureRepository.h"
+#include "../../rendering/TextureRepository.h"
 #include "../../utils/MappedRegistry.h"
 #include "Block.h"
 

@@ -2,7 +2,7 @@
 
 #include "../core/Logger.h"
 #include "../core/Minecraft.h"
-#include "../graphics/ImmediateRenderer.h"
+#include "../rendering/ImmediateRenderer.h"
 #include "Entity.h"
 
 EntityRenderer::EntityRenderer() : m_drawBoundingBox(false) {}

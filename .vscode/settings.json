@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "string": "cpp",
+        "fstream": "cpp",
+        "istream": "cpp",
+        "ios": "cpp"
+    },
+    "cmake.ignoreCMakeListsMissing": true
+}

@@ -24,7 +24,7 @@ void BlockRegistry::init() {
     registry->registerValue("grass", grass);
 
     Block glowstone("glowstone", true, "textures/glowstone.png");
-    glowstone.setLightEmission(15);
+    glowstone.setLightEmission(20);
     glowstone.setLightColor(0xE3, 0x9F, 0x00);
     registry->registerValue("glowstone", glowstone);
 

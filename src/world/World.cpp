@@ -245,12 +245,16 @@ bool World::clip(const Vec3 &origin, const Vec3 &direction, float maxDistance, i
             int dx = x - lastX;
             int dy = y - lastY;
             int dz = z - lastZ;
-            if (dx == 1) *outFace = 0;
-            if (dx == -1) *outFace = 1;
-            if (dy == 1) *outFace = 2;
-            if (dy == -1) *outFace = 3;
-            if (dz == 1) *outFace = 4;
-            if (dz == -1) *outFace = 5;
+
+            int adx = dx < 0 ? -dx : dx;
+            int ady = dy < 0 ? -dy : dy;
+            int adz = dz < 0 ? -dz : dz;
+
+            if (adx >= ady && adx >= adz) *outFace = dx > 0 ? 0 : 1;
+            else if (ady >= adx && ady >= adz)
+                *outFace = dy > 0 ? 2 : 3;
+            else
+                *outFace = dz > 0 ? 4 : 5;
 
             return true;
         }

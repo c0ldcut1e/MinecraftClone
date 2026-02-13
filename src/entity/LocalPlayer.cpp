@@ -51,7 +51,7 @@ void LocalPlayer::onMouseMoved(double dx, double dy) {
 void LocalPlayer::onMouseButtonPressed(int button) {
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         Vec3 origin    = m_position.add(Vec3(0.0, 1.62, 0.0));
-        Vec3 direction = m_front;
+        Vec3 direction = m_front.normalize();
         int x;
         int y;
         int z;

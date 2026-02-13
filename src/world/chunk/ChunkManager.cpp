@@ -106,29 +106,7 @@ void ChunkManager::generateChunk(const ChunkPos &pos) {
 
     std::unique_ptr<Chunk> chunk = std::make_unique<Chunk>(pos);
 
-    for (int z = 0; z < Chunk::SIZE_Z; z++)
-        for (int x = 0; x < Chunk::SIZE_X; x++) {
-            int worldX = pos.x * Chunk::SIZE_X + x;
-            int worldZ = pos.z * Chunk::SIZE_Z + z;
-
-            int height = generator.getHeightAt(worldX, worldZ);
-
-            chunk->setBlock(x, 0, z, Block::byName("bedrock"));
-
-            for (int y = 1; y <= height && y < Chunk::SIZE_Y; y++) {
-                if (y < height - 4) {
-                    float caveValue = generator.getCaveValue(worldX, y, worldZ);
-                    float threshold = 0.35f;
-                    if (caveValue > threshold) continue;
-                }
-
-                if (y == height) chunk->setBlock(x, y, z, Block::byName("grass"));
-                else if (y >= height - 4)
-                    chunk->setBlock(x, y, z, Block::byName("dirt"));
-                else
-                    chunk->setBlock(x, y, z, Block::byName("stone"));
-            }
-        }
+    generator.generateChunk(*chunk, pos);
 
     for (int z = 0; z < Chunk::SIZE_Z; z++)
         for (int x = 0; x < Chunk::SIZE_X; x++) {

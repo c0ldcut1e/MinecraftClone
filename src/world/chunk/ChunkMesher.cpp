@@ -29,7 +29,7 @@ static void getFaceLight(World *world, int worldX, int worldY, int worldZ, Direc
     uint8_t lb;
     LightEngine::getLightLevel(world, sampleX, sampleY, sampleZ, &lr, &lg, &lb);
 
-    float minLight = 0.05f;
+    float minLight = 0.01f;
     float baseR    = (float) lr / 15.0f;
     float baseG    = (float) lg / 15.0f;
     float baseB    = (float) lb / 15.0f;

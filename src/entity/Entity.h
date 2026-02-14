@@ -15,6 +15,8 @@ public:
     virtual uint64_t getType();
     virtual void tick();
 
+    World *getWorld() const;
+
     void setPosition(const Vec3 &position);
     const Vec3 &getPosition() const;
 

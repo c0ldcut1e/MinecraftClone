@@ -15,6 +15,9 @@ public:
     void onMouseMoved(double dx, double dy);
     void onMouseButtonPressed(int button);
 
+    void placeBlock();
+    void destroyBlock();
+
     static constexpr uint64_t TYPE = 0x1000000000000004;
 
 private:

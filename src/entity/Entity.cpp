@@ -24,6 +24,8 @@ void Entity::tick() {
     m_jumpQueued = false;
 }
 
+World *Entity::getWorld() const { return m_world; }
+
 void Entity::setPosition(const Vec3 &position) { m_position = position; }
 
 const Vec3 &Entity::getPosition() const { return m_position; }

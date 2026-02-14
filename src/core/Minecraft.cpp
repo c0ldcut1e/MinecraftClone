@@ -7,6 +7,7 @@
 #include "../entity/EntityRendererRegistry.h"
 #include "../rendering/ImmediateRenderer.h"
 #include "../rendering/RenderCommand.h"
+#include "../ui/UIScene_DebugOverlay.h"
 #include "../utils/Time.h"
 #include "../utils/Utils.h"
 #include "../world/WorldRenderer.h"
@@ -22,8 +23,8 @@
 #include "events/WindowResizedEvent.h"
 
 Minecraft::Minecraft()
-    : m_width(1280), m_height(720), m_window(m_width, m_height, "game"), m_camera(nullptr), m_world(nullptr), m_localPlayer(nullptr), m_worldRenderer(nullptr), m_chunkManager(nullptr), m_defaultFont(nullptr), m_farPlane(3000.0), m_projection(),
-      m_mouseLocked(true) {
+    : m_width(1280), m_height(720), m_window(m_width, m_height, "game"), m_camera(nullptr), m_world(nullptr), m_localPlayer(nullptr), m_worldRenderer(nullptr), m_chunkManager(nullptr), m_defaultFont(nullptr), m_uiController(nullptr), m_farPlane(3000.0),
+      m_projection(), m_mouseLocked(true) {
     RenderCommand::enableExperimentalFeatures();
     if (!RenderCommand::initialize()) throw std::runtime_error("Failed to initialize OpenGL");
     Logger::logInfo("OpenGL initialized: %s", glGetString(GL_VERSION));
@@ -35,8 +36,11 @@ Minecraft::Minecraft()
     m_world         = new World();
     m_worldRenderer = new WorldRenderer(m_world);
     m_chunkManager  = new ChunkManager(m_world);
-    m_defaultFont   = new Font("fonts/default.ttf", 24);
+
+    m_defaultFont = new Font("fonts/default.ttf", 24);
     m_defaultFont->setScreenProjection(Mat4::orthographic(0.0, (double) m_width, (double) m_height, 0.0, -1.0, 1.0));
+    m_uiController = new UIController();
+    m_uiController->pushScene(new UIScene_DebugOverlay());
 
     ImmediateRenderer::getForScreen()->setScreenProjection(Mat4::orthographic(0.0, (double) m_width, (double) m_height, 0.0, -1.0, 1.0));
 
@@ -75,9 +79,9 @@ Minecraft::Minecraft()
 
     m_projection = Mat4::perspective(70.0 * (M_PI / 180.0), (double) m_width / (double) m_height, 0.1, m_farPlane);
 
-    int spawnX    = 0;
     int spawnZ    = 0;
-    int spawnY    = 64;
+    int spawnX    = 0;
+    int spawnY    = 100;
     m_localPlayer = new LocalPlayer(m_world, L"", m_camera);
     m_localPlayer->setPosition(Vec3(spawnX + 0.5, spawnY, spawnZ + 0.5));
     m_world->addEntity(std::unique_ptr<Entity>(m_localPlayer));
@@ -107,6 +111,8 @@ void Minecraft::start() {
         if (m_localPlayer) m_chunkManager->update(m_localPlayer->getPosition());
 
         m_world->tick();
+
+        m_uiController->tick();
 
         renderFrame();
 
@@ -140,6 +146,11 @@ void Minecraft::shutdown() {
     if (m_world) {
         delete m_world;
         m_world = nullptr;
+    }
+
+    if (m_uiController) {
+        delete m_uiController;
+        m_uiController = nullptr;
     }
 }
 
@@ -181,5 +192,5 @@ void Minecraft::renderFrame() {
 
     m_worldRenderer->draw();
 
-    m_defaultFont->drawShadow(L"testing", 20.0f, 30.0f, 1.0f, -1);
+    m_uiController->render();
 }

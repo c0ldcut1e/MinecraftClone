@@ -6,6 +6,7 @@
 #include <shared_mutex>
 #include <unordered_map>
 
+#include "../utils/HitResult.h"
 #include "chunk/Chunk.h"
 #include "chunk/ChunkPos.h"
 
@@ -36,7 +37,7 @@ public:
 
     int getSurfaceHeight(int worldX, int worldZ) const;
     bool intersectsBlock(const AABB &aabb) const;
-    bool clip(const Vec3 &origin, const Vec3 &direction, float maxDistance, int *outX, int *outY, int *outZ, int *outFace);
+    HitResult *clip(const Vec3 &origin, const Vec3 &direction, float maxDistance);
 
     const Vec3 &getSunPosition() const;
     void setSunPosition(const Vec3 &position);

@@ -1,6 +1,7 @@
 #include "World.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 
 #include "../core/Logger.h"
@@ -200,24 +201,120 @@ bool World::intersectsBlock(const AABB &aabb) const {
     return false;
 }
 
-bool World::clip(const Vec3 &origin, const Vec3 &direction, float maxDistance, int *outX, int *outY, int *outZ, int *outFace) {
-    const float step = 0.05f;
+HitResult *World::clip(const Vec3 &origin, const Vec3 &direction, float maxDistance) {
+    HitResult *result = new HitResult();
+    result->setMiss();
 
-    Vec3 dir = direction.normalize();
-    Vec3 pos = origin;
+    Vec3 _direction = direction.normalize();
+    if (_direction.lengthSquared() == 0.0f) return result;
 
-    int lastX = (int) floor(pos.x);
-    int lastY = (int) floor(pos.y);
-    int lastZ = (int) floor(pos.z);
+    float bestEntityT = std::numeric_limits<float>::max();
+    UUID bestEntityUUID;
+    uint64_t bestEntityType = 0;
+    bool hasEntity          = false;
 
-    for (float t = 0.0f; t <= maxDistance; t += step) {
-        pos = origin.add(dir.scale(t));
+    UUID localUUID = Minecraft::getInstance()->getLocalPlayer()->getUUID();
 
-        int x = (int) floor(pos.x);
-        int y = (int) floor(pos.y);
-        int z = (int) floor(pos.z);
+    for (const std::unique_ptr<Entity> &entity : m_entities) {
+        if (entity->getUUID() == localUUID) continue;
 
-        if (x == lastX && y == lastY && z == lastZ) continue;
+        const AABB &box = entity->getAABB();
+        const Vec3 &min = box.getMin();
+        const Vec3 &max = box.getMax();
+
+        float tMin = 0.0f;
+        float tMax = maxDistance;
+        bool valid = true;
+
+        for (int axis = 0; axis < 3 && valid; axis++) {
+            double o    = axis == 0 ? origin.x : (axis == 1 ? origin.y : origin.z);
+            double d    = axis == 0 ? _direction.x : (axis == 1 ? _direction.y : _direction.z);
+            double bMin = axis == 0 ? min.x : (axis == 1 ? min.y : min.z);
+            double bMax = axis == 0 ? max.x : (axis == 1 ? max.y : max.z);
+
+            if (d != 0.0) {
+                float inv = (float) (1.0 / d);
+                float t0  = (float) ((bMin - o) * inv);
+                float t1  = (float) ((bMax - o) * inv);
+                if (t0 > t1) std::swap(t0, t1);
+                tMin = std::max(tMin, t0);
+                tMax = std::min(tMax, t1);
+                if (tMax < tMin) valid = false;
+            } else {
+                if (o < bMin || o > bMax) valid = false;
+            }
+        }
+
+        if (valid && tMin >= 0.0f && tMin < bestEntityT) {
+            bestEntityT    = tMin;
+            bestEntityUUID = entity->getUUID();
+            bestEntityType = entity->getType();
+            hasEntity      = true;
+        }
+    }
+
+    int x = (int) floor(origin.x);
+    int y = (int) floor(origin.y);
+    int z = (int) floor(origin.z);
+
+    int stepX = _direction.x > 0.0f ? 1 : -1;
+    int stepY = _direction.y > 0.0f ? 1 : -1;
+    int stepZ = _direction.z > 0.0f ? 1 : -1;
+
+    float tDeltaX = _direction.x != 0.0f ? (float) fabs(1.0 / _direction.x) : std::numeric_limits<float>::max();
+    float tDeltaY = _direction.y != 0.0f ? (float) fabs(1.0 / _direction.y) : std::numeric_limits<float>::max();
+    float tDeltaZ = _direction.z != 0.0f ? (float) fabs(1.0 / _direction.z) : std::numeric_limits<float>::max();
+
+    double nextBoundaryX = stepX > 0 ? (double) x + 1.0 : (double) x;
+    double nextBoundaryY = stepY > 0 ? (double) y + 1.0 : (double) y;
+    double nextBoundaryZ = stepZ > 0 ? (double) z + 1.0 : (double) z;
+
+    float tMaxX = _direction.x != 0.0f ? (float) ((nextBoundaryX - origin.x) / _direction.x) : std::numeric_limits<float>::max();
+    float tMaxY = _direction.y != 0.0f ? (float) ((nextBoundaryY - origin.y) / _direction.y) : std::numeric_limits<float>::max();
+    float tMaxZ = _direction.z != 0.0f ? (float) ((nextBoundaryZ - origin.z) / _direction.z) : std::numeric_limits<float>::max();
+
+    if (tMaxX < 0.0f) tMaxX = 0.0f;
+    if (tMaxY < 0.0f) tMaxY = 0.0f;
+    if (tMaxZ < 0.0f) tMaxZ = 0.0f;
+
+    float bestBlockT  = std::numeric_limits<float>::max();
+    int bestBlockX    = 0;
+    int bestBlockY    = 0;
+    int bestBlockZ    = 0;
+    int bestBlockFace = -1;
+    bool hasBlock     = false;
+
+    float t  = 0.0f;
+    int face = -1;
+
+    while (t <= maxDistance) {
+        if (tMaxX < tMaxY) {
+            if (tMaxX < tMaxZ) {
+                x += stepX;
+                t = tMaxX;
+                tMaxX += tDeltaX;
+                face = stepX > 0 ? 0 : 1;
+            } else {
+                z += stepZ;
+                t = tMaxZ;
+                tMaxZ += tDeltaZ;
+                face = stepZ > 0 ? 4 : 5;
+            }
+        } else {
+            if (tMaxY < tMaxZ) {
+                y += stepY;
+                t = tMaxY;
+                tMaxY += tDeltaY;
+                face = stepY > 0 ? 2 : 3;
+            } else {
+                z += stepZ;
+                t = tMaxZ;
+                tMaxZ += tDeltaZ;
+                face = stepZ > 0 ? 4 : 5;
+            }
+        }
+
+        if (t > maxDistance) break;
 
         int cx = Math::floorDiv(x, Chunk::SIZE_X);
         int cy = Math::floorDiv(y, Chunk::SIZE_Y);
@@ -227,44 +324,34 @@ bool World::clip(const Vec3 &origin, const Vec3 &direction, float maxDistance, i
         int lz = Math::floorMod(z, Chunk::SIZE_Z);
 
         Chunk *chunk = getChunk({cx, cy, cz});
-        if (!chunk) {
-            lastX = x;
-            lastY = y;
-            lastZ = z;
-            continue;
+        if (!chunk) continue;
+        if (y < 0 || y >= Chunk::SIZE_Y) continue;
+
+        Block *block = Block::byId((int) chunk->getBlockId(lx, y, lz));
+        if (block && block->isSolid()) {
+            bestBlockT    = t;
+            bestBlockX    = x;
+            bestBlockY    = y;
+            bestBlockZ    = z;
+            bestBlockFace = face;
+            hasBlock      = true;
+            break;
         }
-
-        uint32_t id  = chunk->getBlockId(lx, y, lz);
-        Block *block = Block::byId(id);
-
-        if (block->isSolid()) {
-            *outX = x;
-            *outY = y;
-            *outZ = z;
-
-            int dx = x - lastX;
-            int dy = y - lastY;
-            int dz = z - lastZ;
-
-            int adx = dx < 0 ? -dx : dx;
-            int ady = dy < 0 ? -dy : dy;
-            int adz = dz < 0 ? -dz : dz;
-
-            if (adx >= ady && adx >= adz) *outFace = dx > 0 ? 0 : 1;
-            else if (ady >= adx && ady >= adz)
-                *outFace = dy > 0 ? 2 : 3;
-            else
-                *outFace = dz > 0 ? 4 : 5;
-
-            return true;
-        }
-
-        lastX = x;
-        lastY = y;
-        lastZ = z;
     }
 
-    return false;
+    if (hasEntity && (!hasBlock || bestEntityT <= bestBlockT)) {
+        Vec3 hitPos = origin.add(_direction.scale(bestEntityT));
+        result->setEntity(hitPos, bestEntityUUID, bestEntityType, bestEntityT);
+        return result;
+    }
+
+    if (hasBlock) {
+        Vec3 hitPos = origin.add(_direction.scale(bestBlockT));
+        result->setBlock(hitPos, bestBlockX, bestBlockY, bestBlockZ, bestBlockFace, bestBlockT);
+        return result;
+    }
+
+    return result;
 }
 
 const Vec3 &World::getSunPosition() const { return m_sunPosition; }

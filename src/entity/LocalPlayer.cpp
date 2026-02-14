@@ -49,37 +49,39 @@ void LocalPlayer::onMouseMoved(double dx, double dy) {
 }
 
 void LocalPlayer::onMouseButtonPressed(int button) {
-    if (button == GLFW_MOUSE_BUTTON_LEFT) {
-        Vec3 origin    = m_position.add(Vec3(0.0, 1.62, 0.0));
-        Vec3 direction = m_front.normalize();
-        int x;
-        int y;
-        int z;
-        int face;
-        if (m_world->clip(origin, direction, 6.0f, &x, &y, &z, &face)) m_world->setBlock(x, y, z, Block::byId(0));
+    if (button == GLFW_MOUSE_BUTTON_LEFT) destroyBlock();
+    if (button == GLFW_MOUSE_BUTTON_RIGHT) placeBlock();
+}
+
+void LocalPlayer::placeBlock() {
+    Vec3 origin    = m_position.add(Vec3(0.0, 1.62, 0.0));
+    Vec3 direction = m_front.normalize();
+    HitResult *hit = m_world->clip(origin, direction, 6.0f);
+    if (hit->isBlock()) {
+        int placeX = hit->getBlockX();
+        int placeY = hit->getBlockY();
+        int placeZ = hit->getBlockZ();
+
+        int face = hit->getBlockFace();
+        if (face == 0) placeX--;
+        if (face == 1) placeX++;
+        if (face == 2) placeY--;
+        if (face == 3) placeY++;
+        if (face == 4) placeZ--;
+        if (face == 5) placeZ++;
+
+        AABB blockBox(Vec3(placeX, placeY, placeZ), Vec3(placeX + 1, placeY + 1, placeZ + 1));
+        if (!blockBox.intersects(getAABB())) m_world->setBlock(placeX, placeY, placeZ, Block::byName("glowstone"));
     }
 
-    if (button == GLFW_MOUSE_BUTTON_RIGHT) {
-        Vec3 origin    = m_position.add(Vec3(0.0, 1.62, 0.0));
-        Vec3 direction = m_front.normalize();
+    delete hit;
+}
 
-        int x;
-        int y;
-        int z;
-        int face;
-        if (m_world->clip(origin, direction, 6.0f, &x, &y, &z, &face)) {
-            int placeX = x;
-            int placeY = y;
-            int placeZ = z;
-            if (face == 0) placeX--;
-            if (face == 1) placeX++;
-            if (face == 2) placeY--;
-            if (face == 3) placeY++;
-            if (face == 4) placeZ--;
-            if (face == 5) placeZ++;
+void LocalPlayer::destroyBlock() {
+    Vec3 origin    = m_position.add(Vec3(0.0, 1.62, 0.0));
+    Vec3 direction = m_front.normalize();
+    HitResult *hit = m_world->clip(origin, direction, 6.0f);
+    if (hit->isBlock()) m_world->setBlock(hit->getBlockX(), hit->getBlockY(), hit->getBlockZ(), Block::byId(0));
 
-            AABB blockBox(Vec3(placeX, placeY, placeZ), Vec3(placeX + 1, placeY + 1, placeZ + 1));
-            if (!blockBox.intersects(getAABB())) m_world->setBlock(placeX, placeY, placeZ, Block::byName("glowstone"));
-        }
-    }
+    delete hit;
 }

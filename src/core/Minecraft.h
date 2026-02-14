@@ -4,6 +4,7 @@
 #include "../rendering/Font.h"
 #include "../rendering/Shader.h"
 #include "../scene/Camera.h"
+#include "../ui/UIController.h"
 #include "../utils/math/Mat4.h"
 #include "../world/World.h"
 #include "../world/chunk/ChunkManager.h"
@@ -58,7 +59,9 @@ private:
 
     WorldRenderer *m_worldRenderer;
     ChunkManager *m_chunkManager;
+
     Font *m_defaultFont;
+    UIController *m_uiController;
 
     double m_farPlane;
     Mat4 m_projection;

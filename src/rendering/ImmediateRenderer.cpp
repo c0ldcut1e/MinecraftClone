@@ -99,16 +99,18 @@ void ImmediateRenderer::end() {
 
     Mat4 finalView       = m_view;
     Mat4 finalProjection = m_projection;
+    Mat4 finalModel      = GlStateManager::getMatrix();
 
     if (m_type == 0) {
         finalView       = Mat4::identity();
         finalProjection = m_screenProjection;
+        finalModel      = Mat4::identity();
     }
-
-    finalView = finalView.multiply(GlStateManager::getMatrix());
 
     m_shader.setMat4("u_view", finalView.data());
     m_shader.setMat4("u_projection", finalProjection.data());
+    m_shader.setMat4("u_model", finalModel.data());
+    m_shader.setInt("u_texture", 0);
 
     if (m_texture) {
         m_shader.setInt("u_useTexture", 1);

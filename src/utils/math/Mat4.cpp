@@ -107,9 +107,9 @@ Mat4 Mat4::rotation(double angleRadians, double x, double y, double z) {
 Mat4 Mat4::multiply(const Mat4 &other) const {
     Mat4 result;
 
-    for (int row = 0; row < 4; row++)
-        for (int col = 0; col < 4; col++)
-            result.m_data[col + row * 4] = m_data[0 + row * 4] * other.m_data[col + 0 * 4] + m_data[1 + row * 4] * other.m_data[col + 1 * 4] + m_data[2 + row * 4] * other.m_data[col + 2 * 4] + m_data[3 + row * 4] * other.m_data[col + 3 * 4];
+    for (int col = 0; col < 4; col++)
+        for (int row = 0; row < 4; row++)
+            result.m_data[col * 4 + row] = m_data[0 * 4 + row] * other.m_data[col * 4 + 0] + m_data[1 * 4 + row] * other.m_data[col * 4 + 1] + m_data[2 * 4 + row] * other.m_data[col * 4 + 2] + m_data[3 * 4 + row] * other.m_data[col * 4 + 3];
 
     return result;
 }

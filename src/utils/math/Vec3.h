@@ -3,6 +3,7 @@
 class Vec3 {
 public:
     Vec3();
+    Vec3(double all);
     Vec3(double _x, double _y, double _z);
 
     Vec3 add(const Vec3 &other) const;

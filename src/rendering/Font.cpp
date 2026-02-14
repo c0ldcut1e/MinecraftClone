@@ -145,7 +145,7 @@ void Font::draw(std::wstring_view text, float x, float y, float scale, uint32_t 
 
     GlStateManager::disableCull();
     GlStateManager::enableBlend();
-    GlStateManager::setBlendFunc(GL_BLEND_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    GlStateManager::setBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     m_shader.bind();
     m_shader.setMat4("u_view", Mat4::identity().data());
@@ -215,7 +215,7 @@ void Font::worldDraw(std::wstring_view text, const Vec3 &pos, float scale, uint3
 
     GlStateManager::disableCull();
     GlStateManager::enableBlend();
-    GlStateManager::setBlendFunc(GL_BLEND_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    GlStateManager::setBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     m_shader.bind();
     m_shader.setMat4("u_view", m_worldView.data());

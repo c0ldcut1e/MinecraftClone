@@ -8,6 +8,9 @@
 #include "../rendering/GlStateManager.h"
 #include "../rendering/ImmediateRenderer.h"
 #include "../utils/math/Math.h"
+#include "models/Model.h"
+#include "models/ModelDefinition.h"
+#include "models/ModelPartsSkinned.h"
 
 WorldRenderer::WorldRenderer(World *world) : m_shader(nullptr), m_world(world), m_drawChunkGrid(false) {
     m_shader = new Shader("shaders/world.vert", "shaders/world.frag");
@@ -109,7 +112,7 @@ void WorldRenderer::draw() {
 
     for (const std::unique_ptr<Entity> &entity : m_world->getEntities()) {
         EntityRenderer *renderer = EntityRendererRegistry::get()->getValue(entity->getType());
-        renderer->setDrawBoundingBox(false);
+        renderer->setDrawBoundingBox(true);
         renderer->draw(entity.get());
     }
 
@@ -117,7 +120,42 @@ void WorldRenderer::draw() {
 
     if (m_drawChunkGrid) drawChunkGrid();
 
+    static TextureRepository steveTextures;
+
+    static Model steveModel(ModelPartsSkinned::createSteveClassic("steve", "textures/steve.png"));
+
     GlStateManager::pushMatrix();
+    GlStateManager::disableCull();
+
+    GlStateManager::translatef(0.0f, 100.0f, 0.0f);
+    GlStateManager::scalef(1.0f / 16.0f, 1.0f / 16.0f, 1.0f / 16.0f);
+
+    float radius = 300.0f;
+    int stacks   = 20;
+    int slices   = 40;
+
+    for (int i = 0; i <= stacks; i++) {
+        float phi = M_PI * i / stacks;
+
+        for (int j = 0; j < slices; j++) {
+            float theta = 2.0f * M_PI * j / slices;
+
+            float x = radius * sinf(phi) * cosf(theta);
+            float y = radius * cosf(phi);
+            float z = radius * sinf(phi) * sinf(theta);
+
+            GlStateManager::pushMatrix();
+            GlStateManager::translatef(x, y, z);
+
+            float yaw = theta * 180.0f / M_PI;
+            GlStateManager::rotatef(-yaw, 0.0f, 1.0f, 0.0f);
+
+            steveModel.draw(steveTextures);
+            GlStateManager::popMatrix();
+        }
+    }
+
+    GlStateManager::popMatrix();
 }
 
 void WorldRenderer::drawChunkGrid() const {

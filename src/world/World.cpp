@@ -27,24 +27,22 @@ void World::tick() {
             if (m_chunks.find(pos) != m_chunks.end()) continue;
             m_chunks.emplace(pos, std::move(chunkPtr));
 
-            int worldX = pos.x * Chunk::SIZE_X;
-            int worldY = pos.y * Chunk::SIZE_Y;
-            int worldZ = pos.z * Chunk::SIZE_Z;
-            markChunkDirty(worldX, worldY, worldZ);
-            markChunkDirty(worldX - Chunk::SIZE_X, worldY, worldZ);
-            markChunkDirty(worldX + Chunk::SIZE_X, worldY, worldZ);
-            markChunkDirty(worldX, worldY, worldZ - Chunk::SIZE_Z);
-            markChunkDirty(worldX, worldY, worldZ + Chunk::SIZE_Z);
+            BlockPos blockPos(pos.x * Chunk::SIZE_X, pos.y * Chunk::SIZE_Y, pos.z * Chunk::SIZE_Z);
+            markChunkDirty(blockPos);
+            markChunkDirty(BlockPos(blockPos.x - Chunk::SIZE_X, blockPos.y, blockPos.z));
+            markChunkDirty(BlockPos(blockPos.x + Chunk::SIZE_X, blockPos.y, blockPos.z));
+            markChunkDirty(BlockPos(blockPos.x, blockPos.y, blockPos.z - Chunk::SIZE_Z));
+            markChunkDirty(BlockPos(blockPos.x, blockPos.y, blockPos.z + Chunk::SIZE_Z));
         }
     }
 
     while (!m_lightUpdates.empty()) {
-        Vec3 pos = m_lightUpdates.front();
+        BlockPos pos = m_lightUpdates.front();
         m_lightUpdates.pop_front();
 
         std::unique_lock<std::shared_mutex> lock(m_chunkDataMutex);
 
-        LightEngine::updateFrom(this, (int) pos.x, (int) pos.y, (int) pos.z);
+        LightEngine::updateFrom(this, pos);
     }
 
     if (m_lightUpdates.empty()) {
@@ -53,7 +51,7 @@ void World::tick() {
         if (!m_dirtyChunks.empty()) {
             ChunkPos pos = m_dirtyChunks.front();
             m_dirtyChunks.pop_front();
-            Minecraft::getInstance()->getWorldRenderer()->rebuildChunk(pos.x, pos.y, pos.z);
+            Minecraft::getInstance()->getWorldRenderer()->rebuildChunk(pos);
         }
     }
 
@@ -90,19 +88,19 @@ Chunk &World::createChunk(const ChunkPos &pos) {
 
 const std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> &World::getChunks() const { return m_chunks; }
 
-void World::markChunkDirty(int worldX, int worldY, int worldZ) {
+void World::markChunkDirty(const BlockPos &pos) {
     std::lock_guard<std::mutex> lock(m_dirtyMutex);
 
-    int cx = Math::floorDiv(worldX, Chunk::SIZE_X);
-    int cy = Math::floorDiv(worldY, Chunk::SIZE_Y);
-    int cz = Math::floorDiv(worldZ, Chunk::SIZE_Z);
+    int cx = Math::floorDiv(pos.x, Chunk::SIZE_X);
+    int cy = Math::floorDiv(pos.y, Chunk::SIZE_Y);
+    int cz = Math::floorDiv(pos.z, Chunk::SIZE_Z);
 
-    ChunkPos pos{cx, cy, cz};
+    ChunkPos chunkPos{cx, cy, cz};
 
     for (size_t i = 0; i < m_dirtyChunks.size(); i++)
-        if (m_dirtyChunks[i].x == pos.x && m_dirtyChunks[i].y == pos.y && m_dirtyChunks[i].z == pos.z) return;
+        if (m_dirtyChunks[i].x == chunkPos.x && m_dirtyChunks[i].y == chunkPos.y && m_dirtyChunks[i].z == chunkPos.z) return;
 
-    m_dirtyChunks.push_back(pos);
+    m_dirtyChunks.push_back(chunkPos);
 }
 
 const std::deque<ChunkPos> &World::getDirtyChunks() const { return m_dirtyChunks; }
@@ -125,22 +123,22 @@ void World::tickEntities() {
 
 const std::vector<std::unique_ptr<Entity>> &World::getEntities() const { return m_entities; }
 
-void World::setBlock(int worldX, int worldY, int worldZ, Block *block) {
+void World::setBlock(const BlockPos &pos, Block *block) {
     std::unique_lock<std::shared_mutex> lock(m_chunkDataMutex);
 
-    int cx = Math::floorDiv(worldX, Chunk::SIZE_X);
-    int cy = Math::floorDiv(worldY, Chunk::SIZE_Y);
-    int cz = Math::floorDiv(worldZ, Chunk::SIZE_Z);
+    int cx = Math::floorDiv(pos.x, Chunk::SIZE_X);
+    int cy = Math::floorDiv(pos.y, Chunk::SIZE_Y);
+    int cz = Math::floorDiv(pos.z, Chunk::SIZE_Z);
 
-    int lx = Math::floorMod(worldX, Chunk::SIZE_X);
-    int lz = Math::floorMod(worldZ, Chunk::SIZE_Z);
+    int lx = Math::floorMod(pos.x, Chunk::SIZE_X);
+    int lz = Math::floorMod(pos.z, Chunk::SIZE_Z);
 
-    ChunkPos pos{cx, cy, cz};
-    Chunk *chunk = getChunk(pos);
+    ChunkPos chunkPos{cx, cy, cz};
+    Chunk *chunk = getChunk(chunkPos);
     if (!chunk) return;
 
-    chunk->setBlock(lx, worldY, lz, block);
-    m_lightUpdates.push_front(Vec3(worldX, worldY, worldZ));
+    chunk->setBlock(lx, pos.y, lz, block);
+    m_lightUpdates.push_front(pos);
 }
 
 int World::getSurfaceHeight(int worldX, int worldZ) const {
@@ -253,9 +251,7 @@ HitResult *World::clip(const Vec3 &origin, const Vec3 &direction, float maxDista
         }
     }
 
-    int x = (int) floor(origin.x);
-    int y = (int) floor(origin.y);
-    int z = (int) floor(origin.z);
+    BlockPos pos((int) floor(origin.x), (int) floor(origin.y), (int) floor(origin.z));
 
     int stepX = _direction.x > 0.0f ? 1 : -1;
     int stepY = _direction.y > 0.0f ? 1 : -1;
@@ -265,9 +261,9 @@ HitResult *World::clip(const Vec3 &origin, const Vec3 &direction, float maxDista
     float tDeltaY = _direction.y != 0.0f ? (float) fabs(1.0 / _direction.y) : std::numeric_limits<float>::max();
     float tDeltaZ = _direction.z != 0.0f ? (float) fabs(1.0 / _direction.z) : std::numeric_limits<float>::max();
 
-    double nextBoundaryX = stepX > 0 ? (double) x + 1.0 : (double) x;
-    double nextBoundaryY = stepY > 0 ? (double) y + 1.0 : (double) y;
-    double nextBoundaryZ = stepZ > 0 ? (double) z + 1.0 : (double) z;
+    double nextBoundaryX = stepX > 0 ? (double) pos.x + 1.0 : (double) pos.x;
+    double nextBoundaryY = stepY > 0 ? (double) pos.y + 1.0 : (double) pos.y;
+    double nextBoundaryZ = stepZ > 0 ? (double) pos.z + 1.0 : (double) pos.z;
 
     float tMaxX = _direction.x != 0.0f ? (float) ((nextBoundaryX - origin.x) / _direction.x) : std::numeric_limits<float>::max();
     float tMaxY = _direction.y != 0.0f ? (float) ((nextBoundaryY - origin.y) / _direction.y) : std::numeric_limits<float>::max();
@@ -277,62 +273,57 @@ HitResult *World::clip(const Vec3 &origin, const Vec3 &direction, float maxDista
     if (tMaxY < 0.0f) tMaxY = 0.0f;
     if (tMaxZ < 0.0f) tMaxZ = 0.0f;
 
-    float bestBlockT  = std::numeric_limits<float>::max();
-    int bestBlockX    = 0;
-    int bestBlockY    = 0;
-    int bestBlockZ    = 0;
-    int bestBlockFace = -1;
-    bool hasBlock     = false;
+    float bestBlockT = std::numeric_limits<float>::max();
+    BlockPos bestBlockPos;
+    Direction *bestBlockFace = nullptr;
+    bool hasBlock            = false;
 
-    float t  = 0.0f;
-    int face = -1;
+    float t = 0.0f;
 
     while (t <= maxDistance) {
+        Direction *face = nullptr;
+
         if (tMaxX < tMaxY) {
             if (tMaxX < tMaxZ) {
-                x += stepX;
+                pos.x += stepX;
                 t = tMaxX;
                 tMaxX += tDeltaX;
-                face = stepX > 0 ? 0 : 1;
+                face = stepX > 0 ? Direction::WEST : Direction::EAST;
             } else {
-                z += stepZ;
+                pos.z += stepZ;
                 t = tMaxZ;
                 tMaxZ += tDeltaZ;
-                face = stepZ > 0 ? 4 : 5;
+                face = stepZ > 0 ? Direction::NORTH : Direction::SOUTH;
             }
         } else {
             if (tMaxY < tMaxZ) {
-                y += stepY;
+                pos.y += stepY;
                 t = tMaxY;
                 tMaxY += tDeltaY;
-                face = stepY > 0 ? 2 : 3;
+                face = stepY > 0 ? Direction::DOWN : Direction::UP;
             } else {
-                z += stepZ;
+                pos.z += stepZ;
                 t = tMaxZ;
                 tMaxZ += tDeltaZ;
-                face = stepZ > 0 ? 4 : 5;
+                face = stepZ > 0 ? Direction::NORTH : Direction::SOUTH;
             }
         }
 
         if (t > maxDistance) break;
 
-        int cx = Math::floorDiv(x, Chunk::SIZE_X);
-        int cy = Math::floorDiv(y, Chunk::SIZE_Y);
-        int cz = Math::floorDiv(z, Chunk::SIZE_Z);
+        ChunkPos chunkPos(Math::floorDiv(pos.x, Chunk::SIZE_X), Math::floorDiv(pos.y, Chunk::SIZE_Y), Math::floorDiv(pos.z, Chunk::SIZE_Z));
 
-        int lx = Math::floorMod(x, Chunk::SIZE_X);
-        int lz = Math::floorMod(z, Chunk::SIZE_Z);
+        int lx = Math::floorMod(pos.x, Chunk::SIZE_X);
+        int lz = Math::floorMod(pos.z, Chunk::SIZE_Z);
 
-        Chunk *chunk = getChunk({cx, cy, cz});
+        Chunk *chunk = getChunk(chunkPos);
         if (!chunk) continue;
-        if (y < 0 || y >= Chunk::SIZE_Y) continue;
+        if (pos.y < 0 || pos.y >= Chunk::SIZE_Y) continue;
 
-        Block *block = Block::byId((int) chunk->getBlockId(lx, y, lz));
+        Block *block = Block::byId((int) chunk->getBlockId(lx, pos.y, lz));
         if (block && block->isSolid()) {
             bestBlockT    = t;
-            bestBlockX    = x;
-            bestBlockY    = y;
-            bestBlockZ    = z;
+            bestBlockPos  = pos;
             bestBlockFace = face;
             hasBlock      = true;
             break;
@@ -347,7 +338,7 @@ HitResult *World::clip(const Vec3 &origin, const Vec3 &direction, float maxDista
 
     if (hasBlock) {
         Vec3 hitPos = origin.add(_direction.scale(bestBlockT));
-        result->setBlock(hitPos, bestBlockX, bestBlockY, bestBlockZ, bestBlockFace, bestBlockT);
+        result->setBlock(hitPos, bestBlockPos, bestBlockFace, bestBlockT);
         return result;
     }
 

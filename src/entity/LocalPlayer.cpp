@@ -58,20 +58,17 @@ void LocalPlayer::placeBlock() {
     Vec3 direction = m_front.normalize();
     HitResult *hit = m_world->clip(origin, direction, 6.0f);
     if (hit->isBlock()) {
-        int placeX = hit->getBlockX();
-        int placeY = hit->getBlockY();
-        int placeZ = hit->getBlockZ();
+        BlockPos placePos = hit->getBlockPos();
+        Direction *face   = hit->getBlockFace();
+        if (face == Direction::WEST) placePos.x--;
+        if (face == Direction::EAST) placePos.x++;
+        if (face == Direction::DOWN) placePos.y--;
+        if (face == Direction::UP) placePos.y++;
+        if (face == Direction::NORTH) placePos.z--;
+        if (face == Direction::SOUTH) placePos.z++;
 
-        int face = hit->getBlockFace();
-        if (face == 0) placeX--;
-        if (face == 1) placeX++;
-        if (face == 2) placeY--;
-        if (face == 3) placeY++;
-        if (face == 4) placeZ--;
-        if (face == 5) placeZ++;
-
-        AABB blockBox(Vec3(placeX, placeY, placeZ), Vec3(placeX + 1, placeY + 1, placeZ + 1));
-        if (!blockBox.intersects(getAABB())) m_world->setBlock(placeX, placeY, placeZ, Block::byName("glowstone"));
+        AABB blockBox(Vec3(placePos.x, placePos.y, placePos.z), Vec3(placePos.x + 1, placePos.y + 1, placePos.z + 1));
+        if (!blockBox.intersects(getAABB())) m_world->setBlock(placePos, Block::byName("glowstone"));
     }
 
     delete hit;
@@ -81,7 +78,7 @@ void LocalPlayer::destroyBlock() {
     Vec3 origin    = m_position.add(Vec3(0.0, 1.62, 0.0));
     Vec3 direction = m_front.normalize();
     HitResult *hit = m_world->clip(origin, direction, 6.0f);
-    if (hit->isBlock()) m_world->setBlock(hit->getBlockX(), hit->getBlockY(), hit->getBlockZ(), Block::byId(0));
+    if (hit->isBlock()) m_world->setBlock(hit->getBlockPos(), Block::byId(0));
 
     delete hit;
 }

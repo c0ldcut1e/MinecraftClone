@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include "../utils/HitResult.h"
+#include "block/BlockPos.h"
 #include "chunk/Chunk.h"
 #include "chunk/ChunkPos.h"
 
@@ -24,7 +25,7 @@ public:
     Chunk &createChunk(const ChunkPos &pos);
     bool hasChunk(const ChunkPos &pos) const;
     const std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> &getChunks() const;
-    void markChunkDirty(int worldX, int worldY, int worldZ);
+    void markChunkDirty(const BlockPos &pos);
     void clearDirtyChunks();
     const std::deque<ChunkPos> &getDirtyChunks() const;
 
@@ -33,7 +34,7 @@ public:
     void tickEntities();
     const std::vector<std::unique_ptr<Entity>> &getEntities() const;
 
-    void setBlock(int worldX, int worldY, int worldZ, Block *block);
+    void setBlock(const BlockPos &pos, Block *block);
 
     int getSurfaceHeight(int worldX, int worldZ) const;
     bool intersectsBlock(const AABB &aabb) const;
@@ -52,7 +53,7 @@ private:
     std::deque<ChunkPos> m_dirtyChunks;
     std::mutex m_dirtyMutex;
     std::shared_mutex m_chunkDataMutex;
-    std::deque<Vec3> m_lightUpdates;
+    std::deque<BlockPos> m_lightUpdates;
     bool m_emptyChunksSolid;
 
     std::vector<std::unique_ptr<Entity>> m_entities;

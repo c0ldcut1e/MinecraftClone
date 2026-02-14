@@ -4,11 +4,40 @@
 #include <functional>
 
 struct ChunkPos {
+    ChunkPos() : x(0), y(0), z(0) {}
+    ChunkPos(int x, int y, int z) : x(x), y(y), z(z) {}
+
+    bool operator==(const ChunkPos &other) const { return x == other.x && y == other.y && z == other.z; }
+
+    bool operator!=(const ChunkPos &other) const { return !(*this == other); }
+
+    ChunkPos operator+(const ChunkPos &other) const { return {x + other.x, y + other.y, z + other.z}; }
+
+    ChunkPos operator-(const ChunkPos &other) const { return {x - other.x, y - other.y, z - other.z}; }
+
+    ChunkPos &operator+=(const ChunkPos &other) {
+        x += other.x;
+        y += other.y;
+        z += other.z;
+        return *this;
+    }
+
+    ChunkPos &operator-=(const ChunkPos &other) {
+        x -= other.x;
+        y -= other.y;
+        z -= other.z;
+        return *this;
+    }
+
+    bool operator<(const ChunkPos &other) const {
+        if (x != other.x) return x < other.x;
+        if (y != other.y) return y < other.y;
+        return z < other.z;
+    }
+
     int x;
     int y;
     int z;
-
-    bool operator==(const ChunkPos &other) const { return x == other.x && y == other.y && z == other.z; }
 };
 
 struct ChunkPosHash {

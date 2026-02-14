@@ -1,6 +1,6 @@
 #include "HitResult.h"
 
-HitResult::HitResult() : m_type(MISS), m_hitPos(0.0, 0.0, 0.0), m_distance(0.0f), m_blockX(0), m_blockY(0), m_blockZ(0), m_blockFace(-1), m_entityUUID(), m_entityType(0) {}
+HitResult::HitResult() : m_type(MISS), m_hitPos(0.0, 0.0, 0.0), m_distance(0.0f), m_blockPos(), m_blockFace(nullptr), m_entityUUID(), m_entityType(0) {}
 
 HitResult::~HitResult() {}
 
@@ -8,21 +8,17 @@ void HitResult::setMiss() {
     m_type       = MISS;
     m_hitPos     = Vec3(0.0, 0.0, 0.0);
     m_distance   = 0.0f;
-    m_blockX     = 0;
-    m_blockY     = 0;
-    m_blockZ     = 0;
-    m_blockFace  = -1;
+    m_blockPos   = BlockPos();
+    m_blockFace  = nullptr;
     m_entityUUID = UUID();
     m_entityType = 0;
 }
 
-void HitResult::setBlock(const Vec3 &hitPos, int x, int y, int z, int face, float distance) {
+void HitResult::setBlock(const Vec3 &hitPos, const BlockPos &pos, Direction *face, float distance) {
     m_type       = BLOCK;
     m_hitPos     = hitPos;
     m_distance   = distance;
-    m_blockX     = x;
-    m_blockY     = y;
-    m_blockZ     = z;
+    m_blockPos   = pos;
     m_blockFace  = face;
     m_entityUUID = UUID();
     m_entityType = 0;
@@ -32,10 +28,8 @@ void HitResult::setEntity(const Vec3 &hitPos, const UUID &uuid, uint64_t type, f
     m_type       = ENTITY;
     m_hitPos     = hitPos;
     m_distance   = distance;
-    m_blockX     = 0;
-    m_blockY     = 0;
-    m_blockZ     = 0;
-    m_blockFace  = -1;
+    m_blockPos   = BlockPos();
+    m_blockFace  = nullptr;
     m_entityUUID = uuid;
     m_entityType = type;
 }
@@ -52,13 +46,9 @@ const Vec3 &HitResult::getHitPos() const { return m_hitPos; }
 
 float HitResult::getDistance() const { return m_distance; }
 
-int HitResult::getBlockX() const { return m_blockX; }
+const BlockPos &HitResult::getBlockPos() const { return m_blockPos; }
 
-int HitResult::getBlockY() const { return m_blockY; }
-
-int HitResult::getBlockZ() const { return m_blockZ; }
-
-int HitResult::getBlockFace() const { return m_blockFace; }
+Direction *HitResult::getBlockFace() const { return m_blockFace; }
 
 const UUID &HitResult::getEntityUUID() const { return m_entityUUID; }
 

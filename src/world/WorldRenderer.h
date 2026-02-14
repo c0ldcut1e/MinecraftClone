@@ -13,6 +13,7 @@
 #include "World.h"
 #include "chunk/ChunkMesh.h"
 #include "chunk/ChunkMesher.h"
+#include "chunk/ChunkPos.h"
 
 class WorldRenderer {
 public:
@@ -23,7 +24,7 @@ public:
     void drawChunkGrid() const;
 
     void rebuild();
-    void rebuildChunk(int cx, int cy, int cz);
+    void rebuildChunk(const ChunkPos &pos);
 
 private:
     void submitMesh(const ChunkPos &pos, std::vector<ChunkMesher::MeshBuildResult> &&results);

@@ -44,7 +44,7 @@ void ChunkManager::update(const Vec3 &playerPosition) {
     int cy = Math::floorDiv((int) playerPosition.y, Chunk::SIZE_Y);
     int cz = Math::floorDiv((int) playerPosition.z, Chunk::SIZE_Z);
     ChunkPos playerChunk{cx, cy, cz};
-    if (playerChunk.x == m_lastPlayerChunk.x && playerChunk.y == m_lastPlayerChunk.y && playerChunk.z == m_lastPlayerChunk.z) return;
+    if (playerChunk == m_lastPlayerChunk) return;
     m_lastPlayerChunk = playerChunk;
 
     std::vector<GenerationTask> newTasks;

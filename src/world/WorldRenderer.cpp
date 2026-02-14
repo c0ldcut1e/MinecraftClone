@@ -127,33 +127,9 @@ void WorldRenderer::draw() {
     GlStateManager::pushMatrix();
     GlStateManager::disableCull();
 
-    GlStateManager::translatef(0.0f, 100.0f, 0.0f);
+    GlStateManager::translatef(0.0f, 64.0f, 0.0f);
     GlStateManager::scalef(1.0f / 16.0f, 1.0f / 16.0f, 1.0f / 16.0f);
-
-    float radius = 300.0f;
-    int stacks   = 20;
-    int slices   = 40;
-
-    for (int i = 0; i <= stacks; i++) {
-        float phi = M_PI * i / stacks;
-
-        for (int j = 0; j < slices; j++) {
-            float theta = 2.0f * M_PI * j / slices;
-
-            float x = radius * sinf(phi) * cosf(theta);
-            float y = radius * cosf(phi);
-            float z = radius * sinf(phi) * sinf(theta);
-
-            GlStateManager::pushMatrix();
-            GlStateManager::translatef(x, y, z);
-
-            float yaw = theta * 180.0f / M_PI;
-            GlStateManager::rotatef(-yaw, 0.0f, 1.0f, 0.0f);
-
-            steveModel.draw(steveTextures);
-            GlStateManager::popMatrix();
-        }
-    }
+    steveModel.draw(steveTextures);
 
     GlStateManager::popMatrix();
 }
@@ -237,9 +213,7 @@ void WorldRenderer::rebuild() {
     }
 }
 
-void WorldRenderer::rebuildChunk(int cx, int cy, int cz) {
-    ChunkPos pos{cx, cy, cz};
-
+void WorldRenderer::rebuildChunk(const ChunkPos &pos) {
     auto it = m_world->getChunks().find(pos);
     if (it == m_world->getChunks().end()) return;
 

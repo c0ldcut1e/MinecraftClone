@@ -21,7 +21,9 @@ struct ColoredLightRemovalNode {
     int x;
     int y;
     int z;
-    uint8_t r, g, b;
+    uint8_t r;
+    uint8_t g;
+    uint8_t b;
 };
 
 static inline uint8_t maxComponent(uint8_t r, uint8_t g, uint8_t b) {
@@ -31,10 +33,9 @@ static inline uint8_t maxComponent(uint8_t r, uint8_t g, uint8_t b) {
     return max;
 }
 
-void LightEngine::rebuildChunk(World *world, int cx, int cy, int cz) {
+void LightEngine::rebuildChunk(World *world, const ChunkPos &pos) {
     if (!world) return;
 
-    ChunkPos pos{cx, cy, cz};
     Chunk *chunk = world->getChunk(pos);
     if (!chunk) return;
 
@@ -47,12 +48,11 @@ void LightEngine::rebuildChunk(World *world, int cx, int cy, int cz) {
         }
     }
 
-    propagateSkyLight(world, cx, cy, cz);
-    propagateBlockLight(world, cx, cy, cz);
+    propagateSkyLight(world, pos);
+    propagateBlockLight(world, pos);
 }
 
-void LightEngine::propagateSkyLight(World *world, int cx, int cy, int cz) {
-    ChunkPos pos{cx, cy, cz};
+void LightEngine::propagateSkyLight(World *world, const ChunkPos &pos) {
     Chunk *chunk = world->getChunk(pos);
     if (!chunk) return;
 
@@ -68,7 +68,7 @@ void LightEngine::propagateSkyLight(World *world, int cx, int cy, int cz) {
 
                 if (block->isSolid()) break;
 
-                setSkyLight(world, wx, y, wz, 15);
+                setSkyLight(world, BlockPos(wx, y, wz), 15);
                 lightQueue.push({wx, y, wz, 15});
             }
         }
@@ -78,7 +78,7 @@ void LightEngine::propagateSkyLight(World *world, int cx, int cy, int cz) {
         SkyLightNode node = lightQueue.front();
         lightQueue.pop();
 
-        uint8_t currentLevel = getSkyLight(world, node.x, node.y, node.z);
+        uint8_t currentLevel = getSkyLight(world, BlockPos(node.x, node.y, node.z));
         if (currentLevel == 0) continue;
 
         for (int i = 0; i < 6; i++) {
@@ -88,10 +88,12 @@ void LightEngine::propagateSkyLight(World *world, int cx, int cy, int cz) {
 
             if (ny < 0 || ny >= Chunk::SIZE_Y) continue;
 
-            int ncx              = Math::floorDiv(nx, Chunk::SIZE_X);
-            int ncy              = Math::floorDiv(ny, Chunk::SIZE_Y);
-            int ncz              = Math::floorDiv(nz, Chunk::SIZE_Z);
-            Chunk *neighborChunk = world->getChunk({ncx, ncy, ncz});
+            int ncx = Math::floorDiv(nx, Chunk::SIZE_X);
+            int ncy = Math::floorDiv(ny, Chunk::SIZE_Y);
+            int ncz = Math::floorDiv(nz, Chunk::SIZE_Z);
+
+            ChunkPos neighborChunkPos(ncx, ncy, ncz);
+            Chunk *neighborChunk = world->getChunk(neighborChunkPos);
             if (!neighborChunk) continue;
 
             int lx = Math::floorMod(nx, Chunk::SIZE_X);
@@ -100,7 +102,7 @@ void LightEngine::propagateSkyLight(World *world, int cx, int cy, int cz) {
             Block *neighborBlock = Block::byId(neighborChunk->getBlockId(lx, ny, lz));
             if (neighborBlock->isSolid()) continue;
 
-            uint8_t neighborLevel = getSkyLight(world, nx, ny, nz);
+            uint8_t neighborLevel = getSkyLight(world, BlockPos(nx, ny, nz));
 
             uint8_t newLevel;
             if (DIRECTIONS[i][1] == -1 && currentLevel == 15) {
@@ -110,15 +112,14 @@ void LightEngine::propagateSkyLight(World *world, int cx, int cy, int cz) {
             }
 
             if (newLevel > neighborLevel) {
-                setSkyLight(world, nx, ny, nz, newLevel);
+                setSkyLight(world, BlockPos(nx, ny, nz), newLevel);
                 lightQueue.push({nx, ny, nz, newLevel});
             }
         }
     }
 }
 
-void LightEngine::propagateBlockLight(World *world, int cx, int cy, int cz) {
-    ChunkPos pos{cx, cy, cz};
+void LightEngine::propagateBlockLight(World *world, const ChunkPos &pos) {
     Chunk *chunk = world->getChunk(pos);
     if (!chunk) return;
 
@@ -143,7 +144,7 @@ void LightEngine::propagateBlockLight(World *world, int cx, int cy, int cz) {
                 int wy = y;
                 int wz = pos.z * Chunk::SIZE_Z + z;
 
-                setBlockLight(world, wx, wy, wz, finalR, finalG, finalB);
+                setBlockLight(world, BlockPos(wx, wy, wz), finalR, finalG, finalB);
                 lightQueue.push({wx, wy, wz, finalR, finalG, finalB});
             }
         }
@@ -154,7 +155,7 @@ void LightEngine::propagateBlockLight(World *world, int cx, int cy, int cz) {
         lightQueue.pop();
 
         uint8_t cr, cg, cb;
-        getBlockLight(world, node.x, node.y, node.z, &cr, &cg, &cb);
+        getBlockLight(world, BlockPos(node.x, node.y, node.z), &cr, &cg, &cb);
 
         uint8_t maxCurrent = maxComponent(cr, cg, cb);
         if (maxCurrent <= 1) continue;
@@ -166,10 +167,12 @@ void LightEngine::propagateBlockLight(World *world, int cx, int cy, int cz) {
 
             if (ny < 0 || ny >= Chunk::SIZE_Y) continue;
 
-            int ncx              = Math::floorDiv(nx, Chunk::SIZE_X);
-            int ncy              = Math::floorDiv(ny, Chunk::SIZE_Y);
-            int ncz              = Math::floorDiv(nz, Chunk::SIZE_Z);
-            Chunk *neighborChunk = world->getChunk({ncx, ncy, ncz});
+            int ncx = Math::floorDiv(nx, Chunk::SIZE_X);
+            int ncy = Math::floorDiv(ny, Chunk::SIZE_Y);
+            int ncz = Math::floorDiv(nz, Chunk::SIZE_Z);
+
+            ChunkPos neighborChunkPos(ncx, ncy, ncz);
+            Chunk *neighborChunk = world->getChunk(neighborChunkPos);
             if (!neighborChunk) continue;
 
             int lx = Math::floorMod(nx, Chunk::SIZE_X);
@@ -179,7 +182,7 @@ void LightEngine::propagateBlockLight(World *world, int cx, int cy, int cz) {
             if (neighborBlock->isSolid()) continue;
 
             uint8_t nr, ng, nb;
-            getBlockLight(world, nx, ny, nz, &nr, &ng, &nb);
+            getBlockLight(world, BlockPos(nx, ny, nz), &nr, &ng, &nb);
 
             uint8_t newR = cr > 1 ? cr - 1 : 0;
             uint8_t newG = cg > 1 ? cg - 1 : 0;
@@ -190,7 +193,7 @@ void LightEngine::propagateBlockLight(World *world, int cx, int cy, int cz) {
                 uint8_t finalG = newG > ng ? newG : ng;
                 uint8_t finalB = newB > nb ? newB : nb;
 
-                setBlockLight(world, nx, ny, nz, finalR, finalG, finalB);
+                setBlockLight(world, BlockPos(nx, ny, nz), finalR, finalG, finalB);
                 lightQueue.push({nx, ny, nz, finalR, finalG, finalB});
             }
         }
@@ -203,13 +206,14 @@ void LightEngine::rebuild(World *world) {
     const auto &chunks = world->getChunks();
     for (const auto &[pos, chunk] : chunks) {
         if (!chunk) continue;
-        rebuildChunk(world, pos.x, pos.y, pos.z);
+        ChunkPos chunkPos(pos.x, pos.y, pos.z);
+        rebuildChunk(world, chunkPos);
     }
 }
 
-void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
+void LightEngine::updateFrom(World *world, const BlockPos &worldPos) {
     if (!world) return;
-    if (worldY < 0 || worldY >= Chunk::SIZE_Y) return;
+    if (worldPos.y < 0 || worldPos.y >= Chunk::SIZE_Y) return;
 
     std::unordered_set<ChunkPos, ChunkPosHash> dirtyChunks;
 
@@ -218,27 +222,30 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
     std::queue<ColoredLightRemovalNode> blockRemovalQueue;
     std::queue<LightNode> blockAddQueue;
 
-    int cx = Math::floorDiv(worldX, Chunk::SIZE_X);
-    int cy = Math::floorDiv(worldY, Chunk::SIZE_Y);
-    int cz = Math::floorDiv(worldZ, Chunk::SIZE_Z);
+    int cx = Math::floorDiv(worldPos.x, Chunk::SIZE_X);
+    int cy = Math::floorDiv(worldPos.y, Chunk::SIZE_Y);
+    int cz = Math::floorDiv(worldPos.z, Chunk::SIZE_Z);
 
-    dirtyChunks.insert({cx, cy, cz});
+    ChunkPos baseChunkPos(cx, cy, cz);
+    dirtyChunks.insert(baseChunkPos);
 
     Block *changedBlock = nullptr;
     {
-        Chunk *chunk = world->getChunk({cx, cy, cz});
+        Chunk *chunk = world->getChunk(baseChunkPos);
         if (chunk) {
-            int lx       = Math::floorMod(worldX, Chunk::SIZE_X);
-            int lz       = Math::floorMod(worldZ, Chunk::SIZE_Z);
-            changedBlock = Block::byId(chunk->getBlockId(lx, worldY, lz));
+            int lx       = Math::floorMod(worldPos.x, Chunk::SIZE_X);
+            int lz       = Math::floorMod(worldPos.z, Chunk::SIZE_Z);
+            changedBlock = Block::byId(chunk->getBlockId(lx, worldPos.y, lz));
         }
     }
 
-    for (int y = worldY; y < Chunk::SIZE_Y; y++) {
-        uint8_t oldLevel = getSkyLight(world, worldX, y, worldZ);
+    for (int y = worldPos.y; y < Chunk::SIZE_Y; y++) {
+        BlockPos p(worldPos.x, y, worldPos.z);
+
+        uint8_t oldLevel = getSkyLight(world, p);
         if (oldLevel > 0) {
-            setSkyLight(world, worldX, y, worldZ, 0);
-            skyRemovalQueue.push({worldX, y, worldZ, oldLevel});
+            setSkyLight(world, p, 0);
+            skyRemovalQueue.push({p.x, p.y, p.z, oldLevel});
         }
     }
 
@@ -252,13 +259,15 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
             int nz = node.z + DIRECTIONS[i][2];
             if (ny < 0 || ny >= Chunk::SIZE_Y) continue;
 
-            int ncx              = Math::floorDiv(nx, Chunk::SIZE_X);
-            int ncy              = Math::floorDiv(ny, Chunk::SIZE_Y);
-            int ncz              = Math::floorDiv(nz, Chunk::SIZE_Z);
-            Chunk *neighborChunk = world->getChunk({ncx, ncy, ncz});
+            int ncx = Math::floorDiv(nx, Chunk::SIZE_X);
+            int ncy = Math::floorDiv(ny, Chunk::SIZE_Y);
+            int ncz = Math::floorDiv(nz, Chunk::SIZE_Z);
+
+            ChunkPos neighborChunkPos(ncx, ncy, ncz);
+            Chunk *neighborChunk = world->getChunk(neighborChunkPos);
             if (!neighborChunk) continue;
 
-            if (ncx != cx || ncz != cz) { dirtyChunks.insert({ncx, ncy, ncz}); }
+            if (ncx != cx || ncz != cz) { dirtyChunks.insert(neighborChunkPos); }
 
             int lx = Math::floorMod(nx, Chunk::SIZE_X);
             int lz = Math::floorMod(nz, Chunk::SIZE_Z);
@@ -266,7 +275,9 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
             Block *neighborBlock = Block::byId(neighborChunk->getBlockId(lx, ny, lz));
             if (neighborBlock->isSolid()) continue;
 
-            uint8_t neighborLevel = getSkyLight(world, nx, ny, nz);
+            BlockPos np(nx, ny, nz);
+
+            uint8_t neighborLevel = getSkyLight(world, np);
             if (neighborLevel == 0) continue;
 
             uint8_t expectedFromThis;
@@ -277,69 +288,79 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
             }
 
             if (neighborLevel <= expectedFromThis) {
-                setSkyLight(world, nx, ny, nz, 0);
-                skyRemovalQueue.push({nx, ny, nz, neighborLevel});
+                setSkyLight(world, np, 0);
+                skyRemovalQueue.push({np.x, np.y, np.z, neighborLevel});
             } else {
-                skyAddQueue.push({nx, ny, nz, neighborLevel});
+                skyAddQueue.push({np.x, np.y, np.z, neighborLevel});
             }
         }
     }
 
     for (int y = Chunk::SIZE_Y - 1; y >= 0; y--) {
-        Chunk *chunk = world->getChunk({cx, cy, cz});
+        Chunk *chunk = world->getChunk(baseChunkPos);
         if (!chunk) break;
 
-        int lx = Math::floorMod(worldX, Chunk::SIZE_X);
-        int lz = Math::floorMod(worldZ, Chunk::SIZE_Z);
+        int lx = Math::floorMod(worldPos.x, Chunk::SIZE_X);
+        int lz = Math::floorMod(worldPos.z, Chunk::SIZE_Z);
 
         Block *block = Block::byId(chunk->getBlockId(lx, y, lz));
         if (block->isSolid()) break;
 
-        uint8_t currentLevel = getSkyLight(world, worldX, y, worldZ);
+        BlockPos p(worldPos.x, y, worldPos.z);
+
+        uint8_t currentLevel = getSkyLight(world, p);
         if (currentLevel < 15) {
-            setSkyLight(world, worldX, y, worldZ, 15);
-            skyAddQueue.push({worldX, y, worldZ, 15});
+            setSkyLight(world, p, 15);
+            skyAddQueue.push({p.x, p.y, p.z, 15});
         }
     }
 
     for (int i = 0; i < 6; i++) {
-        int nx = worldX + DIRECTIONS[i][0];
-        int ny = worldY + DIRECTIONS[i][1];
-        int nz = worldZ + DIRECTIONS[i][2];
+        int nx = worldPos.x + DIRECTIONS[i][0];
+        int ny = worldPos.y + DIRECTIONS[i][1];
+        int nz = worldPos.z + DIRECTIONS[i][2];
 
         if (ny < 0 || ny >= Chunk::SIZE_Y) continue;
 
-        int ncx              = Math::floorDiv(nx, Chunk::SIZE_X);
-        int ncy              = Math::floorDiv(ny, Chunk::SIZE_Y);
-        int ncz              = Math::floorDiv(nz, Chunk::SIZE_Z);
-        Chunk *neighborChunk = world->getChunk({ncx, ncy, ncz});
+        int ncx = Math::floorDiv(nx, Chunk::SIZE_X);
+        int ncy = Math::floorDiv(ny, Chunk::SIZE_Y);
+        int ncz = Math::floorDiv(nz, Chunk::SIZE_Z);
+
+        ChunkPos neighborChunkPos(ncx, ncy, ncz);
+        Chunk *neighborChunk = world->getChunk(neighborChunkPos);
         if (!neighborChunk) continue;
 
-        uint8_t neighborLevel = getSkyLight(world, nx, ny, nz);
-        if (neighborLevel > 0) skyAddQueue.push({nx, ny, nz, neighborLevel});
+        BlockPos np(nx, ny, nz);
+
+        uint8_t neighborLevel = getSkyLight(world, np);
+        if (neighborLevel > 0) skyAddQueue.push({np.x, np.y, np.z, neighborLevel});
     }
 
     while (!skyAddQueue.empty()) {
         SkyLightNode node = skyAddQueue.front();
         skyAddQueue.pop();
 
-        uint8_t currentLevel = getSkyLight(world, node.x, node.y, node.z);
+        BlockPos nodePos(node.x, node.y, node.z);
+
+        uint8_t currentLevel = getSkyLight(world, nodePos);
         if (currentLevel == 0) continue;
 
         for (int i = 0; i < 6; i++) {
-            int nx = node.x + DIRECTIONS[i][0];
-            int ny = node.y + DIRECTIONS[i][1];
-            int nz = node.z + DIRECTIONS[i][2];
+            int nx = nodePos.x + DIRECTIONS[i][0];
+            int ny = nodePos.y + DIRECTIONS[i][1];
+            int nz = nodePos.z + DIRECTIONS[i][2];
 
             if (ny < 0 || ny >= Chunk::SIZE_Y) continue;
 
-            int ncx              = Math::floorDiv(nx, Chunk::SIZE_X);
-            int ncy              = Math::floorDiv(ny, Chunk::SIZE_Y);
-            int ncz              = Math::floorDiv(nz, Chunk::SIZE_Z);
-            Chunk *neighborChunk = world->getChunk({ncx, ncy, ncz});
+            int ncx = Math::floorDiv(nx, Chunk::SIZE_X);
+            int ncy = Math::floorDiv(ny, Chunk::SIZE_Y);
+            int ncz = Math::floorDiv(nz, Chunk::SIZE_Z);
+
+            ChunkPos neighborChunkPos(ncx, ncy, ncz);
+            Chunk *neighborChunk = world->getChunk(neighborChunkPos);
             if (!neighborChunk) continue;
 
-            if (ncx != cx || ncz != cz) { dirtyChunks.insert({ncx, ncy, ncz}); }
+            if (ncx != cx || ncz != cz) { dirtyChunks.insert(neighborChunkPos); }
 
             int lx = Math::floorMod(nx, Chunk::SIZE_X);
             int lz = Math::floorMod(nz, Chunk::SIZE_Z);
@@ -347,7 +368,9 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
             Block *neighborBlock = Block::byId(neighborChunk->getBlockId(lx, ny, lz));
             if (neighborBlock->isSolid()) continue;
 
-            uint8_t neighborLevel = getSkyLight(world, nx, ny, nz);
+            BlockPos np(nx, ny, nz);
+
+            uint8_t neighborLevel = getSkyLight(world, np);
 
             uint8_t newLevel;
             if (DIRECTIONS[i][1] == -1 && currentLevel == 15) {
@@ -357,19 +380,22 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
             }
 
             if (newLevel > neighborLevel) {
-                setSkyLight(world, nx, ny, nz, newLevel);
-                skyAddQueue.push({nx, ny, nz, newLevel});
+                setSkyLight(world, np, newLevel);
+                skyAddQueue.push({np.x, np.y, np.z, newLevel});
             }
         }
     }
 
     {
-        uint8_t oldR, oldG, oldB;
-        getBlockLight(world, worldX, worldY, worldZ, &oldR, &oldG, &oldB);
+        uint8_t oldR;
+        uint8_t oldG;
+        uint8_t oldB;
+
+        getBlockLight(world, worldPos, &oldR, &oldG, &oldB);
 
         if (oldR > 0 || oldG > 0 || oldB > 0) {
-            setBlockLight(world, worldX, worldY, worldZ, 0, 0, 0);
-            blockRemovalQueue.push({worldX, worldY, worldZ, oldR, oldG, oldB});
+            setBlockLight(world, worldPos, 0, 0, 0);
+            blockRemovalQueue.push({worldPos.x, worldPos.y, worldPos.z, oldR, oldG, oldB});
         }
     }
 
@@ -384,13 +410,15 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
 
             if (ny < 0 || ny >= Chunk::SIZE_Y) continue;
 
-            int ncx              = Math::floorDiv(nx, Chunk::SIZE_X);
-            int ncy              = Math::floorDiv(ny, Chunk::SIZE_Y);
-            int ncz              = Math::floorDiv(nz, Chunk::SIZE_Z);
-            Chunk *neighborChunk = world->getChunk({ncx, ncy, ncz});
+            int ncx = Math::floorDiv(nx, Chunk::SIZE_X);
+            int ncy = Math::floorDiv(ny, Chunk::SIZE_Y);
+            int ncz = Math::floorDiv(nz, Chunk::SIZE_Z);
+
+            ChunkPos neighborChunkPos(ncx, ncy, ncz);
+            Chunk *neighborChunk = world->getChunk(neighborChunkPos);
             if (!neighborChunk) continue;
 
-            if (ncx != cx || ncz != cz) { dirtyChunks.insert({ncx, ncy, ncz}); }
+            if (ncx != cx || ncz != cz) { dirtyChunks.insert(neighborChunkPos); }
 
             int lx = Math::floorMod(nx, Chunk::SIZE_X);
             int lz = Math::floorMod(nz, Chunk::SIZE_Z);
@@ -398,8 +426,13 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
             Block *neighborBlock = Block::byId(neighborChunk->getBlockId(lx, ny, lz));
             if (neighborBlock->isSolid()) continue;
 
-            uint8_t nr, ng, nb;
-            getBlockLight(world, nx, ny, nz, &nr, &ng, &nb);
+            BlockPos np(nx, ny, nz);
+
+            uint8_t nr;
+            uint8_t ng;
+            uint8_t nb;
+
+            getBlockLight(world, np, &nr, &ng, &nb);
 
             if (nr == 0 && ng == 0 && nb == 0) continue;
 
@@ -413,39 +446,44 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
             if (nb > 0 && nb <= expectedB) shouldRemove = true;
 
             if (shouldRemove) {
-                setBlockLight(world, nx, ny, nz, 0, 0, 0);
-                blockRemovalQueue.push({nx, ny, nz, nr, ng, nb});
+                setBlockLight(world, np, 0, 0, 0);
+                blockRemovalQueue.push({np.x, np.y, np.z, nr, ng, nb});
             } else {
-                if (nr > 0 || ng > 0 || nb > 0) { blockAddQueue.push({nx, ny, nz, nr, ng, nb}); }
+                if (nr > 0 || ng > 0 || nb > 0) { blockAddQueue.push({np.x, np.y, np.z, nr, ng, nb}); }
             }
         }
     }
 
     if (changedBlock && changedBlock->getLightEmission() > 0) {
         uint8_t emission = changedBlock->getLightEmission();
-        uint8_t lr, lg, lb;
+        uint8_t lr;
+        uint8_t lg;
+        uint8_t lb;
+
         changedBlock->getLightColor(lr, lg, lb);
 
         uint8_t finalR = (uint8_t) ((lr / 255.0f) * emission);
         uint8_t finalG = (uint8_t) ((lg / 255.0f) * emission);
         uint8_t finalB = (uint8_t) ((lb / 255.0f) * emission);
 
-        setBlockLight(world, worldX, worldY, worldZ, finalR, finalG, finalB);
-        blockAddQueue.push({worldX, worldY, worldZ, finalR, finalG, finalB});
+        setBlockLight(world, worldPos, finalR, finalG, finalB);
+        blockAddQueue.push({worldPos.x, worldPos.y, worldPos.z, finalR, finalG, finalB});
     }
 
     if (changedBlock && !changedBlock->isSolid()) {
         for (int i = 0; i < 6; i++) {
-            int nx = worldX + DIRECTIONS[i][0];
-            int ny = worldY + DIRECTIONS[i][1];
-            int nz = worldZ + DIRECTIONS[i][2];
+            int nx = worldPos.x + DIRECTIONS[i][0];
+            int ny = worldPos.y + DIRECTIONS[i][1];
+            int nz = worldPos.z + DIRECTIONS[i][2];
 
             if (ny < 0 || ny >= Chunk::SIZE_Y) continue;
 
-            int ncx              = Math::floorDiv(nx, Chunk::SIZE_X);
-            int ncy              = Math::floorDiv(ny, Chunk::SIZE_Y);
-            int ncz              = Math::floorDiv(nz, Chunk::SIZE_Z);
-            Chunk *neighborChunk = world->getChunk({ncx, ncy, ncz});
+            int ncx = Math::floorDiv(nx, Chunk::SIZE_X);
+            int ncy = Math::floorDiv(ny, Chunk::SIZE_Y);
+            int ncz = Math::floorDiv(nz, Chunk::SIZE_Z);
+
+            ChunkPos neighborChunkPos(ncx, ncy, ncz);
+            Chunk *neighborChunk = world->getChunk(neighborChunkPos);
             if (!neighborChunk) continue;
 
             int lx = Math::floorMod(nx, Chunk::SIZE_X);
@@ -454,10 +492,15 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
             Block *neighborBlock = Block::byId(neighborChunk->getBlockId(lx, ny, lz));
             if (neighborBlock->isSolid()) continue;
 
-            uint8_t nr, ng, nb;
-            getBlockLight(world, nx, ny, nz, &nr, &ng, &nb);
+            BlockPos np(nx, ny, nz);
 
-            if (nr || ng || nb) { blockAddQueue.push({nx, ny, nz, nr, ng, nb}); }
+            uint8_t nr;
+            uint8_t ng;
+            uint8_t nb;
+
+            getBlockLight(world, np, &nr, &ng, &nb);
+
+            if (nr || ng || nb) { blockAddQueue.push({np.x, np.y, np.z, nr, ng, nb}); }
         }
     }
 
@@ -465,8 +508,11 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
         LightNode node = blockAddQueue.front();
         blockAddQueue.pop();
 
-        uint8_t cr, cg, cb;
-        getBlockLight(world, node.x, node.y, node.z, &cr, &cg, &cb);
+        uint8_t cr;
+        uint8_t cg;
+        uint8_t cb;
+
+        getBlockLight(world, BlockPos(node.x, node.y, node.z), &cr, &cg, &cb);
 
         uint8_t maxCurrent = maxComponent(cr, cg, cb);
         if (maxCurrent <= 1) continue;
@@ -478,13 +524,15 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
 
             if (ny < 0 || ny >= Chunk::SIZE_Y) continue;
 
-            int ncx              = Math::floorDiv(nx, Chunk::SIZE_X);
-            int ncy              = Math::floorDiv(ny, Chunk::SIZE_Y);
-            int ncz              = Math::floorDiv(nz, Chunk::SIZE_Z);
-            Chunk *neighborChunk = world->getChunk({ncx, ncy, ncz});
+            int ncx = Math::floorDiv(nx, Chunk::SIZE_X);
+            int ncy = Math::floorDiv(ny, Chunk::SIZE_Y);
+            int ncz = Math::floorDiv(nz, Chunk::SIZE_Z);
+
+            ChunkPos neighborChunkPos(ncx, ncy, ncz);
+            Chunk *neighborChunk = world->getChunk(neighborChunkPos);
             if (!neighborChunk) continue;
 
-            if (ncx != cx || ncz != cz) { dirtyChunks.insert({ncx, ncy, ncz}); }
+            if (ncx != cx || ncz != cz) { dirtyChunks.insert(neighborChunkPos); }
 
             int lx = Math::floorMod(nx, Chunk::SIZE_X);
             int lz = Math::floorMod(nz, Chunk::SIZE_Z);
@@ -492,8 +540,13 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
             Block *neighborBlock = Block::byId(neighborChunk->getBlockId(lx, ny, lz));
             if (neighborBlock->isSolid()) continue;
 
-            uint8_t nr, ng, nb;
-            getBlockLight(world, nx, ny, nz, &nr, &ng, &nb);
+            BlockPos np(nx, ny, nz);
+
+            uint8_t nr;
+            uint8_t ng;
+            uint8_t nb;
+
+            getBlockLight(world, np, &nr, &ng, &nb);
 
             uint8_t newR = cr > 1 ? cr - 1 : 0;
             uint8_t newG = cg > 1 ? cg - 1 : 0;
@@ -504,8 +557,8 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
                 uint8_t finalG = newG > ng ? newG : ng;
                 uint8_t finalB = newB > nb ? newB : nb;
 
-                setBlockLight(world, nx, ny, nz, finalR, finalG, finalB);
-                blockAddQueue.push({nx, ny, nz, finalR, finalG, finalB});
+                setBlockLight(world, np, finalR, finalG, finalB);
+                blockAddQueue.push({np.x, np.y, np.z, finalR, finalG, finalB});
             }
         }
     }
@@ -514,22 +567,25 @@ void LightEngine::updateFrom(World *world, int worldX, int worldY, int worldZ) {
         int wx = chunkPos.x * Chunk::SIZE_X;
         int wy = chunkPos.y * Chunk::SIZE_Y;
         int wz = chunkPos.z * Chunk::SIZE_Z;
-        world->markChunkDirty(wx, wy, wz);
+
+        world->markChunkDirty(BlockPos(wx, wy, wz));
     }
 }
 
-void LightEngine::getBlockLight(World *world, int worldX, int worldY, int worldZ, uint8_t *r, uint8_t *g, uint8_t *b) {
-    if (worldY < 0 || worldY >= Chunk::SIZE_Y) {
+void LightEngine::getBlockLight(World *world, const BlockPos &worldPos, uint8_t *r, uint8_t *g, uint8_t *b) {
+    if (worldPos.y < 0 || worldPos.y >= Chunk::SIZE_Y) {
         *r = 0;
         *g = 0;
         *b = 0;
         return;
     }
 
-    int cx       = Math::floorDiv(worldX, Chunk::SIZE_X);
-    int cy       = Math::floorDiv(worldY, Chunk::SIZE_Y);
-    int cz       = Math::floorDiv(worldZ, Chunk::SIZE_Z);
-    Chunk *chunk = world->getChunk({cx, cy, cz});
+    int cx = Math::floorDiv(worldPos.x, Chunk::SIZE_X);
+    int cy = Math::floorDiv(worldPos.y, Chunk::SIZE_Y);
+    int cz = Math::floorDiv(worldPos.z, Chunk::SIZE_Z);
+
+    ChunkPos chunkPos(cx, cy, cz);
+    Chunk *chunk = world->getChunk(chunkPos);
     if (!chunk) {
         *r = 0;
         *g = 0;
@@ -537,65 +593,73 @@ void LightEngine::getBlockLight(World *world, int worldX, int worldY, int worldZ
         return;
     }
 
-    int lx = Math::floorMod(worldX, Chunk::SIZE_X);
-    int lz = Math::floorMod(worldZ, Chunk::SIZE_Z);
-    chunk->getBlockLight(lx, worldY, lz, *r, *g, *b);
+    int lx = Math::floorMod(worldPos.x, Chunk::SIZE_X);
+    int lz = Math::floorMod(worldPos.z, Chunk::SIZE_Z);
+    chunk->getBlockLight(lx, worldPos.y, lz, *r, *g, *b);
 }
 
-void LightEngine::setBlockLight(World *world, int worldX, int worldY, int worldZ, uint8_t r, uint8_t g, uint8_t b) {
-    if (worldY < 0 || worldY >= Chunk::SIZE_Y) return;
+void LightEngine::setBlockLight(World *world, const BlockPos &worldPos, uint8_t r, uint8_t g, uint8_t b) {
+    if (worldPos.y < 0 || worldPos.y >= Chunk::SIZE_Y) return;
 
-    int cx       = Math::floorDiv(worldX, Chunk::SIZE_X);
-    int cy       = Math::floorDiv(worldY, Chunk::SIZE_Y);
-    int cz       = Math::floorDiv(worldZ, Chunk::SIZE_Z);
-    Chunk *chunk = world->getChunk({cx, cy, cz});
+    int cx = Math::floorDiv(worldPos.x, Chunk::SIZE_X);
+    int cy = Math::floorDiv(worldPos.y, Chunk::SIZE_Y);
+    int cz = Math::floorDiv(worldPos.z, Chunk::SIZE_Z);
+
+    ChunkPos chunkPos(cx, cy, cz);
+    Chunk *chunk = world->getChunk(chunkPos);
     if (!chunk) return;
 
-    int lx = Math::floorMod(worldX, Chunk::SIZE_X);
-    int lz = Math::floorMod(worldZ, Chunk::SIZE_Z);
-    chunk->setBlockLight(lx, worldY, lz, r, g, b);
+    int lx = Math::floorMod(worldPos.x, Chunk::SIZE_X);
+    int lz = Math::floorMod(worldPos.z, Chunk::SIZE_Z);
+    chunk->setBlockLight(lx, worldPos.y, lz, r, g, b);
 }
 
-uint8_t LightEngine::getSkyLight(World *world, int worldX, int worldY, int worldZ) {
-    if (worldY < 0 || worldY >= Chunk::SIZE_Y) return 0;
+uint8_t LightEngine::getSkyLight(World *world, const BlockPos &worldPos) {
+    if (worldPos.y < 0 || worldPos.y >= Chunk::SIZE_Y) return 0;
 
-    int cx       = Math::floorDiv(worldX, Chunk::SIZE_X);
-    int cy       = Math::floorDiv(worldY, Chunk::SIZE_Y);
-    int cz       = Math::floorDiv(worldZ, Chunk::SIZE_Z);
-    Chunk *chunk = world->getChunk({cx, cy, cz});
+    int cx = Math::floorDiv(worldPos.x, Chunk::SIZE_X);
+    int cy = Math::floorDiv(worldPos.y, Chunk::SIZE_Y);
+    int cz = Math::floorDiv(worldPos.z, Chunk::SIZE_Z);
+
+    ChunkPos chunkPos(cx, cy, cz);
+    Chunk *chunk = world->getChunk(chunkPos);
     if (!chunk) return 0;
 
-    int lx = Math::floorMod(worldX, Chunk::SIZE_X);
-    int lz = Math::floorMod(worldZ, Chunk::SIZE_Z);
-    return chunk->getSkyLight(lx, worldY, lz);
+    int lx = Math::floorMod(worldPos.x, Chunk::SIZE_X);
+    int lz = Math::floorMod(worldPos.z, Chunk::SIZE_Z);
+    return chunk->getSkyLight(lx, worldPos.y, lz);
 }
 
-void LightEngine::setSkyLight(World *world, int worldX, int worldY, int worldZ, uint8_t level) {
-    if (worldY < 0 || worldY >= Chunk::SIZE_Y) return;
+void LightEngine::setSkyLight(World *world, const BlockPos &worldPos, uint8_t level) {
+    if (worldPos.y < 0 || worldPos.y >= Chunk::SIZE_Y) return;
 
-    int cx       = Math::floorDiv(worldX, Chunk::SIZE_X);
-    int cy       = Math::floorDiv(worldY, Chunk::SIZE_Y);
-    int cz       = Math::floorDiv(worldZ, Chunk::SIZE_Z);
-    Chunk *chunk = world->getChunk({cx, cy, cz});
+    int cx = Math::floorDiv(worldPos.x, Chunk::SIZE_X);
+    int cy = Math::floorDiv(worldPos.y, Chunk::SIZE_Y);
+    int cz = Math::floorDiv(worldPos.z, Chunk::SIZE_Z);
+
+    ChunkPos chunkPos(cx, cy, cz);
+    Chunk *chunk = world->getChunk(chunkPos);
     if (!chunk) return;
 
-    int lx = Math::floorMod(worldX, Chunk::SIZE_X);
-    int lz = Math::floorMod(worldZ, Chunk::SIZE_Z);
-    chunk->setSkyLight(lx, worldY, lz, level);
+    int lx = Math::floorMod(worldPos.x, Chunk::SIZE_X);
+    int lz = Math::floorMod(worldPos.z, Chunk::SIZE_Z);
+    chunk->setSkyLight(lx, worldPos.y, lz, level);
 }
 
-void LightEngine::getLightLevel(World *world, int worldX, int worldY, int worldZ, uint8_t *r, uint8_t *g, uint8_t *b) {
-    if (worldY < 0 || worldY >= Chunk::SIZE_Y) {
+void LightEngine::getLightLevel(World *world, const BlockPos &worldPos, uint8_t *r, uint8_t *g, uint8_t *b) {
+    if (worldPos.y < 0 || worldPos.y >= Chunk::SIZE_Y) {
         *r = 0;
         *g = 0;
         *b = 0;
         return;
     }
 
-    int cx       = Math::floorDiv(worldX, Chunk::SIZE_X);
-    int cy       = Math::floorDiv(worldY, Chunk::SIZE_Y);
-    int cz       = Math::floorDiv(worldZ, Chunk::SIZE_Z);
-    Chunk *chunk = world->getChunk({cx, cy, cz});
+    int cx = Math::floorDiv(worldPos.x, Chunk::SIZE_X);
+    int cy = Math::floorDiv(worldPos.y, Chunk::SIZE_Y);
+    int cz = Math::floorDiv(worldPos.z, Chunk::SIZE_Z);
+
+    ChunkPos chunkPos(cx, cy, cz);
+    Chunk *chunk = world->getChunk(chunkPos);
     if (!chunk) {
         *r = 0;
         *g = 0;
@@ -603,7 +667,7 @@ void LightEngine::getLightLevel(World *world, int worldX, int worldY, int worldZ
         return;
     }
 
-    int lx = Math::floorMod(worldX, Chunk::SIZE_X);
-    int lz = Math::floorMod(worldZ, Chunk::SIZE_Z);
-    chunk->getLight(lx, worldY, lz, *r, *g, *b);
+    int lx = Math::floorMod(worldPos.x, Chunk::SIZE_X);
+    int lz = Math::floorMod(worldPos.z, Chunk::SIZE_Z);
+    chunk->getLight(lx, worldPos.y, lz, *r, *g, *b);
 }

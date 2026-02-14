@@ -56,31 +56,26 @@ void UIComponent_DebugPanel::render() {
         lines.emplace_back(buffer);
 
         if (world) {
-            swprintf(buffer, 0xFF, L"chunks loaded: %u  renderDistance: %d", (uint32_t) world->getChunks().size(), world->getRenderDistance());
+            swprintf(buffer, 0xFF, L"chunks loaded: %d  renderDistance: %d", (uint32_t) world->getChunks().size(), world->getRenderDistance());
             lines.emplace_back(buffer);
 
             const Vec3 &sun = world->getSunPosition();
             swprintf(buffer, 0xFF, L"sun: %.1f / %.1f / %.1f", (float) sun.x, (float) sun.y, (float) sun.z);
             lines.emplace_back(buffer);
 
-            Vec3 eye = pos.add(Vec3(0.0, 1.6, 0.0));
-
-            HitResult *result = world->clip(eye, front, 8.0f);
-
+            HitResult *result = world->clip(pos.add(Vec3(0.0, 1.6, 0.0)), front, 8.0f);
             if (result) {
                 if (result->isBlock()) {
-                    int hitX    = result->getBlockX();
-                    int hitY    = result->getBlockY();
-                    int hitZ    = result->getBlockZ();
-                    int hitFace = result->getBlockFace();
+                    BlockPos hit       = result->getBlockPos();
+                    Direction *hitFace = result->getBlockFace();
 
-                    int bcx = Math::floorDiv(hitX, Chunk::SIZE_X);
-                    int bcy = Math::floorDiv(hitY, Chunk::SIZE_Y);
-                    int bcz = Math::floorDiv(hitZ, Chunk::SIZE_Z);
+                    int bcx = Math::floorDiv(hit.x, Chunk::SIZE_X);
+                    int bcy = Math::floorDiv(hit.y, Chunk::SIZE_Y);
+                    int bcz = Math::floorDiv(hit.z, Chunk::SIZE_Z);
 
-                    int lx = Math::floorMod(hitX, Chunk::SIZE_X);
-                    int ly = hitY;
-                    int lz = Math::floorMod(hitZ, Chunk::SIZE_Z);
+                    int lx = Math::floorMod(hit.x, Chunk::SIZE_X);
+                    int ly = hit.y;
+                    int lz = Math::floorMod(hit.z, Chunk::SIZE_Z);
 
                     const Chunk *chunk = world->getChunk({bcx, bcy, bcz});
                     uint32_t blockId   = 0;
@@ -98,13 +93,13 @@ void UIComponent_DebugPanel::render() {
                     } else
                         blockName = L"(null)";
 
-                    swprintf(buffer, 0xFF, L"target: %d %d %d  face %d", hitX, hitY, hitZ, hitFace);
+                    swprintf(buffer, 0xFF, L"target: %d %d %d  %s", hit.x, hit.y, hit.z, hitFace->name.c_str());
                     lines.emplace_back(buffer);
 
-                    swprintf(buffer, 0xFF, L"block: %u  %ls", blockId, blockName.c_str());
+                    swprintf(buffer, 0xFF, L"block: %d  %ls", blockId, blockName.c_str());
                     lines.emplace_back(buffer);
                 } else if (result->isEntity()) {
-                    swprintf(buffer, 0xFF, L"target entity: type %llu", result->getEntityType());
+                    swprintf(buffer, 0xFF, L"target entity: type 0x%016llx", result->getEntityType());
                     lines.emplace_back(buffer);
                 } else {
                     swprintf(buffer, 0xFF, L"target: (none)");
@@ -113,9 +108,6 @@ void UIComponent_DebugPanel::render() {
 
                 delete result;
             }
-        } else {
-            swprintf(buffer, 0xFF, L"me: null");
-            lines.emplace_back(buffer);
         }
 
         Font *font      = minecraft->getDefaultFont();
@@ -129,12 +121,12 @@ void UIComponent_DebugPanel::render() {
         float lineHeight = 24.0f;
 
         float maxWidth = 0.0f;
-        if (font) {
+        if (font)
             for (const std::wstring &line : lines) {
                 float width = font->getWidth(line, fontScale);
                 if (width > maxWidth) maxWidth = width;
             }
-        } else
+        else
             maxWidth = 360.0f;
 
         if (font) {

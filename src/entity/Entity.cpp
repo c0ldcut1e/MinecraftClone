@@ -5,20 +5,23 @@
 #include "../utils/Time.h"
 
 Entity::Entity(World *world)
-    : m_world(world), m_position(0.0, 0.0, 0.0), m_velocity(0.0, 0.0, 0.0), m_moveIntent(0.0, 0.0, 0.0), m_front(0.0, 0.0, -1.0), m_up(0.0, 1.0, 0.0), m_yaw(-90.0f), m_pitch(0.0f), m_gravity(-32.0f), m_jumpVelocity(9.2f), m_maxSpeed(15.0f),
-      m_acceleration(80.0f), m_friction(10.0f), m_onGround(false), m_jumpQueued(false), m_noGravity(false), m_noCollision(false), m_flying(false), m_boundingBox(Vec3(-0.3, 0.0, -0.3), Vec3(0.3, 1.8, 0.3)), m_aabb(), m_uuid(UUID::random()), m_name(L"") {}
+    : m_world(world), m_totalTickCount(-1), m_position(0.0, 0.0, 0.0), m_velocity(0.0, 0.0, 0.0), m_moveIntent(0.0, 0.0, 0.0), m_front(0.0, 0.0, -1.0), m_up(0.0, 1.0, 0.0), m_yaw(-90.0f), m_pitch(0.0f), m_gravity(-32.0f), m_jumpVelocity(10.2f),
+      m_maxSpeed(20.0f), m_acceleration(150.0f), m_friction(10.0f), m_onGround(false), m_jumpQueued(false), m_noGravity(false), m_noCollision(false), m_flying(false), m_boundingBox(Vec3(-0.3, 0.0, -0.3), Vec3(0.3, 1.8, 0.3)), m_aabb(), m_uuid(UUID::random()),
+      m_name(L""), m_model(nullptr) {}
 
 Entity::~Entity() {}
 
 uint64_t Entity::getType() { return TYPE; }
 
+void Entity::update(float alpha) { (void) alpha; }
+
 void Entity::tick() {
+    m_totalTickCount++;
+
     updateVectors();
     updateAABB();
 
-    applyPhysics(Time::delta());
-
-    updateAABB();
+    applyPhysics(Time::getTickDelta());
 
     m_moveIntent = Vec3(0.0, 0.0, 0.0);
     m_jumpQueued = false;
@@ -30,15 +33,49 @@ void Entity::setPosition(const Vec3 &position) { m_position = position; }
 
 const Vec3 &Entity::getPosition() const { return m_position; }
 
+const Vec3 &Entity::getOldPosition() const { return m_oldPosition; }
+
+Vec3 Entity::getRenderPosition(float alpha) const {
+    const Vec3 &a = m_oldPosition;
+    const Vec3 &b = m_position;
+    return Vec3(a.x + (b.x - a.x) * alpha, a.y + (b.y - a.y) * alpha, a.z + (b.z - a.z) * alpha);
+}
+
 const Vec3 &Entity::getFront() const { return m_front; }
 
 float Entity::getYaw() const { return m_yaw; }
 
 float Entity::getPitch() const { return m_pitch; }
 
+float Entity::getOldYaw() const { return m_oldYaw; }
+
+float Entity::getOldPitch() const { return m_oldPitch; }
+
+float Entity::getRenderYaw(float alpha) const {
+    float d = m_yaw - m_oldYaw;
+    while (d <= -180.0f) d += 360.0f;
+    while (d > 180.0f) d -= 360.0f;
+    return m_oldYaw + d * alpha;
+}
+
+float Entity::getRenderPitch(float alpha) const { return m_oldPitch + (m_pitch - m_oldPitch) * alpha; }
+
+void Entity::storeOld() {
+    m_oldPosition = m_position;
+    m_oldYaw      = m_yaw;
+    m_oldPitch    = m_pitch;
+}
+
 void Entity::setMoveIntent(const Vec3 &direction) { m_moveIntent = direction; }
 
 void Entity::queueJump() { m_jumpQueued = true; }
+
+void Entity::jump() {
+    if (m_onGround) {
+        m_velocity.y = m_jumpVelocity;
+        m_onGround   = false;
+    }
+}
 
 void Entity::setNoGravity(bool value) { m_noGravity = value; }
 
@@ -80,7 +117,7 @@ void Entity::applyPhysics(double deltaTime) {
     m_onGround = false;
 
     Vec3 wishDirection(0.0, 0.0, 0.0);
-    if (m_moveIntent.lengthSquared() > 0.0) wishDirection = m_moveIntent.normalize();
+    wishDirection = m_moveIntent;
 
     if (m_flying) m_velocity = wishDirection.scale(m_maxSpeed);
     else {
@@ -130,10 +167,7 @@ void Entity::applyPhysics(double deltaTime) {
 
     if (m_onGround && m_velocity.y < 0.0) m_velocity.y = 0.0;
 
-    if (m_jumpQueued && m_onGround) {
-        m_velocity.y = m_jumpVelocity;
-        m_onGround   = false;
-    }
+    if (m_jumpQueued) jump();
 
     double remainingX = movement.x;
     while (remainingX != 0.0) {
@@ -175,3 +209,7 @@ const UUID &Entity::getUUID() const { return m_uuid; }
 void Entity::setName(const std::wstring &name) { m_name = name; }
 
 const std::wstring &Entity::getName() const { return m_name; }
+
+void Entity::setModel(Model *model) { m_model = model; }
+
+Model *Entity::getModel() const { return m_model; }

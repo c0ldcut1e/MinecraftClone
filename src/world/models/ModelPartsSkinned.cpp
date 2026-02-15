@@ -18,6 +18,7 @@ ModelDefinition ModelPartsSkinned::createSteveClassic(const std::string &id, con
 
     std::unique_ptr<ModelPartDefinition> head = std::make_unique<ModelPartDefinition>("head");
     head->setPosition(Vec3(0.0, 30.0, 0.0));
+    head->setPivot(Vec3(0.0, -8.0, 0.0));
     head->addCube(ModelPartCubeDefinition("head_cube", Vec3(-4.0, -8.0, -4.0), Vec3(4.0, 0.0, 4.0), uvCube(0, 8, 16, 8, 8, 8, 24, 8, 8, 0, 16, 0, 8, 8, 8, 8, 8, 8), 0.0f));
 
     std::unique_ptr<ModelPartDefinition> body = std::make_unique<ModelPartDefinition>("body");

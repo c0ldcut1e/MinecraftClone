@@ -7,6 +7,7 @@ public:
     explicit Player(World *world, const std::wstring &name);
 
     uint64_t getType() override;
+
     void tick() override;
 
     void setMoveForward(bool value);
@@ -17,7 +18,7 @@ public:
     void setFlying(bool value);
     bool isFlying() const;
 
-    static constexpr uint64_t TYPE = 0x1000000000000003;
+    static constexpr uint64_t TYPE = 0x3000000000000000;
 
 protected:
     bool m_moveForward;

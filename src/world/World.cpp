@@ -11,13 +11,13 @@
 #include "WorldRenderer.h"
 #include "block/Block.h"
 #include "lighting/LightEngine.h"
+#include "models/ModelRegistry.h"
 
 World::World() : m_emptyChunksSolid(true), m_sunPosition(0.0, 1000.0, 0.0), m_renderDistance(12) {}
 
-void World::tick() {
+void World::update(float alpha) {
     if (ChunkManager *chunkManager = Minecraft::getInstance()->getChunkManager()) {
         std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> ready;
-
         chunkManager->drainFinished(ready);
 
         while (!ready.empty()) {
@@ -36,27 +36,47 @@ void World::tick() {
         }
     }
 
-    while (!m_lightUpdates.empty()) {
-        BlockPos pos = m_lightUpdates.front();
-        m_lightUpdates.pop_front();
+    {
+        const int LIGHT_BUDGET = 192;
 
-        std::unique_lock<std::shared_mutex> lock(m_chunkDataMutex);
+        int processed = 0;
+        while (processed < LIGHT_BUDGET && !m_lightUpdates.empty()) {
+            BlockPos pos = m_lightUpdates.front();
+            m_lightUpdates.pop_front();
 
-        LightEngine::updateFrom(this, pos);
+            std::unique_lock<std::shared_mutex> lock(m_chunkDataMutex);
+            LightEngine::updateFrom(this, pos);
+
+            processed++;
+        }
     }
 
-    if (m_lightUpdates.empty()) {
-        std::lock_guard<std::mutex> lock(m_dirtyMutex);
+    {
+        const int MESH_BUDGET = 2;
 
-        if (!m_dirtyChunks.empty()) {
-            ChunkPos pos = m_dirtyChunks.front();
-            m_dirtyChunks.pop_front();
+        for (int i = 0; i < MESH_BUDGET; i++) {
+            ChunkPos pos;
+            bool has = false;
+
+            {
+                std::lock_guard<std::mutex> lock(m_dirtyMutex);
+                if (!m_dirtyChunks.empty()) {
+                    pos = m_dirtyChunks.front();
+                    m_dirtyChunks.pop_front();
+                    has = true;
+                }
+            }
+
+            if (!has) break;
             Minecraft::getInstance()->getWorldRenderer()->rebuildChunk(pos);
         }
     }
 
-    tickEntities();
+    for (std::unique_ptr<Entity> &entity : m_entities)
+        if (entity) entity->update(alpha);
 }
+
+void World::tick() { tickEntities(); }
 
 bool World::hasChunk(const ChunkPos &pos) const { return m_chunks.find(pos) != m_chunks.end(); }
 
@@ -107,7 +127,6 @@ const std::deque<ChunkPos> &World::getDirtyChunks() const { return m_dirtyChunks
 
 void World::clearDirtyChunks() {
     std::lock_guard<std::mutex> lock(m_dirtyMutex);
-
     m_dirtyChunks.clear();
 }
 
@@ -118,14 +137,16 @@ void World::removeEntity(Entity *entity) {
 }
 
 void World::tickEntities() {
+    for (std::unique_ptr<Entity> &entity : m_entities) entity->storeOld();
     for (std::unique_ptr<Entity> &entity : m_entities) entity->tick();
+
+    m_entities[1]->setMoveIntent(Vec3(0.0, 0.0, -0.3));
+    m_entities[1]->queueJump();
 }
 
 const std::vector<std::unique_ptr<Entity>> &World::getEntities() const { return m_entities; }
 
 void World::setBlock(const BlockPos &pos, Block *block) {
-    std::unique_lock<std::shared_mutex> lock(m_chunkDataMutex);
-
     int cx = Math::floorDiv(pos.x, Chunk::SIZE_X);
     int cy = Math::floorDiv(pos.y, Chunk::SIZE_Y);
     int cz = Math::floorDiv(pos.z, Chunk::SIZE_Z);
@@ -134,11 +155,89 @@ void World::setBlock(const BlockPos &pos, Block *block) {
     int lz = Math::floorMod(pos.z, Chunk::SIZE_Z);
 
     ChunkPos chunkPos{cx, cy, cz};
-    Chunk *chunk = getChunk(chunkPos);
-    if (!chunk) return;
 
-    chunk->setBlock(lx, pos.y, lz, block);
-    m_lightUpdates.push_front(pos);
+    {
+        std::unique_lock<std::shared_mutex> lock(m_chunkDataMutex);
+
+        Chunk *chunk = getChunk(chunkPos);
+        if (!chunk) return;
+
+        chunk->setBlock(lx, pos.y, lz, block);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(m_dirtyMutex);
+
+        bool found = false;
+        for (size_t i = 0; i < m_dirtyChunks.size(); i++)
+            if (m_dirtyChunks[i].x == chunkPos.x && m_dirtyChunks[i].y == chunkPos.y && m_dirtyChunks[i].z == chunkPos.z) {
+                ChunkPos tmp = m_dirtyChunks[i];
+                m_dirtyChunks.erase(m_dirtyChunks.begin() + (long) i);
+                m_dirtyChunks.push_front(tmp);
+                found = true;
+                break;
+            }
+
+        if (!found) m_dirtyChunks.push_front(chunkPos);
+
+        if (lx == 0) {
+            ChunkPos chunkPos{cx - 1, cy, cz};
+            found = false;
+            for (size_t i = 0; i < m_dirtyChunks.size(); i++)
+                if (m_dirtyChunks[i].x == chunkPos.x && m_dirtyChunks[i].y == chunkPos.y && m_dirtyChunks[i].z == chunkPos.z) {
+                    ChunkPos tmp = m_dirtyChunks[i];
+                    m_dirtyChunks.erase(m_dirtyChunks.begin() + (long) i);
+                    m_dirtyChunks.push_front(tmp);
+                    found = true;
+                    break;
+                }
+
+            if (!found) m_dirtyChunks.push_front(chunkPos);
+        } else if (lx == Chunk::SIZE_X - 1) {
+            ChunkPos chunkPos{cx + 1, cy, cz};
+            found = false;
+            for (size_t i = 0; i < m_dirtyChunks.size(); i++)
+                if (m_dirtyChunks[i].x == chunkPos.x && m_dirtyChunks[i].y == chunkPos.y && m_dirtyChunks[i].z == chunkPos.z) {
+                    ChunkPos tmp = m_dirtyChunks[i];
+                    m_dirtyChunks.erase(m_dirtyChunks.begin() + (long) i);
+                    m_dirtyChunks.push_front(tmp);
+                    found = true;
+                    break;
+                }
+
+            if (!found) m_dirtyChunks.push_front(chunkPos);
+        }
+
+        if (lz == 0) {
+            ChunkPos chunkPos{cx, cy, cz - 1};
+            found = false;
+            for (size_t i = 0; i < m_dirtyChunks.size(); i++)
+                if (m_dirtyChunks[i].x == chunkPos.x && m_dirtyChunks[i].y == chunkPos.y && m_dirtyChunks[i].z == chunkPos.z) {
+                    ChunkPos tmp = m_dirtyChunks[i];
+                    m_dirtyChunks.erase(m_dirtyChunks.begin() + (long) i);
+                    m_dirtyChunks.push_front(tmp);
+                    found = true;
+                    break;
+                }
+
+            if (!found) m_dirtyChunks.push_front(chunkPos);
+        } else if (lz == Chunk::SIZE_Z - 1) {
+            ChunkPos chunkPos{cx, cy, cz + 1};
+            found = false;
+            for (size_t i = 0; i < m_dirtyChunks.size(); i++)
+                if (m_dirtyChunks[i].x == chunkPos.x && m_dirtyChunks[i].y == chunkPos.y && m_dirtyChunks[i].z == chunkPos.z) {
+                    ChunkPos tmp = m_dirtyChunks[i];
+                    m_dirtyChunks.erase(m_dirtyChunks.begin() + (long) i);
+                    m_dirtyChunks.push_front(tmp);
+                    found = true;
+                    break;
+                }
+
+            if (!found) m_dirtyChunks.push_front(chunkPos);
+        }
+    }
+
+    m_lightUpdates.push_back(pos);
 }
 
 int World::getSurfaceHeight(int worldX, int worldZ) const {
@@ -349,11 +448,7 @@ const Vec3 &World::getSunPosition() const { return m_sunPosition; }
 
 void World::setSunPosition(const Vec3 &position) { m_sunPosition = position; }
 
-void World::setRenderDistance(int distance) {
-    if (distance < 1) distance = 1;
-    if (distance > 32) distance = 32;
-    m_renderDistance = distance;
-}
+void World::setRenderDistance(int distance) { m_renderDistance = distance; }
 
 int World::getRenderDistance() const { return m_renderDistance; }
 

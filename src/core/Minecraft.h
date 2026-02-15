@@ -5,6 +5,7 @@
 #include "../rendering/Shader.h"
 #include "../scene/Camera.h"
 #include "../ui/UIController.h"
+#include "../utils/FixedStepper.h"
 #include "../utils/math/Mat4.h"
 #include "../world/World.h"
 #include "../world/chunk/ChunkManager.h"
@@ -18,6 +19,8 @@ public:
 
     void start();
     void shutdown();
+
+    FixedStepper *getFixedStepper() const;
 
     const Camera *getCamera() const;
 
@@ -50,7 +53,9 @@ private:
     int m_height;
     Window m_window;
 
-    bool m_shutdown = false;
+    bool m_shutdown;
+
+    FixedStepper *m_fixedStepper;
 
     Camera *m_camera;
     World *m_world;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../scene/Camera.h"
+#include "../world/block/BlockPos.h"
 #include "Player.h"
 
 class LocalPlayer : public Player {
@@ -8,6 +9,8 @@ public:
     LocalPlayer(World *world, const std::wstring &name, Camera *camera);
 
     uint64_t getType() override;
+
+    void update(float alpha) override;
     void tick() override;
 
     void onKeyPressed(int key);
@@ -15,12 +18,17 @@ public:
     void onMouseMoved(double dx, double dy);
     void onMouseButtonPressed(int button);
 
-    void placeBlock();
-    void destroyBlock();
-
-    static constexpr uint64_t TYPE = 0x1000000000000004;
+    static constexpr uint64_t TYPE = 0x3000000000000001;
 
 private:
+    void handleLMB();
+    void handleRMB();
+
+    void destroyBlock(const BlockPos &pos);
+    void placeBlock(const BlockPos &pos, Direction *face, Block *block);
+
+    void updateCamera(float alpha);
+
     Camera *m_camera;
     float m_mouseSensitivity;
 

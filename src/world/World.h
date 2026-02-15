@@ -18,6 +18,7 @@ public:
     World();
     ~World() = default;
 
+    void update(float alpha);
     void tick();
 
     Chunk *getChunk(const ChunkPos &pos);

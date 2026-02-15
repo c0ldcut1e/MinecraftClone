@@ -10,6 +10,7 @@
 
 #include "../entity/EntityRenderer.h"
 #include "../rendering/Shader.h"
+#include "../scene/Frustum.h"
 #include "World.h"
 #include "chunk/ChunkMesh.h"
 #include "chunk/ChunkMesher.h"
@@ -20,7 +21,7 @@ public:
     explicit WorldRenderer(World *world);
     ~WorldRenderer();
 
-    void draw();
+    void draw(float alpha);
     void drawChunkGrid() const;
 
     void rebuild();
@@ -29,11 +30,13 @@ public:
 private:
     void submitMesh(const ChunkPos &pos, std::vector<ChunkMesher::MeshBuildResult> &&results);
 
-    void drawEntityNameTags();
+    void drawEntityNameTags(float alpha);
 
     Shader *m_shader;
 
     World *m_world;
+
+    Frustum m_frustum;
 
     EntityRenderer m_entityRenderer;
 

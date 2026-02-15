@@ -5,6 +5,7 @@
 #include <GLFW/glfw3.h>
 
 #include "../entity/EntityRendererRegistry.h"
+#include "../entity/TestEntity.h"
 #include "../rendering/ImmediateRenderer.h"
 #include "../rendering/RenderCommand.h"
 #include "../ui/UIScene_DebugOverlay.h"
@@ -12,6 +13,7 @@
 #include "../utils/Utils.h"
 #include "../world/WorldRenderer.h"
 #include "../world/block/BlockRegistry.h"
+#include "../world/models/ModelRegistry.h"
 #include "Logger.h"
 #include "events/EventDispatcher.h"
 #include "events/EventManager.h"
@@ -23,14 +25,16 @@
 #include "events/WindowResizedEvent.h"
 
 Minecraft::Minecraft()
-    : m_width(1280), m_height(720), m_window(m_width, m_height, "game"), m_camera(nullptr), m_world(nullptr), m_localPlayer(nullptr), m_worldRenderer(nullptr), m_chunkManager(nullptr), m_defaultFont(nullptr), m_uiController(nullptr), m_farPlane(3000.0),
-      m_projection(), m_mouseLocked(true) {
+    : m_width(1280), m_height(720), m_window(m_width, m_height, "game"), m_shutdown(false), m_fixedStepper(nullptr), m_camera(nullptr), m_world(nullptr), m_localPlayer(nullptr), m_worldRenderer(nullptr), m_chunkManager(nullptr), m_defaultFont(nullptr),
+      m_uiController(nullptr), m_farPlane(3000.0), m_projection(), m_mouseLocked(true) {
     RenderCommand::enableExperimentalFeatures();
     if (!RenderCommand::initialize()) throw std::runtime_error("Failed to initialize OpenGL");
     Logger::logInfo("OpenGL initialized: %s", glGetString(GL_VERSION));
 
     initGlfwEventBridge(m_window.getHandle());
     Logger::logInfo("GLFW event bridge initialized");
+
+    m_fixedStepper = new FixedStepper(0.05, 0.25);
 
     m_camera        = new Camera();
     m_world         = new World();
@@ -86,8 +90,8 @@ Minecraft::Minecraft()
     m_localPlayer->setPosition(Vec3(spawnX + 0.5, spawnY, spawnZ + 0.5));
     m_world->addEntity(std::unique_ptr<Entity>(m_localPlayer));
 
-    std::unique_ptr<Entity> entity = std::make_unique<Entity>(m_world);
-    entity->setPosition(Vec3((int) spawnX, (int) spawnY, (int) spawnZ));
+    std::unique_ptr<Entity> entity = std::make_unique<TestEntity>(m_world);
+    entity->setPosition(Vec3(spawnX - 0.5, spawnY, spawnZ - 0.5));
     m_world->addEntity(std::move(entity));
 
     m_chunkManager->start();
@@ -108,9 +112,18 @@ void Minecraft::start() {
 
         EventManager::process();
 
-        if (m_localPlayer) m_chunkManager->update(m_localPlayer->getPosition());
+        m_fixedStepper->addFrame(Time::getDelta());
 
-        m_world->tick();
+        while (m_fixedStepper->shouldStep()) {
+            m_world->tick();
+            m_fixedStepper->consumeStep();
+        }
+
+        float alpha = m_fixedStepper->getAlpha();
+
+        m_chunkManager->update(m_localPlayer->getPosition());
+
+        m_world->update(alpha);
 
         m_uiController->tick();
 
@@ -154,6 +167,8 @@ void Minecraft::shutdown() {
     }
 }
 
+FixedStepper *Minecraft::getFixedStepper() const { return m_fixedStepper; }
+
 const Camera *Minecraft::getCamera() const { return m_camera; }
 
 LocalPlayer *Minecraft::getLocalPlayer() const { return m_localPlayer; }
@@ -166,9 +181,13 @@ ChunkManager *Minecraft::getChunkManager() const { return m_chunkManager; }
 
 Font *Minecraft::getDefaultFont() const { return m_defaultFont; }
 
-void Minecraft::initRegistries() {
-    BlockRegistry::init();
-    EntityRendererRegistry::init();
+void Minecraft::renderFrame() {
+    RenderCommand::setClearColor(0.47058824f, 0.65490198f, 1.0f, 1.0f);
+    RenderCommand::clearAll();
+
+    m_worldRenderer->draw(m_fixedStepper->getAlpha());
+
+    m_uiController->render();
 }
 
 void Minecraft::toggleMouseLock() {
@@ -186,11 +205,8 @@ void Minecraft::toggleMouseLock() {
     Logger::logInfo("Mouse lock: %d", m_mouseLocked);
 }
 
-void Minecraft::renderFrame() {
-    RenderCommand::setClearColor(0.85f, 0.85f, 0.85f, 1.0f);
-    RenderCommand::clearAll();
-
-    m_worldRenderer->draw();
-
-    m_uiController->render();
+void Minecraft::initRegistries() {
+    BlockRegistry::init();
+    ModelRegistry::init();
+    EntityRendererRegistry::init();
 }

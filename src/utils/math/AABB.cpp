@@ -21,3 +21,10 @@ bool AABB::intersects(const AABB &other) const {
     if (m_max.z <= other.m_min.z || m_min.z >= other.m_max.z) return false;
     return true;
 }
+
+bool AABB::contains(const Vec3 &point) const {
+    if (point.x < m_min.x || point.x > m_max.x) return false;
+    if (point.y < m_min.y || point.y > m_max.y) return false;
+    if (point.z < m_min.z || point.z > m_max.z) return false;
+    return true;
+}

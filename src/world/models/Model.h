@@ -13,6 +13,8 @@ public:
     Model();
     explicit Model(const ModelDefinition &definition);
 
+    Model *copy() const;
+
     void rebuild(const ModelDefinition &definition);
 
     const ModelPartSkin &getSkin() const;
@@ -21,9 +23,11 @@ public:
     ModelPart *findPart(const std::string &name);
 
     void draw(TextureRepository &textures) const;
+    void drawPart(const ModelPart *part, int textureWidth, int textureHeight) const;
 
 private:
     static std::unique_ptr<ModelPart> buildPartTree(const ModelPartDefinition &definition);
+    static std::unique_ptr<ModelPart> clonePartTree(const ModelPart *part);
 
 private:
     ModelPartSkin m_skin;

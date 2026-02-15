@@ -6,6 +6,7 @@
 #include "../utils/math/AABB.h"
 #include "../utils/math/Vec3.h"
 #include "../world/World.h"
+#include "../world/models/Model.h"
 
 class Entity {
 public:
@@ -13,19 +14,30 @@ public:
     virtual ~Entity();
 
     virtual uint64_t getType();
+
+    virtual void update(float alpha);
     virtual void tick();
 
     World *getWorld() const;
 
     void setPosition(const Vec3 &position);
     const Vec3 &getPosition() const;
+    const Vec3 &getOldPosition() const;
+    Vec3 getRenderPosition(float alpha) const;
 
     const Vec3 &getFront() const;
     float getYaw() const;
     float getPitch() const;
+    float getOldYaw() const;
+    float getOldPitch() const;
+    float getRenderYaw(float alpha) const;
+    float getRenderPitch(float alpha) const;
+
+    void storeOld();
 
     void setMoveIntent(const Vec3 &direction);
     void queueJump();
+    void jump();
 
     void setNoGravity(bool value);
     void setNoCollision(bool value);
@@ -42,16 +54,22 @@ public:
     void setName(const std::wstring &name);
     const std::wstring &getName() const;
 
-    static constexpr uint64_t TYPE = 0x1000000000000001;
+    void setModel(Model *model);
+    Model *getModel() const;
 
-protected:
+    static constexpr uint64_t TYPE = 0x1000000000000000;
+
     void updateVectors();
     void updateAABB();
     void applyPhysics(double deltaTime);
 
     World *m_world;
 
+    int m_totalTickCount;
+
     Vec3 m_position;
+    Vec3 m_oldPosition;
+
     Vec3 m_velocity;
     Vec3 m_moveIntent;
 
@@ -61,6 +79,8 @@ protected:
 
     float m_yaw;
     float m_pitch;
+    float m_oldYaw;
+    float m_oldPitch;
 
     float m_gravity;
     float m_jumpVelocity;
@@ -80,4 +100,6 @@ protected:
 
     UUID m_uuid;
     std::wstring m_name;
+
+    Model *m_model;
 };

@@ -9,5 +9,5 @@ public:
 
     uint64_t getType() override;
 
-    static constexpr uint64_t TYPE = 0x1000000000000002;
+    static constexpr uint64_t TYPE = 0x2000000000000000;
 };

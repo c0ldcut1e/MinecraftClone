@@ -265,7 +265,6 @@ void Font::worldDraw(std::wstring_view text, const Vec3 &pos, float scale, uint3
     }
 
     GlStateManager::setDepthMask(true);
-    GlStateManager::enableDepthTest();
 }
 
 void Font::worldDrawShadow(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb) {

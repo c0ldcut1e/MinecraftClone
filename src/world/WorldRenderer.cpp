@@ -53,7 +53,7 @@ WorldRenderer::~WorldRenderer() {
     }
 }
 
-void WorldRenderer::draw() {
+void WorldRenderer::draw(float alpha) {
     Minecraft *minecraft = Minecraft::getInstance();
     Mat4 viewMatrix      = minecraft->getCamera()->getViewMatrix();
     Mat4 projection      = minecraft->getProjection();
@@ -102,36 +102,33 @@ void WorldRenderer::draw() {
     int playerChunkX   = Math::floorDiv((int) playerPos.x, Chunk::SIZE_X);
     int playerChunkZ   = Math::floorDiv((int) playerPos.z, Chunk::SIZE_Z);
     int renderDistance = m_world->getRenderDistance();
+
+    Mat4 viewProjection = projection.multiply(viewMatrix);
+    m_frustum.extractPlanes(viewProjection);
+
     for (const auto &[pos, meshes] : m_chunks) {
         int dx = pos.x - playerChunkX;
         int dz = pos.z - playerChunkZ;
 
         if (dx * dx + dz * dz > renderDistance * renderDistance) continue;
+
+        Vec3 chunkMin(pos.x * Chunk::SIZE_X, pos.y * Chunk::SIZE_Y, pos.z * Chunk::SIZE_Z);
+        Vec3 chunkMax(chunkMin.x + Chunk::SIZE_X, chunkMin.y + Chunk::SIZE_Y, chunkMin.z + Chunk::SIZE_Z);
+        AABB chunkAABB(chunkMin, chunkMax);
+
+        if (!m_frustum.testAABB(chunkAABB)) continue;
+
         for (const RenderMesh &mesh : meshes) mesh.mesh->draw();
     }
 
     for (const std::unique_ptr<Entity> &entity : m_world->getEntities()) {
         EntityRenderer *renderer = EntityRendererRegistry::get()->getValue(entity->getType());
-        renderer->setDrawBoundingBox(true);
-        renderer->draw(entity.get());
+        renderer->draw(entity.get(), alpha);
     }
 
-    drawEntityNameTags();
+    drawEntityNameTags(alpha);
 
     if (m_drawChunkGrid) drawChunkGrid();
-
-    static TextureRepository steveTextures;
-
-    static Model steveModel(ModelPartsSkinned::createSteveClassic("steve", "textures/steve.png"));
-
-    GlStateManager::pushMatrix();
-    GlStateManager::disableCull();
-
-    GlStateManager::translatef(0.0f, 64.0f, 0.0f);
-    GlStateManager::scalef(1.0f / 16.0f, 1.0f / 16.0f, 1.0f / 16.0f);
-    steveModel.draw(steveTextures);
-
-    GlStateManager::popMatrix();
 }
 
 void WorldRenderer::drawChunkGrid() const {
@@ -232,7 +229,7 @@ void WorldRenderer::submitMesh(const ChunkPos &pos, std::vector<ChunkMesher::Mes
     m_pendingMeshes.emplace_back(pos, std::move(results));
 }
 
-void WorldRenderer::drawEntityNameTags() {
+void WorldRenderer::drawEntityNameTags(float alpha) {
     Minecraft *minecraft = Minecraft::getInstance();
     Font *font           = minecraft->getDefaultFont();
 
@@ -241,12 +238,13 @@ void WorldRenderer::drawEntityNameTags() {
         std::wstring wstrUuid = std::wstring(strUuid.begin(), strUuid.end());
         if (wstrUuid.empty()) continue;
 
-        const AABB &box = entity->getAABB();
-        float height    = box.getMax().y - box.getMin().y;
+        Vec3 pos     = entity->getRenderPosition(alpha);
+        AABB box     = entity->getBoundingBox().translated(pos);
+        float height = box.getMax().y - box.getMin().y;
 
-        Vec3 pos     = entity->getPosition();
         Vec3 textPos = pos.add(Vec3(0.0, height + 0.5, 0.0));
 
+        GlStateManager::disableDepthTest();
         font->worldDrawShadow(wstrUuid, textPos, 0.015f, 0xFFFFFFFF);
     }
 }

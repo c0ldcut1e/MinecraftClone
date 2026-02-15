@@ -13,15 +13,12 @@ LocalPlayer::LocalPlayer(World *world, const std::wstring &name, Camera *camera)
 
 uint64_t LocalPlayer::getType() { return TYPE; }
 
+void LocalPlayer::update(float alpha) { updateCamera(alpha); }
+
 void LocalPlayer::tick() {
-    if (m_jumpHeld) queueJump();
+    if (m_jumpHeld) jump();
 
     Player::tick();
-
-    if (m_camera) {
-        m_camera->setPosition(m_position.add(Vec3(0.0, 1.62, 0.0)));
-        m_camera->setDirection(m_front, m_up);
-    }
 }
 
 void LocalPlayer::onKeyPressed(int key) {
@@ -42,43 +39,62 @@ void LocalPlayer::onKeyReleased(int key) {
 }
 
 void LocalPlayer::onMouseMoved(double dx, double dy) {
-    m_yaw += (float) dx * m_mouseSensitivity;
-    m_pitch += (float) dy * m_mouseSensitivity;
-    if (m_pitch > 89.0f) m_pitch = 89.0f;
+    dx *= m_mouseSensitivity;
+    dy *= m_mouseSensitivity;
+
+    m_yaw += dx;
+    m_pitch += dy;
+
     if (m_pitch < -89.0f) m_pitch = -89.0f;
+    if (m_pitch > 89.0f) m_pitch = 89.0f;
+
+    updateVectors();
+
+    if (m_camera) m_camera->setDirection(m_front, m_up);
 }
 
 void LocalPlayer::onMouseButtonPressed(int button) {
-    if (button == GLFW_MOUSE_BUTTON_LEFT) destroyBlock();
-    if (button == GLFW_MOUSE_BUTTON_RIGHT) placeBlock();
+    if (button == GLFW_MOUSE_BUTTON_LEFT) handleLMB();
+    if (button == GLFW_MOUSE_BUTTON_RIGHT) handleRMB();
 }
 
-void LocalPlayer::placeBlock() {
+void LocalPlayer::handleLMB() {
     Vec3 origin    = m_position.add(Vec3(0.0, 1.62, 0.0));
     Vec3 direction = m_front.normalize();
     HitResult *hit = m_world->clip(origin, direction, 6.0f);
-    if (hit->isBlock()) {
-        BlockPos placePos = hit->getBlockPos();
-        Direction *face   = hit->getBlockFace();
-        if (face == Direction::WEST) placePos.x--;
-        if (face == Direction::EAST) placePos.x++;
-        if (face == Direction::DOWN) placePos.y--;
-        if (face == Direction::UP) placePos.y++;
-        if (face == Direction::NORTH) placePos.z--;
-        if (face == Direction::SOUTH) placePos.z++;
-
-        AABB blockBox(Vec3(placePos.x, placePos.y, placePos.z), Vec3(placePos.x + 1, placePos.y + 1, placePos.z + 1));
-        if (!blockBox.intersects(getAABB())) m_world->setBlock(placePos, Block::byName("glowstone"));
-    }
+    if (hit->isBlock()) destroyBlock(hit->getBlockPos());
 
     delete hit;
 }
 
-void LocalPlayer::destroyBlock() {
+void LocalPlayer::handleRMB() {
     Vec3 origin    = m_position.add(Vec3(0.0, 1.62, 0.0));
     Vec3 direction = m_front.normalize();
     HitResult *hit = m_world->clip(origin, direction, 6.0f);
-    if (hit->isBlock()) m_world->setBlock(hit->getBlockPos(), Block::byId(0));
+    if (hit->isBlock()) placeBlock(hit->getBlockPos(), hit->getBlockFace(), Block::byName("glowstone"));
 
     delete hit;
+}
+
+void LocalPlayer::destroyBlock(const BlockPos &pos) { m_world->setBlock(pos, Block::byId(0)); }
+
+void LocalPlayer::placeBlock(const BlockPos &pos, Direction *face, Block *block) {
+    BlockPos placePos = pos;
+    if (face == Direction::WEST) placePos.x--;
+    if (face == Direction::EAST) placePos.x++;
+    if (face == Direction::DOWN) placePos.y--;
+    if (face == Direction::UP) placePos.y++;
+    if (face == Direction::NORTH) placePos.z--;
+    if (face == Direction::SOUTH) placePos.z++;
+
+    AABB blockBox(Vec3(placePos.x, placePos.y, placePos.z), Vec3(placePos.x + 1.0f, placePos.y + 1.0f, placePos.z + 1.0f));
+    if (!blockBox.intersects(getAABB())) m_world->setBlock(placePos, block);
+}
+
+void LocalPlayer::updateCamera(float alpha) {
+    if (!m_camera) return;
+
+    Vec3 pos = getRenderPosition(alpha);
+    m_camera->setPosition(pos.add(Vec3(0.0, 1.62, 0.0)));
+    m_camera->setDirection(m_front, m_up);
 }

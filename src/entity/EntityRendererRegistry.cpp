@@ -4,6 +4,8 @@
 #include "LivingEntity.h"
 #include "LocalPlayer.h"
 #include "Player.h"
+#include "TestEntity.h"
+#include "TestEntityRenderer.h"
 
 EntityRendererRegistry *EntityRendererRegistry::get() {
     static EntityRendererRegistry instance;
@@ -16,4 +18,5 @@ void EntityRendererRegistry::init() {
     registry->registerValue(LivingEntity::TYPE, new EntityRenderer());
     registry->registerValue(Player::TYPE, new EntityRenderer());
     registry->registerValue(LocalPlayer::TYPE, new EntityRenderer());
+    registry->registerValue(TestEntity::TYPE, new TestEntityRenderer());
 }

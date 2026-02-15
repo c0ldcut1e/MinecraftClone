@@ -7,12 +7,12 @@ public:
     EntityRenderer();
     virtual ~EntityRenderer() = default;
 
-    virtual void draw(const Entity *entity) const;
+    virtual void draw(const Entity *entity, float alpha) const;
 
     void setDrawBoundingBox(bool value);
 
-private:
-    void drawBoundingBox(const Entity *entity) const;
+protected:
+    void drawBoundingBox(const Entity *entity, float alpha) const;
 
     bool m_drawBoundingBox;
 };

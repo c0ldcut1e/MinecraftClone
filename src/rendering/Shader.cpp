@@ -55,7 +55,7 @@ void Shader::setMat4(const char *name, const double *data) const {
     int location = RenderCommand::getUniformLocation(m_program, name);
 
     float matrix[16];
-    for (int i = 0; i < 16; i++) matrix[i] = (float) data[i];
+    for (int i = 0; i < 16; i++) matrix[i] = data[i];
 
     RenderCommand::setUniformMatrix4fv(location, 1, false, matrix);
 }

@@ -15,6 +15,7 @@ public:
     AABB translated(const Vec3 &offset) const;
 
     bool intersects(const AABB &other) const;
+    bool contains(const Vec3 &point) const;
 
 private:
     Vec3 m_min;

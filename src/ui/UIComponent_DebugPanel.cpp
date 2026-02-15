@@ -22,7 +22,7 @@ UIComponent_DebugPanel::UIComponent_DebugPanel() : UIComponent("ComponentDebugPa
 
 UIComponent_DebugPanel::~UIComponent_DebugPanel() {}
 
-void UIComponent_DebugPanel::tick() { m_time += Time::delta(); }
+void UIComponent_DebugPanel::tick() { m_time += Time::getDelta(); }
 
 void UIComponent_DebugPanel::render() {
     Minecraft *minecraft = Minecraft::getInstance();
@@ -31,7 +31,7 @@ void UIComponent_DebugPanel::render() {
 
     std::vector<std::wstring> lines;
 
-    double delta = Time::delta();
+    double delta = Time::getDelta();
     wchar_t buffer[0xFF];
     swprintf(buffer, 0xFF, L"dt: %.3f ms  fps: %.1f", delta * 1000.0, delta > 0.0 ? 1.0 / delta : 0.0);
     lines.emplace_back(buffer);

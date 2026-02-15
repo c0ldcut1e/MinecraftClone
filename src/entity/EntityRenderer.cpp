@@ -7,7 +7,7 @@
 
 EntityRenderer::EntityRenderer() : m_drawBoundingBox(false) {}
 
-void EntityRenderer::draw(const Entity *entity) const {
+void EntityRenderer::draw(const Entity *entity, float alpha) const {
     const AABB &box = entity->getAABB();
     const Vec3 &min = box.getMin();
     const Vec3 &max = box.getMax();
@@ -33,13 +33,13 @@ void EntityRenderer::draw(const Entity *entity) const {
 
     renderer->end();
 
-    if (m_drawBoundingBox) drawBoundingBox(entity);
+    if (m_drawBoundingBox) drawBoundingBox(entity, alpha);
 }
 
 void EntityRenderer::setDrawBoundingBox(bool value) { m_drawBoundingBox = value; }
 
-void EntityRenderer::drawBoundingBox(const Entity *entity) const {
-    const AABB &box = entity->getAABB();
+void EntityRenderer::drawBoundingBox(const Entity *entity, float alpha) const {
+    AABB box        = entity->getBoundingBox().translated(entity->getRenderPosition(alpha));
     const Vec3 &min = box.getMin();
     const Vec3 &max = box.getMax();
 

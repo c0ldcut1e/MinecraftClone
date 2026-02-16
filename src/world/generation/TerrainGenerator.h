@@ -20,8 +20,11 @@ public:
 
 private:
     Random m_random;
+    FastNoiseLite m_warp;
     FastNoiseLite m_continental;
+    FastNoiseLite m_hills;
     FastNoiseLite m_mountains;
+    FastNoiseLite m_ridge;
     FastNoiseLite m_cave;
     FastNoiseLite m_tunnel;
     FastNoiseLite m_rock;

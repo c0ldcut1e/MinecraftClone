@@ -9,6 +9,7 @@
 #include "../rendering/ImmediateRenderer.h"
 #include "../rendering/RenderCommand.h"
 #include "../ui/UIScene_DebugOverlay.h"
+#include "../ui/UIScene_HUD.h"
 #include "../utils/Time.h"
 #include "../utils/Utils.h"
 #include "../world/WorldRenderer.h"
@@ -43,8 +44,10 @@ Minecraft::Minecraft()
 
     m_defaultFont = new Font("fonts/default.ttf", 24);
     m_defaultFont->setScreenProjection(Mat4::orthographic(0.0, (double) m_width, (double) m_height, 0.0, -1.0, 1.0));
+
     m_uiController = new UIController();
     m_uiController->pushScene(new UIScene_DebugOverlay());
+    m_uiController->pushScene(new UIScene_HUD());
 
     ImmediateRenderer::getForScreen()->setScreenProjection(Mat4::orthographic(0.0, (double) m_width, (double) m_height, 0.0, -1.0, 1.0));
 
@@ -70,6 +73,9 @@ Minecraft::Minecraft()
         });
 
         dispatcher.dispatch<WindowResizedEvent>([this](WindowResizedEvent &event) {
+            m_width  = event.getWidth();
+            m_height = event.getHeight();
+
             glViewport(0, 0, event.getWidth(), event.getHeight());
             m_projection = Mat4::perspective(70.0 * (M_PI / 180.0), (double) event.getWidth() / (double) event.getHeight(), 0.1, m_farPlane);
             ImmediateRenderer::getForScreen()->setScreenProjection(Mat4::orthographic(0.0, (double) event.getWidth(), (double) event.getHeight(), 0.0, -1.0, 1.0));
@@ -166,6 +172,10 @@ void Minecraft::shutdown() {
         m_uiController = nullptr;
     }
 }
+
+int Minecraft::getWidth() const { return m_width; }
+
+int Minecraft::getHeight() const { return m_height; }
 
 FixedStepper *Minecraft::getFixedStepper() const { return m_fixedStepper; }
 

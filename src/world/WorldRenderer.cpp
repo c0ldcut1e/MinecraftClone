@@ -55,14 +55,22 @@ WorldRenderer::~WorldRenderer() {
 
 void WorldRenderer::draw(float alpha) {
     Minecraft *minecraft = Minecraft::getInstance();
+
+    const Vec3 cameraPos = minecraft->getCamera()->getPosition();
     Mat4 viewMatrix      = minecraft->getCamera()->getViewMatrix();
     Mat4 projection      = minecraft->getProjection();
+
+    GlStateManager::pushMatrix();
+    GlStateManager::loadIdentity();
+    GlStateManager::translatef(-cameraPos.x, -cameraPos.y, -cameraPos.z);
+
     ImmediateRenderer::getForWorld()->setViewProjection(viewMatrix, projection);
     minecraft->getDefaultFont()->setNearest(true);
     minecraft->getDefaultFont()->setWorldViewProjection(viewMatrix, projection);
 
     m_shader->bind();
     m_shader->setInt("u_texture", 0);
+
     m_shader->setMat4("u_model", GlStateManager::getMatrix().data());
     m_shader->setMat4("u_view", viewMatrix.data());
     m_shader->setMat4("u_projection", projection.data());
@@ -103,7 +111,7 @@ void WorldRenderer::draw(float alpha) {
     int playerChunkZ   = Math::floorDiv((int) playerPos.z, Chunk::SIZE_Z);
     int renderDistance = m_world->getRenderDistance();
 
-    Mat4 viewProjection = projection.multiply(viewMatrix);
+    Mat4 viewProjection = projection.multiply(viewMatrix).multiply(GlStateManager::getMatrix());
     m_frustum.extractPlanes(viewProjection);
 
     for (const auto &[pos, meshes] : m_chunks) {
@@ -129,6 +137,8 @@ void WorldRenderer::draw(float alpha) {
     drawEntityNameTags(alpha);
 
     if (m_drawChunkGrid) drawChunkGrid();
+
+    GlStateManager::popMatrix();
 }
 
 void WorldRenderer::drawChunkGrid() const {

@@ -11,4 +11,4 @@ void Camera::setDirection(const Vec3 &front, const Vec3 &up) {
     m_up    = up;
 }
 
-Mat4 Camera::getViewMatrix() const { return Mat4::lookAt(m_position, m_position.add(m_front), m_up); }
+Mat4 Camera::getViewMatrix() const { return Mat4::lookAt(Vec3(0.0, 0.0, 0.0), m_front, m_up); }

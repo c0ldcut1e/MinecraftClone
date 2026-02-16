@@ -18,11 +18,11 @@
 #include "../world/chunk/Chunk.h"
 #include "../world/chunk/ChunkPos.h"
 
-UIComponent_DebugPanel::UIComponent_DebugPanel() : UIComponent("ComponentDebugPanel"), m_time(0.0) {}
+UIComponent_DebugPanel::UIComponent_DebugPanel() : UIComponent("ComponentDebugPanel") {}
 
 UIComponent_DebugPanel::~UIComponent_DebugPanel() {}
 
-void UIComponent_DebugPanel::tick() { m_time += Time::getDelta(); }
+void UIComponent_DebugPanel::tick() {}
 
 void UIComponent_DebugPanel::render() {
     Minecraft *minecraft = Minecraft::getInstance();

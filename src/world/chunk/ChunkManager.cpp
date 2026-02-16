@@ -20,7 +20,7 @@ void ChunkManager::start() {
 
     int threadCount = std::thread::hardware_concurrency();
     if (threadCount == 0) threadCount = 2;
-    threadCount -= 5;
+    threadCount /= 2;
     Logger::logInfo("Starting chunk generation with %d threads", threadCount);
 
     for (int i = 0; i < threadCount; i++) m_workers.emplace_back(&ChunkManager::workerThread, this);

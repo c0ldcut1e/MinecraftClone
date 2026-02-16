@@ -9,7 +9,4 @@ public:
 
     void tick() override;
     void render() override;
-
-private:
-    double m_time;
 };

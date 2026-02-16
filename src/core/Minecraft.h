@@ -20,6 +20,9 @@ public:
     void start();
     void shutdown();
 
+    int getWidth() const;
+    int getHeight() const;
+
     FixedStepper *getFixedStepper() const;
 
     const Camera *getCamera() const;

@@ -197,6 +197,8 @@ void RenderCommand::uploadTexture2D(int32_t width, int32_t height, uint32_t inte
 
 void RenderCommand::uploadTexture2DSub(int32_t x, int32_t y, int32_t width, int32_t height, uint32_t format, uint32_t type, const void *data) { glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, width, height, (GLenum) format, (GLenum) type, data); }
 
+void RenderCommand::copyTexSubImage2D(int32_t x, int32_t y, int32_t width, int32_t height) { glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, x, y, width, height); }
+
 void RenderCommand::generateMipmap2D() { glGenerateMipmap(GL_TEXTURE_2D); }
 
 uint32_t RenderCommand::createShader(uint32_t type) { return (uint32_t) glCreateShader((GLenum) type); }

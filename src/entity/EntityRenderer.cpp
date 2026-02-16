@@ -8,7 +8,7 @@
 EntityRenderer::EntityRenderer() : m_drawBoundingBox(false) {}
 
 void EntityRenderer::draw(const Entity *entity, float alpha) const {
-    const AABB &box = entity->getAABB();
+    AABB box        = entity->getBoundingBox().translated(entity->getRenderPosition(alpha));
     const Vec3 &min = box.getMin();
     const Vec3 &max = box.getMax();
 

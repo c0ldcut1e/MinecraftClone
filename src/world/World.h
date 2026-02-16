@@ -15,6 +15,17 @@ class Entity;
 
 class World {
 public:
+    struct DynamicLight {
+        uint32_t id;
+        BlockPos pos;
+        BlockPos lastPos;
+        bool hasLastPos;
+        uint8_t r;
+        uint8_t g;
+        uint8_t b;
+        uint8_t radius;
+    };
+
     World();
     ~World() = default;
 
@@ -49,7 +60,13 @@ public:
 
     std::shared_mutex &getChunkDataMutex();
 
+    uint32_t addDynamicLight(const BlockPos &pos, uint8_t r, uint8_t g, uint8_t b);
+    void moveDynamicLight(uint32_t id, const BlockPos &pos);
+    void removeDynamicLight(uint32_t id);
+
 private:
+    void rebuildDynamicLights();
+
     std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> m_chunks;
     std::deque<ChunkPos> m_dirtyChunks;
     std::mutex m_dirtyMutex;

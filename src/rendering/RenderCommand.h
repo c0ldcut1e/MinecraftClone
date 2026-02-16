@@ -179,6 +179,7 @@ public:
 
     static void uploadTexture2D(int width, int height, uint32_t internalFormat, uint32_t format, uint32_t type, const void *data);
     static void uploadTexture2DSub(int x, int y, int width, int height, uint32_t format, uint32_t type, const void *data);
+    static void copyTexSubImage2D(int x, int y, int width, int height);
     static void generateMipmap2D();
 
     static uint32_t createShader(uint32_t type);

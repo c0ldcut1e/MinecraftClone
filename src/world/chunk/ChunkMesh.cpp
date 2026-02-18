@@ -31,10 +31,10 @@ void ChunkMesh::upload(const float *vertices, uint32_t vertexCount) {
     RenderCommand::uploadArrayBuffer(vertices, vertexCount * sizeof(float), RC_STATIC_DRAW);
 }
 
-void ChunkMesh::draw() const {
+void ChunkMesh::render() const {
     if (!m_vertexCount) return;
 
     m_texture->bind(0);
     RenderCommand::bindVertexArray(m_vao);
-    RenderCommand::drawArrays(RC_TRIANGLES, 0, m_vertexCount / 6);
+    RenderCommand::renderArrays(RC_TRIANGLES, 0, m_vertexCount / 6);
 }

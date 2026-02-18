@@ -10,7 +10,7 @@ public:
     ~ChunkMesh();
 
     void upload(const float *vertices, uint32_t vertexCount);
-    void draw() const;
+    void render() const;
 
 private:
     Texture *m_texture;

@@ -9,10 +9,10 @@
 #include "../world/models/ModelRegistry.h"
 #include "TestEntity.h"
 
-void TestEntityRenderer::draw(const Entity *entity, float alpha) const {
+void TestEntityRenderer::render(const Entity *entity, float partialTicks) const {
     const TestEntity *_entity = (const TestEntity *) entity;
 
-    Vec3 pos = entity->getRenderPosition(alpha);
+    Vec3 pos = entity->getRenderPosition(partialTicks);
 
     constexpr float STEVE_MIN_Y_PX  = -2.0f;
     constexpr float STEVE_HEIGHT_PX = 32.0f;
@@ -33,8 +33,8 @@ void TestEntityRenderer::draw(const Entity *entity, float alpha) const {
 
     Model *model = _entity->getModel();
     if (model) {
-        float limbSwing  = _entity->getLimbSwingOld() + (_entity->getLimbSwing() - _entity->getLimbSwingOld()) * alpha;
-        float limbAmount = _entity->getLimbSwingAmountOld() + (_entity->getLimbSwingAmount() - _entity->getLimbSwingAmountOld()) * alpha;
+        float limbSwing  = _entity->getLimbSwingOld() + (_entity->getLimbSwing() - _entity->getLimbSwingOld()) * partialTicks;
+        float limbAmount = _entity->getLimbSwingAmountOld() + (_entity->getLimbSwingAmount() - _entity->getLimbSwingAmountOld()) * partialTicks;
 
         constexpr float ARM_SCALE = 2.0f;
         constexpr float LEG_SCALE = 1.4f;
@@ -75,10 +75,10 @@ void TestEntityRenderer::draw(const Entity *entity, float alpha) const {
             leftLeg->setRotation(rot);
         }
 
-        model->draw(*ModelRegistry::get()->getTextures());
+        model->render(*ModelRegistry::get()->getTextures());
     }
 
     GlStateManager::popMatrix();
 
-    if (m_drawBoundingBox) drawBoundingBox(entity, alpha);
+    if (m_renderBoundingBox) renderBoundingBox(entity, partialTicks);
 }

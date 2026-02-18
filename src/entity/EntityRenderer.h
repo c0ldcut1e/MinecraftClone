@@ -7,12 +7,12 @@ public:
     EntityRenderer();
     virtual ~EntityRenderer() = default;
 
-    virtual void draw(const Entity *entity, float alpha) const;
+    virtual void render(const Entity *entity, float partialTicks) const;
 
-    void setDrawBoundingBox(bool value);
+    void setRenderBoundingBox(bool value);
 
 protected:
-    void drawBoundingBox(const Entity *entity, float alpha) const;
+    void renderBoundingBox(const Entity *entity, float partialTicks) const;
 
-    bool m_drawBoundingBox;
+    bool m_renderBoundingBox;
 };

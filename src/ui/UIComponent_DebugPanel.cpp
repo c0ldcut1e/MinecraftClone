@@ -133,7 +133,7 @@ void UIComponent_DebugPanel::render() {
             float tx = x0 + padX;
             float ty = y0 + padY + 2.0f;
 
-            for (uint32_t i = 0; i < (uint32_t) lines.size(); i++) font->drawShadow(lines[i], tx, ty + (float) i * lineHeight, fontScale, -1);
+            for (uint32_t i = 0; i < (uint32_t) lines.size(); i++) font->renderShadow(lines[i], tx, ty + (float) i * lineHeight, fontScale, -1);
         }
     }
 }

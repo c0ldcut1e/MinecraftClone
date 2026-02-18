@@ -1,10 +1,12 @@
 #pragma once
 
+#include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -21,18 +23,29 @@ public:
     explicit WorldRenderer(World *world);
     ~WorldRenderer();
 
-    void draw(float alpha);
-    void drawChunkGrid() const;
+    void render(float partialTicks);
 
     void rebuild();
     void rebuildChunk(const ChunkPos &pos);
+    void rebuildChunkUrgent(const ChunkPos &pos);
 
 private:
     void submitMesh(const ChunkPos &pos, std::vector<ChunkMesher::MeshBuildResult> &&results);
 
-    void drawEntityNameTags(float alpha);
+    void setupMatrices(const Vec3 &cameraPos);
+    void setupFog();
+    void renderSky(const Vec3 &cameraPos, const Mat4 &viewMatrix, const Mat4 &projection);
+    void renderFastClouds();
+    void renderClouds();
+    void bindWorldShader(const Vec3 &cameraPos, const Mat4 &viewMatrix, const Mat4 &projection, float fogR, float fogG, float fogB);
+    void uploadPendingMeshes();
+    void renderChunks(const Mat4 &viewMatrix, const Mat4 &projection);
+    void renderChunkGrid() const;
+    void renderEntities(float partialTicks);
+    void renderEntityNameTags(float partialTicks);
 
-    Shader *m_shader;
+    Shader *m_worldShader;
+    Shader *m_skyShader;
 
     World *m_world;
 
@@ -40,7 +53,8 @@ private:
 
     EntityRenderer m_entityRenderer;
 
-    bool m_drawChunkGrid = false;
+    bool m_renderChunkGrid = false;
+    double m_cloudOffset   = 0.0;
 
     struct RenderMesh {
         std::unique_ptr<ChunkMesh> mesh;
@@ -56,4 +70,5 @@ private:
     std::mutex m_rebuildQueueMutex;
     std::condition_variable m_rebuildCondition;
     std::queue<ChunkPos> m_rebuildQueue;
+    std::queue<ChunkPos> m_urgentQueue;
 };

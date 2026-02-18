@@ -118,7 +118,7 @@ void ImmediateRenderer::end() {
     } else
         m_shader.setInt("u_useTexture", 0);
 
-    RenderCommand::drawArrays(m_mode, 0, (int) m_vertices.size());
+    RenderCommand::renderArrays(m_mode, 0, (int) m_vertices.size());
 
     GlStateManager::enableCull();
 }

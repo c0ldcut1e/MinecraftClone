@@ -29,7 +29,7 @@ public:
     World();
     ~World() = default;
 
-    void update(float alpha);
+    void update(float partialTicks);
     void tick();
 
     Chunk *getChunk(const ChunkPos &pos);
@@ -38,6 +38,7 @@ public:
     bool hasChunk(const ChunkPos &pos) const;
     const std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> &getChunks() const;
     void markChunkDirty(const BlockPos &pos);
+    void markChunkDirtyUrgent(const ChunkPos &pos);
     void clearDirtyChunks();
     const std::deque<ChunkPos> &getDirtyChunks() const;
 
@@ -58,8 +59,6 @@ public:
     void setRenderDistance(int distance);
     int getRenderDistance() const;
 
-    std::shared_mutex &getChunkDataMutex();
-
     uint32_t addDynamicLight(const BlockPos &pos, uint8_t r, uint8_t g, uint8_t b);
     void moveDynamicLight(uint32_t id, const BlockPos &pos);
     void removeDynamicLight(uint32_t id);
@@ -69,8 +68,8 @@ private:
 
     std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> m_chunks;
     std::deque<ChunkPos> m_dirtyChunks;
+    std::deque<ChunkPos> m_urgentDirtyChunks;
     std::mutex m_dirtyMutex;
-    std::shared_mutex m_chunkDataMutex;
     std::deque<BlockPos> m_lightUpdates;
     bool m_emptyChunksSolid;
 

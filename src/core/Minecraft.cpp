@@ -125,11 +125,11 @@ void Minecraft::start() {
             m_fixedStepper->consumeStep();
         }
 
-        float alpha = m_fixedStepper->getAlpha();
+        float partialTicks = m_fixedStepper->getPartialTicks();
 
         m_chunkManager->update(m_localPlayer->getPosition());
 
-        m_world->update(alpha);
+        m_world->update(partialTicks);
 
         m_uiController->tick();
 
@@ -192,10 +192,9 @@ ChunkManager *Minecraft::getChunkManager() const { return m_chunkManager; }
 Font *Minecraft::getDefaultFont() const { return m_defaultFont; }
 
 void Minecraft::renderFrame() {
-    RenderCommand::setClearColor(0.47058824f, 0.65490198f, 1.0f, 1.0f);
-    RenderCommand::clearAll();
+    RenderCommand::clearDepth();
 
-    m_worldRenderer->draw(m_fixedStepper->getAlpha());
+    m_worldRenderer->render(m_fixedStepper->getPartialTicks());
 
     m_uiController->render();
 }

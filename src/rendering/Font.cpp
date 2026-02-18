@@ -129,7 +129,7 @@ float Font::getWidth(std::wstring_view text, float scale) const {
     return width;
 }
 
-void Font::draw(std::wstring_view text, float x, float y, float scale, uint32_t argb) {
+void Font::render(std::wstring_view text, float x, float y, float scale, uint32_t argb) {
     if (text.empty()) return;
 
     m_shader.setMat4("u_model", GlStateManager::getMatrix().data());
@@ -185,7 +185,7 @@ void Font::draw(std::wstring_view text, float x, float y, float scale, uint32_t 
         RenderCommand::bindTexture2D(ch.texture);
 
         RenderCommand::uploadArrayBuffer(vertices, (uint32_t) sizeof(vertices), RC_DYNAMIC_DRAW);
-        RenderCommand::drawArrays(RC_TRIANGLES, 0, 6);
+        RenderCommand::renderArrays(RC_TRIANGLES, 0, 6);
 
         penX += (float) (ch.advance >> 6) * scale;
     }
@@ -194,13 +194,13 @@ void Font::draw(std::wstring_view text, float x, float y, float scale, uint32_t 
     GlStateManager::enableDepthTest();
 }
 
-void Font::drawShadow(std::wstring_view text, float x, float y, float scale, uint32_t argb) {
+void Font::renderShadow(std::wstring_view text, float x, float y, float scale, uint32_t argb) {
     uint32_t shadow = mulColor(argb, 0.25f);
-    draw(text, x + m_shadowOffsetX * scale, y + m_shadowOffsetY * scale, scale, shadow);
-    draw(text, x, y, scale, argb);
+    render(text, x + m_shadowOffsetX * scale, y + m_shadowOffsetY * scale, scale, shadow);
+    render(text, x, y, scale, argb);
 }
 
-void Font::worldDraw(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb) {
+void Font::worldRender(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb) {
     if (text.empty()) return;
 
     m_shader.setMat4("u_model", GlStateManager::getMatrix().data());
@@ -259,7 +259,7 @@ void Font::worldDraw(std::wstring_view text, const Vec3 &pos, float scale, uint3
         RenderCommand::bindTexture2D(ch.texture);
 
         RenderCommand::uploadArrayBuffer(vertices, (uint32_t) sizeof(vertices), RC_DYNAMIC_DRAW);
-        RenderCommand::drawArrays(RC_TRIANGLES, 0, 6);
+        RenderCommand::renderArrays(RC_TRIANGLES, 0, 6);
 
         penX += (float) (ch.advance >> 6) * scale;
     }
@@ -267,7 +267,7 @@ void Font::worldDraw(std::wstring_view text, const Vec3 &pos, float scale, uint3
     GlStateManager::setDepthMask(true);
 }
 
-void Font::worldDrawShadow(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb) {
+void Font::worldRenderShadow(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb) {
     uint32_t shadow = mulColor(argb, 0.25f);
 
     float ox = m_shadowOffsetX * scale;
@@ -277,8 +277,8 @@ void Font::worldDrawShadow(std::wstring_view text, const Vec3 &pos, float scale,
     if (oz == 0.0f) oz = 0.01f;
     oz *= scale;
 
-    worldDraw(text, Vec3(pos.x + ox, pos.y - oy, pos.z - oz), scale, shadow);
-    worldDraw(text, pos, scale, argb);
+    worldRender(text, Vec3(pos.x + ox, pos.y - oy, pos.z - oz), scale, shadow);
+    worldRender(text, pos, scale, argb);
 }
 
 const Font::Glyph &Font::getOrCreateGlyph(uint32_t codepoint) {

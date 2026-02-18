@@ -15,7 +15,7 @@ Window::Window(int width, int height, const char *title) : m_window(nullptr) {
     if (!m_window) throw std::runtime_error("glfwCreateWindow failed");
 
     glfwMakeContextCurrent(m_window);
-    glfwSwapInterval(0);
+    glfwSwapInterval(1);
 }
 
 Window::~Window() {

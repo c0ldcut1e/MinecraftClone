@@ -47,10 +47,10 @@ ModelPart *Model::findPart(const std::string &name) {
     return nullptr;
 }
 
-void Model::draw(TextureRepository &textures) const {
+void Model::render(TextureRepository &textures) const {
     std::shared_ptr<Texture> texture = textures.get(m_skin.getTexturePath());
     if (!texture.get()) {
-        Logger::logError("Model draw texture missing");
+        Logger::logError("Model render texture missing");
         return;
     }
 
@@ -60,17 +60,17 @@ void Model::draw(TextureRepository &textures) const {
     int textureHeight = m_skin.getTextureHeight();
 
     if (!m_root) {
-        Logger::logError("Model draw root missing");
+        Logger::logError("Model render root missing");
         ImmediateRenderer::getForWorld()->unbindTexture();
         return;
     }
 
-    drawPart(m_root.get(), textureWidth, textureHeight);
+    renderPart(m_root.get(), textureWidth, textureHeight);
 
     ImmediateRenderer::getForWorld()->unbindTexture();
 }
 
-void Model::drawPart(const ModelPart *part, int textureWidth, int textureHeight) const {
+void Model::renderPart(const ModelPart *part, int textureWidth, int textureHeight) const {
     GlStateManager::pushMatrix();
 
     GlStateManager::translatef((float) part->getPosition().x, (float) part->getPosition().y, (float) part->getPosition().z);
@@ -167,7 +167,7 @@ void Model::drawPart(const ModelPart *part, int textureWidth, int textureHeight)
         renderer->end();
     }
 
-    for (const auto &kv : part->getChildren()) drawPart(kv.second.get(), textureWidth, textureHeight);
+    for (const auto &kv : part->getChildren()) renderPart(kv.second.get(), textureWidth, textureHeight);
 
     GlStateManager::popMatrix();
 }

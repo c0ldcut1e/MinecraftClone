@@ -12,7 +12,7 @@ bool FixedStepper::shouldStep() const { return m_accumulator >= m_step; }
 
 void FixedStepper::consumeStep() { m_accumulator -= m_step; }
 
-double FixedStepper::getAlpha() const {
+double FixedStepper::getPartialTicks() const {
     if (m_step <= 0.0) return 0.0;
     double a = m_accumulator / m_step;
     if (a < 0.0) a = 0.0;

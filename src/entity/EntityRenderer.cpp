@@ -5,10 +5,10 @@
 #include "../rendering/ImmediateRenderer.h"
 #include "Entity.h"
 
-EntityRenderer::EntityRenderer() : m_drawBoundingBox(false) {}
+EntityRenderer::EntityRenderer() : m_renderBoundingBox(false) {}
 
-void EntityRenderer::draw(const Entity *entity, float alpha) const {
-    AABB box        = entity->getBoundingBox().translated(entity->getRenderPosition(alpha));
+void EntityRenderer::render(const Entity *entity, float partialTicks) const {
+    AABB box        = entity->getBoundingBox().translated(entity->getRenderPosition(partialTicks));
     const Vec3 &min = box.getMin();
     const Vec3 &max = box.getMax();
 
@@ -33,13 +33,13 @@ void EntityRenderer::draw(const Entity *entity, float alpha) const {
 
     renderer->end();
 
-    if (m_drawBoundingBox) drawBoundingBox(entity, alpha);
+    if (m_renderBoundingBox) renderBoundingBox(entity, partialTicks);
 }
 
-void EntityRenderer::setDrawBoundingBox(bool value) { m_drawBoundingBox = value; }
+void EntityRenderer::setRenderBoundingBox(bool value) { m_renderBoundingBox = value; }
 
-void EntityRenderer::drawBoundingBox(const Entity *entity, float alpha) const {
-    AABB box        = entity->getBoundingBox().translated(entity->getRenderPosition(alpha));
+void EntityRenderer::renderBoundingBox(const Entity *entity, float partialTicks) const {
+    AABB box        = entity->getBoundingBox().translated(entity->getRenderPosition(partialTicks));
     const Vec3 &min = box.getMin();
     const Vec3 &max = box.getMax();
 

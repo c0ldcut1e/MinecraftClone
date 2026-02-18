@@ -15,7 +15,7 @@ public:
 
     virtual uint64_t getType();
 
-    virtual void update(float alpha);
+    virtual void update(float partialTicks);
     virtual void tick();
 
     World *getWorld() const;
@@ -23,15 +23,15 @@ public:
     void setPosition(const Vec3 &position);
     const Vec3 &getPosition() const;
     const Vec3 &getOldPosition() const;
-    Vec3 getRenderPosition(float alpha) const;
+    Vec3 getRenderPosition(float partialTicks) const;
 
     const Vec3 &getFront() const;
     float getYaw() const;
     float getPitch() const;
     float getOldYaw() const;
     float getOldPitch() const;
-    float getRenderYaw(float alpha) const;
-    float getRenderPitch(float alpha) const;
+    float getRenderYaw(float partialTicks) const;
+    float getRenderPitch(float partialTicks) const;
 
     void storeOld();
 

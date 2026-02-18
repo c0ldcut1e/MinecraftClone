@@ -15,3 +15,15 @@ int Math::floorMod(int a, int b) {
 }
 
 float Math::radiansToDegrees(float radians) { return radians * (180.0f / (float) M_PI); }
+
+double Math::clamp(double value, double min, double max) {
+    if (value < min) return min;
+    if (value > max) return max;
+    return value;
+}
+
+float Math::clampf(float value, float min, float max) {
+    if (value < min) return min;
+    if (value > max) return max;
+    return value;
+}

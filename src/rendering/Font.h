@@ -30,11 +30,11 @@ public:
 
     float getWidth(std::wstring_view text, float scale) const;
 
-    void draw(std::wstring_view text, float x, float y, float scale, uint32_t argb);
-    void drawShadow(std::wstring_view text, float x, float y, float scale, uint32_t argb);
+    void render(std::wstring_view text, float x, float y, float scale, uint32_t argb);
+    void renderShadow(std::wstring_view text, float x, float y, float scale, uint32_t argb);
 
-    void worldDraw(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb);
-    void worldDrawShadow(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb);
+    void worldRender(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb);
+    void worldRenderShadow(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb);
 
 private:
     struct Glyph {

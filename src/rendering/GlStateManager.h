@@ -43,6 +43,16 @@ public:
     static void enableMultisample();
     static void disableMultisample();
 
+    static void enableFog();
+    static void disableFog();
+    static bool isFogEnabled();
+
+    static void setFogColor(float r, float g, float b);
+    static void getFogColor(float &r, float &g, float &b);
+
+    static void setFogRange(float start, float end);
+    static void getFogRange(float &start, float &end);
+
     static void setColorMask(bool r, bool g, bool b, bool a);
 
     static void setPolygonMode(uint32_t face, uint32_t mode);
@@ -83,6 +93,13 @@ private:
     static bool s_scissor;
     static bool s_dither;
     static bool s_multisample;
+
+    static bool s_fog;
+    static float s_fogR;
+    static float s_fogG;
+    static float s_fogB;
+    static float s_fogStart;
+    static float s_fogEnd;
 
     static bool s_colorMaskR;
     static bool s_colorMaskG;

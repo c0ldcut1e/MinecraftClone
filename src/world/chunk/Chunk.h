@@ -8,7 +8,7 @@
 class Chunk {
 public:
     static constexpr int SIZE_X = 16;
-    static constexpr int SIZE_Y = 128;
+    static constexpr int SIZE_Y = 256;
     static constexpr int SIZE_Z = 16;
 
     explicit Chunk(const ChunkPos &pos);

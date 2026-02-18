@@ -13,7 +13,7 @@ LocalPlayer::LocalPlayer(World *world, const std::wstring &name, Camera *camera)
 
 uint64_t LocalPlayer::getType() { return TYPE; }
 
-void LocalPlayer::update(float alpha) { updateCamera(alpha); }
+void LocalPlayer::update(float partialTicks) { updateCamera(partialTicks); }
 
 void LocalPlayer::tick() {
     if (m_jumpHeld) jump();
@@ -91,10 +91,10 @@ void LocalPlayer::placeBlock(const BlockPos &pos, Direction *face, Block *block)
     if (!blockBox.intersects(getAABB())) m_world->setBlock(placePos, block);
 }
 
-void LocalPlayer::updateCamera(float alpha) {
+void LocalPlayer::updateCamera(float partialTicks) {
     if (!m_camera) return;
 
-    Vec3 pos = getRenderPosition(alpha);
+    Vec3 pos = getRenderPosition(partialTicks);
     m_camera->setPosition(pos.add(Vec3(0.0, 1.62, 0.0)));
     m_camera->setDirection(m_front, m_up);
 }

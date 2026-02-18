@@ -7,7 +7,7 @@
 #include "../rendering/RenderCommand.h"
 
 UIComponent_Crosshair::UIComponent_Crosshair()
-    : UIComponent("ComponentCrosshair"), m_shader("shaders/crosshair.vert", "shaders/crosshair.frag"), m_vao(0), m_vbo(0), m_captureTexture(0), m_captureSize(0), m_alpha(0.65f), m_thickness(0.06f), m_gap(0.0f), m_arm(0.5f), m_size(48.0f) {
+    : UIComponent("ComponentCrosshair"), m_shader("shaders/crosshair.vert", "shaders/crosshair.frag"), m_vao(0), m_vbo(0), m_captureTexture(0), m_captureSize(0), m_alpha(0.65f), m_thickness(0.09f), m_gap(0.0f), m_arm(0.8f), m_size(48.0f) {
     m_vao = RenderCommand::createVertexArray();
     m_vbo = RenderCommand::createBuffer();
 
@@ -98,7 +98,7 @@ void UIComponent_Crosshair::render() {
     m_shader.setFloat("u_gap", m_gap);
     m_shader.setFloat("u_arm", m_arm);
 
-    RenderCommand::drawArrays(GL_TRIANGLES, 0, 6);
+    RenderCommand::renderArrays(GL_TRIANGLES, 0, 6);
 
     GlStateManager::disableBlend();
     GlStateManager::enableDepthTest();

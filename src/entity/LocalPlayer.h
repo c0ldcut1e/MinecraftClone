@@ -10,7 +10,7 @@ public:
 
     uint64_t getType() override;
 
-    void update(float alpha) override;
+    void update(float partialTicks) override;
     void tick() override;
 
     void onKeyPressed(int key);
@@ -27,7 +27,7 @@ private:
     void destroyBlock(const BlockPos &pos);
     void placeBlock(const BlockPos &pos, Direction *face, Block *block);
 
-    void updateCamera(float alpha);
+    void updateCamera(float partialTicks);
 
     Camera *m_camera;
     float m_mouseSensitivity;

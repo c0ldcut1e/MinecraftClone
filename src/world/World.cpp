@@ -13,9 +13,9 @@
 #include "lighting/LightEngine.h"
 #include "models/ModelRegistry.h"
 
-World::World() : m_emptyChunksSolid(true), m_sunPosition(0.0, 1000.0, 0.0), m_renderDistance(12) {}
+World::World() : m_emptyChunksSolid(true), m_sunPosition(0.0, 1000.0, 0.0), m_renderDistance(20) {}
 
-void World::update(float alpha) {
+void World::update(float partialTicks) {
     if (ChunkManager *chunkManager = Minecraft::getInstance()->getChunkManager()) {
         std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> ready;
         chunkManager->drainFinished(ready);
@@ -44,10 +44,31 @@ void World::update(float alpha) {
             BlockPos pos = m_lightUpdates.front();
             m_lightUpdates.pop_front();
 
-            std::unique_lock<std::shared_mutex> lock(m_chunkDataMutex);
             LightEngine::updateFrom(this, pos);
 
             processed++;
+        }
+    }
+
+    {
+        const int URGENT_BUDGET = 2;
+
+        WorldRenderer *worldRenderer = Minecraft::getInstance()->getWorldRenderer();
+        for (int i = 0; i < URGENT_BUDGET; i++) {
+            ChunkPos pos;
+            bool has = false;
+
+            {
+                std::lock_guard<std::mutex> lock(m_dirtyMutex);
+                if (!m_urgentDirtyChunks.empty()) {
+                    pos = m_urgentDirtyChunks.front();
+                    m_urgentDirtyChunks.pop_front();
+                    has = true;
+                }
+            }
+
+            if (!has) break;
+            if (worldRenderer) worldRenderer->rebuildChunkUrgent(pos);
         }
     }
 
@@ -73,7 +94,7 @@ void World::update(float alpha) {
     }
 
     for (std::unique_ptr<Entity> &entity : m_entities)
-        if (entity) entity->update(alpha);
+        if (entity) entity->update(partialTicks);
 }
 
 void World::tick() { tickEntities(); }
@@ -123,6 +144,15 @@ void World::markChunkDirty(const BlockPos &pos) {
     m_dirtyChunks.push_back(chunkPos);
 }
 
+void World::markChunkDirtyUrgent(const ChunkPos &chunkPos) {
+    std::lock_guard<std::mutex> lock(m_dirtyMutex);
+
+    for (size_t i = 0; i < m_urgentDirtyChunks.size(); i++)
+        if (m_urgentDirtyChunks[i].x == chunkPos.x && m_urgentDirtyChunks[i].y == chunkPos.y && m_urgentDirtyChunks[i].z == chunkPos.z) return;
+
+    m_urgentDirtyChunks.push_front(chunkPos);
+}
+
 const std::deque<ChunkPos> &World::getDirtyChunks() const { return m_dirtyChunks; }
 
 void World::clearDirtyChunks() {
@@ -152,91 +182,19 @@ void World::setBlock(const BlockPos &pos, Block *block) {
     int cz = Math::floorDiv(pos.z, Chunk::SIZE_Z);
 
     int lx = Math::floorMod(pos.x, Chunk::SIZE_X);
+    int ly = Math::floorMod(pos.y, Chunk::SIZE_Y);
     int lz = Math::floorMod(pos.z, Chunk::SIZE_Z);
 
     ChunkPos chunkPos{cx, cy, cz};
 
     {
-        std::unique_lock<std::shared_mutex> lock(m_chunkDataMutex);
-
         Chunk *chunk = getChunk(chunkPos);
         if (!chunk) return;
 
-        chunk->setBlock(lx, pos.y, lz, block);
+        chunk->setBlock(lx, ly, lz, block);
     }
 
-    {
-        std::lock_guard<std::mutex> lock(m_dirtyMutex);
-
-        bool found = false;
-        for (size_t i = 0; i < m_dirtyChunks.size(); i++)
-            if (m_dirtyChunks[i].x == chunkPos.x && m_dirtyChunks[i].y == chunkPos.y && m_dirtyChunks[i].z == chunkPos.z) {
-                ChunkPos tmp = m_dirtyChunks[i];
-                m_dirtyChunks.erase(m_dirtyChunks.begin() + (long) i);
-                m_dirtyChunks.push_front(tmp);
-                found = true;
-                break;
-            }
-
-        if (!found) m_dirtyChunks.push_front(chunkPos);
-
-        if (lx == 0) {
-            ChunkPos chunkPos{cx - 1, cy, cz};
-            found = false;
-            for (size_t i = 0; i < m_dirtyChunks.size(); i++)
-                if (m_dirtyChunks[i].x == chunkPos.x && m_dirtyChunks[i].y == chunkPos.y && m_dirtyChunks[i].z == chunkPos.z) {
-                    ChunkPos tmp = m_dirtyChunks[i];
-                    m_dirtyChunks.erase(m_dirtyChunks.begin() + (long) i);
-                    m_dirtyChunks.push_front(tmp);
-                    found = true;
-                    break;
-                }
-
-            if (!found) m_dirtyChunks.push_front(chunkPos);
-        } else if (lx == Chunk::SIZE_X - 1) {
-            ChunkPos chunkPos{cx + 1, cy, cz};
-            found = false;
-            for (size_t i = 0; i < m_dirtyChunks.size(); i++)
-                if (m_dirtyChunks[i].x == chunkPos.x && m_dirtyChunks[i].y == chunkPos.y && m_dirtyChunks[i].z == chunkPos.z) {
-                    ChunkPos tmp = m_dirtyChunks[i];
-                    m_dirtyChunks.erase(m_dirtyChunks.begin() + (long) i);
-                    m_dirtyChunks.push_front(tmp);
-                    found = true;
-                    break;
-                }
-
-            if (!found) m_dirtyChunks.push_front(chunkPos);
-        }
-
-        if (lz == 0) {
-            ChunkPos chunkPos{cx, cy, cz - 1};
-            found = false;
-            for (size_t i = 0; i < m_dirtyChunks.size(); i++)
-                if (m_dirtyChunks[i].x == chunkPos.x && m_dirtyChunks[i].y == chunkPos.y && m_dirtyChunks[i].z == chunkPos.z) {
-                    ChunkPos tmp = m_dirtyChunks[i];
-                    m_dirtyChunks.erase(m_dirtyChunks.begin() + (long) i);
-                    m_dirtyChunks.push_front(tmp);
-                    found = true;
-                    break;
-                }
-
-            if (!found) m_dirtyChunks.push_front(chunkPos);
-        } else if (lz == Chunk::SIZE_Z - 1) {
-            ChunkPos chunkPos{cx, cy, cz + 1};
-            found = false;
-            for (size_t i = 0; i < m_dirtyChunks.size(); i++)
-                if (m_dirtyChunks[i].x == chunkPos.x && m_dirtyChunks[i].y == chunkPos.y && m_dirtyChunks[i].z == chunkPos.z) {
-                    ChunkPos tmp = m_dirtyChunks[i];
-                    m_dirtyChunks.erase(m_dirtyChunks.begin() + (long) i);
-                    m_dirtyChunks.push_front(tmp);
-                    found = true;
-                    break;
-                }
-
-            if (!found) m_dirtyChunks.push_front(chunkPos);
-        }
-    }
-
+    markChunkDirty(BlockPos(pos.x, pos.y, pos.z));
     m_lightUpdates.push_back(pos);
 }
 
@@ -451,5 +409,3 @@ void World::setSunPosition(const Vec3 &position) { m_sunPosition = position; }
 void World::setRenderDistance(int distance) { m_renderDistance = distance; }
 
 int World::getRenderDistance() const { return m_renderDistance; }
-
-std::shared_mutex &World::getChunkDataMutex() { return m_chunkDataMutex; }

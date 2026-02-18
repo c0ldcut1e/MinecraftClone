@@ -138,6 +138,12 @@ float TerrainGenerator::getCaveValue(int worldX, int worldY, int worldZ) {
 }
 
 void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos) {
+    Block *bedrock  = Block::byName("bedrock");
+    Block *grass    = Block::byName("grass");
+    Block *dirt     = Block::byName("dirt");
+    Block *stone    = Block::byName("stone");
+    Block *andesite = Block::byName("andesite");
+
     for (int z = 0; z < Chunk::SIZE_Z; z++)
         for (int x = 0; x < Chunk::SIZE_X; x++) {
             int worldX = chunkPos.x * Chunk::SIZE_X + x;
@@ -150,7 +156,7 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos) {
 
             for (int y = 0; y < Chunk::SIZE_Y; y++) {
                 if (y == 0) {
-                    chunk.setBlock(x, y, z, Block::byName("bedrock"));
+                    chunk.setBlock(x, y, z, bedrock);
                     continue;
                 }
 
@@ -161,7 +167,7 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos) {
 
                     float fill = 1.0f - (t * t);
                     if (r < fill) {
-                        chunk.setBlock(x, y, z, Block::byName("bedrock"));
+                        chunk.setBlock(x, y, z, bedrock);
                         continue;
                     }
                 }
@@ -185,15 +191,15 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos) {
                     if (caveValue > threshold) continue;
                 }
 
-                if (y == height) chunk.setBlock(x, y, z, Block::byName("grass"));
+                if (y == height) chunk.setBlock(x, y, z, grass);
                 else if (y >= height - 4)
-                    chunk.setBlock(x, y, z, Block::byName("dirt"));
+                    chunk.setBlock(x, y, z, dirt);
                 else {
                     float rockNoise = m_rock.GetNoise((float) worldX, (float) y, (float) worldZ);
                     rockNoise       = (rockNoise + 1.0f) * 0.5f;
-                    if (rockNoise > 0.62f) chunk.setBlock(x, y, z, Block::byName("andesite"));
+                    if (rockNoise > 0.62f) chunk.setBlock(x, y, z, andesite);
                     else
-                        chunk.setBlock(x, y, z, Block::byName("stone"));
+                        chunk.setBlock(x, y, z, stone);
                 }
             }
         }

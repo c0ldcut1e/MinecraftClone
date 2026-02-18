@@ -166,13 +166,13 @@ void RenderCommand::bufferSubData(uint32_t target, int32_t offset, uint32_t size
 
 void RenderCommand::bindBufferBase(uint32_t target, uint32_t index, uint32_t buffer) { glBindBufferBase((GLenum) target, index, (GLuint) buffer); }
 
-void RenderCommand::drawArrays(uint32_t mode, int32_t first, int32_t count) { glDrawArrays((GLenum) mode, first, count); }
+void RenderCommand::renderArrays(uint32_t mode, int32_t first, int32_t count) { glDrawArrays((GLenum) mode, first, count); }
 
-void RenderCommand::drawElements(uint32_t mode, int32_t count, uint32_t type, uint32_t offset) { glDrawElements((GLenum) mode, count, (GLenum) type, (const void *) (uintptr_t) offset); }
+void RenderCommand::renderElements(uint32_t mode, int32_t count, uint32_t type, uint32_t offset) { glDrawElements((GLenum) mode, count, (GLenum) type, (const void *) (uintptr_t) offset); }
 
-void RenderCommand::drawArraysInstanced(uint32_t mode, int32_t first, int32_t count, int32_t instanceCount) { glDrawArraysInstanced((GLenum) mode, first, count, instanceCount); }
+void RenderCommand::renderArraysInstanced(uint32_t mode, int32_t first, int32_t count, int32_t instanceCount) { glDrawArraysInstanced((GLenum) mode, first, count, instanceCount); }
 
-void RenderCommand::drawElementsInstanced(uint32_t mode, int32_t count, uint32_t type, uint32_t offset, int32_t instanceCount) { glDrawElementsInstanced((GLenum) mode, count, (GLenum) type, (const void *) (uintptr_t) offset, instanceCount); }
+void RenderCommand::renderElementsInstanced(uint32_t mode, int32_t count, uint32_t type, uint32_t offset, int32_t instanceCount) { glDrawElementsInstanced((GLenum) mode, count, (GLenum) type, (const void *) (uintptr_t) offset, instanceCount); }
 
 uint32_t RenderCommand::createTexture() {
     GLuint id = 0;

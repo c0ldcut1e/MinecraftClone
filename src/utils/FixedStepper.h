@@ -9,7 +9,7 @@ public:
     bool shouldStep() const;
     void consumeStep();
 
-    double getAlpha() const;
+    double getPartialTicks() const;
     double getStepSeconds() const;
 
 private:

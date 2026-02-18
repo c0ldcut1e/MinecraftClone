@@ -22,8 +22,8 @@ public:
     ModelPart *getRoot();
     ModelPart *findPart(const std::string &name);
 
-    void draw(TextureRepository &textures) const;
-    void drawPart(const ModelPart *part, int textureWidth, int textureHeight) const;
+    void render(TextureRepository &textures) const;
+    void renderPart(const ModelPart *part, int textureWidth, int textureHeight) const;
 
 private:
     static std::unique_ptr<ModelPart> buildPartTree(const ModelPartDefinition &definition);

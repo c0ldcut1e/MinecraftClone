@@ -163,11 +163,11 @@ public:
 
     static void bindBufferBase(uint32_t target, uint32_t index, uint32_t buffer);
 
-    static void drawArrays(uint32_t mode, int first, int count);
-    static void drawElements(uint32_t mode, int count, uint32_t type, uint32_t offset);
+    static void renderArrays(uint32_t mode, int first, int count);
+    static void renderElements(uint32_t mode, int count, uint32_t type, uint32_t offset);
 
-    static void drawArraysInstanced(uint32_t mode, int first, int count, int instanceCount);
-    static void drawElementsInstanced(uint32_t mode, int count, uint32_t type, uint32_t offset, int instanceCount);
+    static void renderArraysInstanced(uint32_t mode, int first, int count, int instanceCount);
+    static void renderElementsInstanced(uint32_t mode, int count, uint32_t type, uint32_t offset, int instanceCount);
 
     static uint32_t createTexture();
     static void deleteTexture(uint32_t id);

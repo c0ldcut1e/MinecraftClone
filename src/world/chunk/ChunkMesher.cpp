@@ -156,8 +156,6 @@ static void greedy2D(std::vector<MaskCell> &mask, int width, int height, auto &&
 }
 
 void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<MeshBuildResult> &outMeshes) {
-    std::shared_lock<std::shared_mutex> lock(world->getChunkDataMutex());
-
     std::unordered_map<Texture *, std::vector<float>> buckets;
 
     ChunkPos cpos = chunk->getPos();
@@ -218,8 +216,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                     cell.texture   = nullptr;
                     cell.lightKey  = 0;
 
-                    if (a && !b) {
-                        Block *block     = getBlockWorld(world, chunk, x - 1, y, z);
+                    if (a && !b && x > 0) {
+                        Block *block     = Block::byId(chunk->getBlockId(x - 1, y, z));
                         Texture *texture = block ? block->getTexture(Direction::EAST) : nullptr;
                         if (texture) {
                             cell.filled   = true;
@@ -250,8 +248,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                     cell.texture   = nullptr;
                     cell.lightKey  = 0;
 
-                    if (b && !a) {
-                        Block *block     = getBlockWorld(world, chunk, x, y, z);
+                    if (b && !a && x < Chunk::SIZE_X) {
+                        Block *block     = Block::byId(chunk->getBlockId(x, y, z));
                         Texture *texture = block ? block->getTexture(Direction::WEST) : nullptr;
                         if (texture) {
                             cell.filled   = true;
@@ -287,8 +285,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                     cell.texture   = nullptr;
                     cell.lightKey  = 0;
 
-                    if (a && !b) {
-                        Block *block     = getBlockWorld(world, chunk, x, y, z - 1);
+                    if (a && !b && z > 0) {
+                        Block *block     = Block::byId(chunk->getBlockId(x, y, z - 1));
                         Texture *texture = block ? block->getTexture(Direction::SOUTH) : nullptr;
                         if (texture) {
                             cell.filled   = true;
@@ -319,8 +317,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                     cell.texture   = nullptr;
                     cell.lightKey  = 0;
 
-                    if (b && !a) {
-                        Block *block     = getBlockWorld(world, chunk, x, y, z);
+                    if (b && !a && z < Chunk::SIZE_Z) {
+                        Block *block     = Block::byId(chunk->getBlockId(x, y, z));
                         Texture *texture = block ? block->getTexture(Direction::NORTH) : nullptr;
                         if (texture) {
                             cell.filled   = true;
@@ -356,8 +354,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                     cell.texture   = nullptr;
                     cell.lightKey  = 0;
 
-                    if (a && !b) {
-                        Block *block     = getBlockWorld(world, chunk, x, y - 1, z);
+                    if (a && !b && y > 0) {
+                        Block *block     = Block::byId(chunk->getBlockId(x, y - 1, z));
                         Texture *texture = block ? block->getTexture(Direction::UP) : nullptr;
                         if (texture) {
                             cell.filled   = true;
@@ -388,8 +386,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                     cell.texture   = nullptr;
                     cell.lightKey  = 0;
 
-                    if (b && !a) {
-                        Block *block     = getBlockWorld(world, chunk, x, y, z);
+                    if (b && !a && y < Chunk::SIZE_Y) {
+                        Block *block     = Block::byId(chunk->getBlockId(x, y, z));
                         Texture *texture = block ? block->getTexture(Direction::DOWN) : nullptr;
                         if (texture) {
                             cell.filled   = true;

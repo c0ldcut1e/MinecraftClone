@@ -7,5 +7,5 @@ public:
     TestEntityRenderer()           = default;
     ~TestEntityRenderer() override = default;
 
-    void draw(const Entity *entity, float alpha) const override;
+    void render(const Entity *entity, float partialTicks) const override;
 };

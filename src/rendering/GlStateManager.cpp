@@ -28,6 +28,13 @@ bool GlStateManager::s_scissor     = false;
 bool GlStateManager::s_dither      = false;
 bool GlStateManager::s_multisample = true;
 
+bool GlStateManager::s_fog       = true;
+float GlStateManager::s_fogR     = 0.47058824f;
+float GlStateManager::s_fogG     = 0.65490198f;
+float GlStateManager::s_fogB     = 1.0f;
+float GlStateManager::s_fogStart = 0.0f;
+float GlStateManager::s_fogEnd   = 0.0f;
+
 bool GlStateManager::s_colorMaskR = true;
 bool GlStateManager::s_colorMaskG = true;
 bool GlStateManager::s_colorMaskB = true;
@@ -202,6 +209,34 @@ void GlStateManager::enableMultisample() {
 void GlStateManager::disableMultisample() {
     s_multisample = false;
     RenderCommand::disableMultisample();
+}
+
+void GlStateManager::enableFog() { s_fog = true; }
+
+void GlStateManager::disableFog() { s_fog = false; }
+
+bool GlStateManager::isFogEnabled() { return s_fog; }
+
+void GlStateManager::setFogColor(float r, float g, float b) {
+    s_fogR = r;
+    s_fogG = g;
+    s_fogB = b;
+}
+
+void GlStateManager::getFogColor(float &r, float &g, float &b) {
+    r = s_fogR;
+    g = s_fogG;
+    b = s_fogB;
+}
+
+void GlStateManager::setFogRange(float start, float end) {
+    s_fogStart = start;
+    s_fogEnd   = end;
+}
+
+void GlStateManager::getFogRange(float &start, float &end) {
+    start = s_fogStart;
+    end   = s_fogEnd;
 }
 
 void GlStateManager::setColorMask(bool r, bool g, bool b, bool a) {

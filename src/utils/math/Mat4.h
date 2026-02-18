@@ -15,6 +15,7 @@ public:
     static Mat4 rotation(double angleRadians, double x, double y, double z);
 
     Mat4 multiply(const Mat4 &other) const;
+    Mat4 inverse() const;
 
     const double *data() const;
 

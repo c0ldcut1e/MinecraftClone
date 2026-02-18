@@ -563,13 +563,7 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos) {
         }
     }
 
-    for (const ChunkPos &chunkPos : dirtyChunks) {
-        int wx = chunkPos.x * Chunk::SIZE_X;
-        int wy = chunkPos.y * Chunk::SIZE_Y;
-        int wz = chunkPos.z * Chunk::SIZE_Z;
-
-        world->markChunkDirty(BlockPos(wx, wy, wz));
-    }
+    for (const ChunkPos &chunkPos : dirtyChunks) world->markChunkDirtyUrgent(chunkPos);
 }
 
 void LightEngine::getBlockLight(World *world, const BlockPos &worldPos, uint8_t *r, uint8_t *g, uint8_t *b) {

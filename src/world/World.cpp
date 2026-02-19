@@ -13,7 +13,7 @@
 #include "lighting/LightEngine.h"
 #include "models/ModelRegistry.h"
 
-World::World() : m_emptyChunksSolid(true), m_sunPosition(0.0, 1000.0, 0.0), m_renderDistance(20) {}
+World::World() : m_emptyChunksSolid(true), m_sunPosition(0.0, 1000.0, 0.0), m_renderDistance(12) {}
 
 void World::update(float partialTicks) {
     if (ChunkManager *chunkManager = Minecraft::getInstance()->getChunkManager()) {

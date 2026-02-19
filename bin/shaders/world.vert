@@ -26,8 +26,9 @@ void main() {
     v_fogSpherical = length(p);
 
     float distXZ = length(p.xz);
-    float distY = abs(p.y);
+    float distY  = abs(p.y);
     v_fogCylindrical = max(distXZ, distY);
 
+    // left here even if unused now (future use, height-based fog etc.)
     v_worldY = p.y + u_cameraPos.y;
 }

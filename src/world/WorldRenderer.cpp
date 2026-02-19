@@ -5,6 +5,7 @@
 
 #include "../core/Minecraft.h"
 #include "../entity/EntityRendererRegistry.h"
+#include "../rendering/ColormapManager.h"
 #include "../rendering/GlStateManager.h"
 #include "../rendering/ImmediateRenderer.h"
 #include "../rendering/RenderCommand.h"
@@ -17,6 +18,10 @@
 WorldRenderer::WorldRenderer(World *world) : m_worldShader(nullptr), m_skyShader(nullptr), m_world(world), m_renderChunkGrid(false) {
     m_worldShader = new Shader("shaders/world.vert", "shaders/world.frag");
     m_skyShader   = new Shader("shaders/sky.vert", "shaders/sky.frag");
+
+    ColormapManager *colormapManager = ColormapManager::getInstance();
+    colormapManager->load("fog", "colormap/fog.png");
+    colormapManager->load("sky", "colormap/sky.png");
 
     m_mesherRunning = true;
     m_mesherThread  = std::thread([this]() {
@@ -173,14 +178,15 @@ void WorldRenderer::renderSky(const Vec3 &cameraPos, const Mat4 &viewMatrix, con
     GlStateManager::disableDepthTest();
 
     m_skyShader->bind();
-    m_skyShader->setVec3("u_skyColor", 0.535294118f, 0.809803922f, 0.97254902f);
 
-    float fogR;
-    float fogG;
-    float fogB;
+    m_skyShader->setInt("u_skyColormap", 0);
+    ColormapManager::getInstance()->bind("sky", 0);
 
-    GlStateManager::getFogColor(fogR, fogG, fogB);
-    m_skyShader->setVec3("u_fogColor", fogR, fogG, fogB);
+    m_skyShader->setInt("u_fogColormap", 1);
+    ColormapManager::getInstance()->bind("fog", 1);
+
+    m_skyShader->setVec2("u_fogLut", 0.5f, 0.5f);
+    m_skyShader->setVec3("u_skyLut", 0.85f, 0.30f, 0.70f);
 
     m_skyShader->setInt("u_fogEnabled", GlStateManager::isFogEnabled() ? 1 : 0);
 
@@ -283,42 +289,6 @@ void WorldRenderer::renderFastClouds() {
     float fogStart;
     float fogEnd;
     GlStateManager::getFogRange(fogStart, fogEnd);
-
-    float fogColR = fogR + (1.0f - fogR) * 0.78f;
-    float fogColG = fogG + (1.0f - fogG) * 0.78f;
-    float fogColB = fogB + (1.0f - fogB) * 0.78f;
-
-    auto smoothstep01 = [](float x) {
-        x = Math::clampf(x, 0.0f, 1.0f);
-        return x * x * (3.0f - 2.0f * x);
-    };
-
-    auto linearFog = [&](float d) {
-        float s = fogStart / 3.0f;
-        if (d <= s) return 0.0f;
-        if (d >= fogEnd) return 1.0f;
-        return (d - s) / (fogEnd - s);
-    };
-
-    auto fogValueAt = [&](float wx, float wy, float wz) {
-        float dx = wx - (float) cameraPos.x;
-        float dy = wy - (float) cameraPos.y;
-        float dz = wz - (float) cameraPos.z;
-
-        float distS  = sqrtf(dx * dx + dy * dy + dz * dz);
-        float distXZ = sqrtf(dx * dx + dz * dz);
-        float distC  = fmaxf(distXZ, fabsf(dy));
-
-        float a = linearFog(distS);
-        float b = linearFog(distC);
-        float v = fmaxf(a, b);
-
-        v = smoothstep01(v);
-        v = powf(v, 2.4f);
-        return Math::clampf(v, 0.0f, 1.0f);
-    };
-
-    auto pack = [&](int a, int r, int g, int b) -> uint32_t { return ((uint32_t) (a & 255) << 24) | ((uint32_t) (r & 255) << 16) | ((uint32_t) (g & 255) << 8) | (uint32_t) (b & 255); };
 
     for (int z = 0; z < height; z++)
         for (int x = 0; x < width; x++) {
@@ -623,11 +593,14 @@ void WorldRenderer::bindWorldShader(const Vec3 &cameraPos, const Mat4 &viewMatri
     if (fogEnabled) {
         float _fogStart;
         float _fogEnd;
-
         GlStateManager::getFogRange(_fogStart, _fogEnd);
 
-        m_worldShader->setVec3("u_fogColor", fogR, fogG, fogB);
         m_worldShader->setVec2("u_fogRange", _fogStart, _fogEnd);
+
+        m_worldShader->setInt("u_fogColormap", 1);
+        ColormapManager::getInstance()->bind("fog", 1);
+
+        m_worldShader->setVec2("u_fogLut", 0.5f, 0.5f);
     }
 
     GlStateManager::enableCull();

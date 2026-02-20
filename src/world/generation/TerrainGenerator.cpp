@@ -232,6 +232,8 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos) {
             Biome *biome = getBiomeAt(worldX, worldZ);
             if (!biome) biome = Biome::byName("plains");
 
+            chunk.setBiomeAt(x, z, biome);
+
             Block *top;
             Block *filler;
             if (height < seaLevel - 1) {

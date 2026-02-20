@@ -12,6 +12,6 @@ int BiomePlains::getBaseHeight() const { return 64; }
 
 int BiomePlains::getHeightVariation() const { return 10; }
 
-float BiomePlains::getTemperature() const { return 0.4f; }
+float BiomePlains::getTemperature() const { return 1.0f; }
 
-float BiomePlains::getHumidity() const { return 0.5f; }
+float BiomePlains::getHumidity() const { return 0.3f; }

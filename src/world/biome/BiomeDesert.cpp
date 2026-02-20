@@ -12,6 +12,6 @@ int BiomeDesert::getBaseHeight() const { return 62; }
 
 int BiomeDesert::getHeightVariation() const { return 8; }
 
-float BiomeDesert::getTemperature() const { return 0.8f; }
+float BiomeDesert::getTemperature() const { return 1.0f; }
 
 float BiomeDesert::getHumidity() const { return 0.0f; }

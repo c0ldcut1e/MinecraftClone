@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "../biome/Biome.h"
 #include "../block/Block.h"
 #include "ChunkPos.h"
 
@@ -18,6 +19,9 @@ public:
 
     const ChunkPos &getPos() const;
 
+    void setBiomeAt(int x, int z, Biome *biome);
+    Biome *getBiomeAt(int x, int z) const;
+
     void getLight(int x, int y, int z, uint8_t &r, uint8_t &g, uint8_t &b) const;
     void setLight(int x, int y, int z, uint8_t r, uint8_t g, uint8_t b);
 
@@ -29,6 +33,7 @@ public:
 
 private:
     int index(int x, int y, int z) const;
+    int columnIndex(int x, int z) const;
 
     ChunkPos m_pos;
     uint32_t m_blocks[SIZE_X * SIZE_Y * SIZE_Z];
@@ -42,4 +47,6 @@ private:
     LightData m_blockLight[SIZE_X * SIZE_Y * SIZE_Z];
     uint8_t m_skyLight[SIZE_X * SIZE_Y * SIZE_Z];
     bool m_needsRelight;
+
+    Biome *m_columnBiomes[SIZE_X * SIZE_Z];
 };

@@ -12,7 +12,7 @@ ModelRegistry *ModelRegistry::get() {
 void ModelRegistry::init() {
     ModelRegistry *registry = ModelRegistry::get();
 
-    ModelDefinition steveDef     = ModelPartsSkinned::createSteveClassic("steve", "textures/steve.png");
+    ModelDefinition steveDef     = ModelPartsSkinned::createSteveClassic("steve", "textures/models/steve.png");
     std::unique_ptr<Model> steve = std::make_unique<Model>(steveDef);
     registry->registerModel("steve", std::move(steve));
 

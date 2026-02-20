@@ -71,7 +71,7 @@ void LocalPlayer::handleRMB() {
     Vec3 origin    = m_position.add(Vec3(0.0, 1.62, 0.0));
     Vec3 direction = m_front.normalize();
     HitResult *hit = m_world->clip(origin, direction, 6.0f);
-    if (hit->isBlock()) placeBlock(hit->getBlockPos(), hit->getBlockFace(), Block::byName("glowstone"));
+    if (hit->isBlock()) placeBlock(hit->getBlockPos(), hit->getBlockFace(), Block::byName("grass"));
 
     delete hit;
 }

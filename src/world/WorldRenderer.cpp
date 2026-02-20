@@ -25,8 +25,9 @@ WorldRenderer::WorldRenderer(World *world, int width, int height) : m_worldShade
     m_sceneFramebuffer = new Framebuffer(width, height);
 
     ColormapManager *colormapManager = ColormapManager::getInstance();
-    colormapManager->load("fog", "colormap/fog.png");
-    colormapManager->load("sky", "colormap/sky.png");
+    colormapManager->load("fog", "textures/colormap/fog.png");
+    colormapManager->load("sky", "textures/colormap/sky.png");
+    colormapManager->load("grasscolor", "textures/colormap/grasscolor.png");
 
     m_mesherRunning = true;
     m_mesherPool    = std::make_unique<BS::thread_pool<>>((size_t) std::max(1u, std::thread::hardware_concurrency() - 2));
@@ -130,6 +131,7 @@ void WorldRenderer::rebuildChunk(const ChunkPos &pos) {
 
     {
         std::lock_guard<std::mutex> lock(m_rebuildQueueMutex);
+
         if (m_rebuildQueued.insert(pos).second) m_rebuildQueue.push(pos);
     }
 
@@ -141,6 +143,7 @@ void WorldRenderer::rebuildChunkUrgent(const ChunkPos &pos) {
 
     {
         std::lock_guard<std::mutex> lock(m_rebuildQueueMutex);
+
         if (m_urgentQueued.insert(pos).second) m_urgentQueue.push(pos);
     }
 

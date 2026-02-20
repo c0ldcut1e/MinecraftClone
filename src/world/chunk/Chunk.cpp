@@ -10,6 +10,8 @@ Chunk::Chunk(const ChunkPos &pos) : m_pos(pos), m_needsRelight(true) {
         m_blockLight[i].b = 0;
         m_skyLight[i]     = 0;
     }
+
+    for (int i = 0; i < SIZE_X * SIZE_Z; i++) m_columnBiomes[i] = nullptr;
 }
 
 uint32_t Chunk::getBlockId(int x, int y, int z) const { return m_blocks[index(x, y, z)]; }
@@ -20,6 +22,12 @@ void Chunk::setBlock(int x, int y, int z, Block *block) {
 }
 
 const ChunkPos &Chunk::getPos() const { return m_pos; }
+
+int Chunk::columnIndex(int x, int z) const { return x + SIZE_X * z; }
+
+void Chunk::setBiomeAt(int x, int z, Biome *biome) { m_columnBiomes[columnIndex(x, z)] = biome; }
+
+Biome *Chunk::getBiomeAt(int x, int z) const { return m_columnBiomes[columnIndex(x, z)]; }
 
 void Chunk::getLight(int x, int y, int z, uint8_t &r, uint8_t &g, uint8_t &b) const {
     uint8_t br, bg, bb;
@@ -57,4 +65,4 @@ uint8_t Chunk::getSkyLight(int x, int y, int z) const { return m_skyLight[index(
 
 void Chunk::setSkyLight(int x, int y, int z, uint8_t level) { m_skyLight[index(x, y, z)] = level; }
 
-int Chunk::index(int x, int y, int z) const { return x + SIZE_X * (z + SIZE_Z * y); }
+int Chunk::index(int x, int y, int z) const { return x + SIZE_X * (y + SIZE_Y * z); }

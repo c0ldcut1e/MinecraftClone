@@ -8,6 +8,9 @@
 #include "../../utils/Direction.h"
 #include "../../utils/math/AABB.h"
 
+class Chunk;
+class World;
+
 class Block {
 public:
     Block();
@@ -18,6 +21,13 @@ public:
 
     void setTexture(Direction *direction, Texture *texture);
     Texture *getTexture(Direction *direction) const;
+
+    void setTintColormap(const std::string &colormapName);
+    void setTintColormap(Direction *direction, const std::string &colormapName);
+    bool hasTintColormap(Direction *direction) const;
+    const std::string &getTintColormap(Direction *direction) const;
+
+    uint32_t resolveTint(Direction *direction, World *world, const Chunk *chunk, int localX, int localZ) const;
 
     const std::string &getName() const;
     bool isSolid() const;
@@ -32,6 +42,7 @@ public:
 
 private:
     std::unordered_map<Direction *, Texture *> m_textures;
+    std::unordered_map<Direction *, std::string> m_tintColormaps;
     std::string m_name;
     bool m_solid;
     AABB m_aabb;

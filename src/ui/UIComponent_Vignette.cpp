@@ -9,7 +9,7 @@
 #include "../rendering/RenderCommand.h"
 #include "../utils/math/Math.h"
 
-UIComponent_Vignette::UIComponent_Vignette() : UIComponent("ComponentVignette"), m_shader("shaders/vignette.vert", "shaders/vignette.frag"), m_texture("textures/vignette.png"), m_vao(0), m_vbo(0) {
+UIComponent_Vignette::UIComponent_Vignette() : UIComponent("ComponentVignette"), m_shader("shaders/vignette.vert", "shaders/vignette.frag"), m_texture("textures/misc/vignette.png"), m_vao(0), m_vbo(0) {
     m_vao = RenderCommand::createVertexArray();
     m_vbo = RenderCommand::createBuffer();
 

@@ -8,20 +8,25 @@
 #include "../core/Logger.h"
 #include "../core/Minecraft.h"
 #include "../entity/Entity.h"
+#include "../entity/TestEntity.h"
 #include "../utils/math/Math.h"
 #include "WorldRenderer.h"
 #include "block/Block.h"
 #include "lighting/LightEngine.h"
 #include "models/ModelRegistry.h"
 
-World::World() : m_emptyChunksSolid(true), m_sunPosition(0.0, 1000.0, 0.0), m_renderDistance(32) {}
+World::World() : m_emptyChunksSolid(true), m_sunPosition(0.0, 1000.0, 0.0), m_renderDistance(12) {}
 
 void World::update(float partialTicks) {
     if (ChunkManager *chunkManager = Minecraft::getInstance()->getChunkManager()) {
         std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> ready;
-        chunkManager->drainFinished(ready);
+        chunkManager->drainFinished(ready, 2);
 
-        while (!ready.empty()) {
+        const int CHUNK_INTAKE_BUDGET = 2;
+        int intook                    = 0;
+
+        while (!ready.empty() && intook < CHUNK_INTAKE_BUDGET) {
+            intook++;
             auto [pos, chunkPtr] = std::move(ready.front());
             ready.pop_front();
 
@@ -30,15 +35,15 @@ void World::update(float partialTicks) {
 
             BlockPos blockPos(pos.x * Chunk::SIZE_X, pos.y * Chunk::SIZE_Y, pos.z * Chunk::SIZE_Z);
             markChunkDirty(blockPos);
-            markChunkDirty(BlockPos(blockPos.x - Chunk::SIZE_X, blockPos.y, blockPos.z));
-            markChunkDirty(BlockPos(blockPos.x + Chunk::SIZE_X, blockPos.y, blockPos.z));
-            markChunkDirty(BlockPos(blockPos.x, blockPos.y, blockPos.z - Chunk::SIZE_Z));
-            markChunkDirty(BlockPos(blockPos.x, blockPos.y, blockPos.z + Chunk::SIZE_Z));
+            if (hasChunk(ChunkPos(pos.x - 1, pos.y, pos.z))) markChunkDirty(BlockPos(blockPos.x - Chunk::SIZE_X, blockPos.y, blockPos.z));
+            if (hasChunk(ChunkPos(pos.x + 1, pos.y, pos.z))) markChunkDirty(BlockPos(blockPos.x + Chunk::SIZE_X, blockPos.y, blockPos.z));
+            if (hasChunk(ChunkPos(pos.x, pos.y, pos.z - 1))) markChunkDirty(BlockPos(blockPos.x, blockPos.y, blockPos.z - Chunk::SIZE_Z));
+            if (hasChunk(ChunkPos(pos.x, pos.y, pos.z + 1))) markChunkDirty(BlockPos(blockPos.x, blockPos.y, blockPos.z + Chunk::SIZE_Z));
         }
     }
 
     {
-        const int LIGHT_BUDGET = 192;
+        const int LIGHT_BUDGET = 32;
 
         int processed = 0;
         while (processed < LIGHT_BUDGET && !m_lightUpdates.empty()) {
@@ -61,9 +66,11 @@ void World::update(float partialTicks) {
 
             {
                 std::lock_guard<std::mutex> lock(m_dirtyMutex);
+
                 if (!m_urgentDirtyChunks.empty()) {
                     pos = m_urgentDirtyChunks.front();
                     m_urgentDirtyChunks.pop_front();
+                    m_urgentDirtyChunksSet.erase(pos);
                     has = true;
                 }
             }
@@ -74,7 +81,7 @@ void World::update(float partialTicks) {
     }
 
     {
-        const int MESH_BUDGET = 2;
+        const int MESH_BUDGET = 16;
 
         for (int i = 0; i < MESH_BUDGET; i++) {
             ChunkPos pos;
@@ -82,9 +89,11 @@ void World::update(float partialTicks) {
 
             {
                 std::lock_guard<std::mutex> lock(m_dirtyMutex);
+
                 if (!m_dirtyChunks.empty()) {
                     pos = m_dirtyChunks.front();
                     m_dirtyChunks.pop_front();
+                    m_dirtyChunksSet.erase(pos);
                     has = true;
                 }
             }
@@ -138,20 +147,12 @@ void World::markChunkDirty(const BlockPos &pos) {
     int cz = Math::floorDiv(pos.z, Chunk::SIZE_Z);
 
     ChunkPos chunkPos{cx, cy, cz};
-
-    for (size_t i = 0; i < m_dirtyChunks.size(); i++)
-        if (m_dirtyChunks[i].x == chunkPos.x && m_dirtyChunks[i].y == chunkPos.y && m_dirtyChunks[i].z == chunkPos.z) return;
-
-    m_dirtyChunks.push_back(chunkPos);
+    if (m_dirtyChunksSet.insert(chunkPos).second) m_dirtyChunks.push_back(chunkPos);
 }
 
 void World::markChunkDirtyUrgent(const ChunkPos &chunkPos) {
     std::lock_guard<std::mutex> lock(m_dirtyMutex);
-
-    for (size_t i = 0; i < m_urgentDirtyChunks.size(); i++)
-        if (m_urgentDirtyChunks[i].x == chunkPos.x && m_urgentDirtyChunks[i].y == chunkPos.y && m_urgentDirtyChunks[i].z == chunkPos.z) return;
-
-    m_urgentDirtyChunks.push_front(chunkPos);
+    if (m_urgentDirtyChunksSet.insert(chunkPos).second) m_urgentDirtyChunks.push_front(chunkPos);
 }
 
 const std::deque<ChunkPos> &World::getDirtyChunks() const { return m_dirtyChunks; }
@@ -168,14 +169,35 @@ void World::removeEntity(Entity *entity) {
 }
 
 void World::tickEntities() {
-    for (std::unique_ptr<Entity> &entity : m_entities) entity->storeOld();
-    for (std::unique_ptr<Entity> &entity : m_entities) entity->tick();
+    for (std::unique_ptr<Entity> &entity : m_entities) {
+        entity->storeOld();
+        entity->tick();
 
-    m_entities[1]->setMoveIntent(Vec3(0.0, 0.0, -0.3));
-    m_entities[1]->queueJump();
+        if (entity->getType() == TestEntity::TYPE) {
+            entity->setMoveIntent(Vec3(0.0, 0.0, 0.5));
+            Vec3 pos = entity->getPosition();
+            if (entity->getWorld()->getBlockId(BlockPos((int) floor(pos.x), (int) floor(pos.y), (int) floor(pos.z + 1.0))) != 0) entity->queueJump();
+        }
+    }
 }
 
 const std::vector<std::unique_ptr<Entity>> &World::getEntities() const { return m_entities; }
+
+uint32_t World::getBlockId(const BlockPos &pos) const {
+    int cx = Math::floorDiv(pos.x, Chunk::SIZE_X);
+    int cy = Math::floorDiv(pos.y, Chunk::SIZE_Y);
+    int cz = Math::floorDiv(pos.z, Chunk::SIZE_Z);
+
+    int lx = Math::floorMod(pos.x, Chunk::SIZE_X);
+    int ly = Math::floorMod(pos.y, Chunk::SIZE_Y);
+    int lz = Math::floorMod(pos.z, Chunk::SIZE_Z);
+
+    const Chunk *chunk = getChunk(ChunkPos{cx, cy, cz});
+    if (!chunk) return 0;
+    if (ly < 0 || ly >= Chunk::SIZE_Y) return 0;
+
+    return chunk->getBlockId(lx, ly, lz);
+}
 
 void World::setBlock(const BlockPos &pos, Block *block) {
     int cx = Math::floorDiv(pos.x, Chunk::SIZE_X);

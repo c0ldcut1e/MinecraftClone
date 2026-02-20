@@ -27,7 +27,7 @@ ChunkMesh::~ChunkMesh() {
 }
 
 void ChunkMesh::upload(const float *vertices, uint32_t vertexCount) {
-    m_vertexCount = vertexCount;
+    m_vertexCount = vertexCount / 8;
 
     RenderCommand::bindVertexArray(m_vao);
     RenderCommand::bindArrayBuffer(m_vbo);
@@ -39,5 +39,5 @@ void ChunkMesh::render() const {
 
     m_texture->bind(0);
     RenderCommand::bindVertexArray(m_vao);
-    RenderCommand::renderArrays(GL_TRIANGLES, 0, m_vertexCount / 6);
+    RenderCommand::renderArrays(GL_TRIANGLES, 0, m_vertexCount);
 }

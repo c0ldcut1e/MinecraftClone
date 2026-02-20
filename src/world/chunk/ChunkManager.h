@@ -4,6 +4,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <queue>
 #include <unordered_set>
 #include <vector>
 
@@ -21,7 +22,7 @@ public:
     void stop();
     void update(const Vec3 &playerPosition);
 
-    void drainFinished(std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> &out);
+    void drainFinished(std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> &out, int max);
 
 private:
     struct GenerationTask {
@@ -29,10 +30,16 @@ private:
         int priority;
     };
 
+    struct TaskCompare {
+        bool operator()(const GenerationTask &a, const GenerationTask &b) const { return a.priority < b.priority; }
+    };
+
     void generateChunk(const ChunkPos &pos);
     void queueChunkGeneration(const ChunkPos &pos);
     bool isChunkInRenderDistance(const ChunkPos &pos, const ChunkPos &center) const;
     int calculatePriority(const ChunkPos &pos, const ChunkPos &center) const;
+
+    void dispatchPending();
 
     World *m_world;
 
@@ -41,6 +48,12 @@ private:
 
     std::unordered_set<ChunkPos, ChunkPosHash> m_generatingChunks;
     std::mutex m_generatingMutex;
+
+    std::priority_queue<GenerationTask, std::vector<GenerationTask>, TaskCompare> m_pending;
+    std::mutex m_pendingMutex;
+
+    std::atomic<int> m_inFlight;
+    int m_maxInFlight;
 
     std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> m_finished;
     std::mutex m_finishedMutex;

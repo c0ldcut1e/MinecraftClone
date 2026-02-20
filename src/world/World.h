@@ -5,6 +5,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "../utils/HitResult.h"
 #include "block/BlockPos.h"
@@ -37,6 +38,7 @@ public:
     void tickEntities();
     const std::vector<std::unique_ptr<Entity>> &getEntities() const;
 
+    uint32_t getBlockId(const BlockPos &pos) const;
     void setBlock(const BlockPos &pos, Block *block);
 
     int getSurfaceHeight(int worldX, int worldZ) const;
@@ -60,6 +62,8 @@ private:
     std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> m_chunks;
     std::deque<ChunkPos> m_dirtyChunks;
     std::deque<ChunkPos> m_urgentDirtyChunks;
+    std::unordered_set<ChunkPos, ChunkPosHash> m_dirtyChunksSet;
+    std::unordered_set<ChunkPos, ChunkPosHash> m_urgentDirtyChunksSet;
     std::mutex m_dirtyMutex;
     std::deque<BlockPos> m_lightUpdates;
     bool m_emptyChunksSolid;

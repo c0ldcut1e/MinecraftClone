@@ -6,6 +6,7 @@
 #include <mutex>
 #include <queue>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <BS_thread_pool.hpp>
@@ -52,7 +53,6 @@ private:
     void renderFogPass(const Mat4 &projection);
 
     void scheduleMesher();
-    void pumpMesher();
 
     Shader *m_worldShader;
     Shader *m_skyShader;
@@ -82,4 +82,6 @@ private:
     std::mutex m_rebuildQueueMutex;
     std::queue<ChunkPos> m_rebuildQueue;
     std::queue<ChunkPos> m_urgentQueue;
+    std::unordered_set<ChunkPos, ChunkPosHash> m_rebuildQueued;
+    std::unordered_set<ChunkPos, ChunkPosHash> m_urgentQueued;
 };

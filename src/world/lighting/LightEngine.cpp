@@ -39,14 +39,12 @@ void LightEngine::rebuildChunk(World *world, const ChunkPos &pos) {
     Chunk *chunk = world->getChunk(pos);
     if (!chunk) return;
 
-    for (int y = 0; y < Chunk::SIZE_Y; y++) {
-        for (int z = 0; z < Chunk::SIZE_Z; z++) {
+    for (int y = 0; y < Chunk::SIZE_Y; y++)
+        for (int z = 0; z < Chunk::SIZE_Z; z++)
             for (int x = 0; x < Chunk::SIZE_X; x++) {
                 chunk->setBlockLight(x, y, z, 0, 0, 0);
                 chunk->setSkyLight(x, y, z, 0);
             }
-        }
-    }
 
     propagateSkyLight(world, pos);
     propagateBlockLight(world, pos);
@@ -58,21 +56,19 @@ void LightEngine::propagateSkyLight(World *world, const ChunkPos &pos) {
 
     std::queue<SkyLightNode> lightQueue;
 
-    for (int z = 0; z < Chunk::SIZE_Z; z++) {
+    for (int z = 0; z < Chunk::SIZE_Z; z++)
         for (int x = 0; x < Chunk::SIZE_X; x++) {
             int wx = pos.x * Chunk::SIZE_X + x;
             int wz = pos.z * Chunk::SIZE_Z + z;
 
             for (int y = Chunk::SIZE_Y - 1; y >= 0; y--) {
                 Block *block = Block::byId(chunk->getBlockId(x, y, z));
-
                 if (block->isSolid()) break;
 
                 setSkyLight(world, BlockPos(wx, y, wz), 15);
                 lightQueue.push({wx, y, wz, 15});
             }
         }
-    }
 
     while (!lightQueue.empty()) {
         SkyLightNode node = lightQueue.front();
@@ -105,11 +101,9 @@ void LightEngine::propagateSkyLight(World *world, const ChunkPos &pos) {
             uint8_t neighborLevel = getSkyLight(world, BlockPos(nx, ny, nz));
 
             uint8_t newLevel;
-            if (DIRECTIONS[i][1] == -1 && currentLevel == 15) {
-                newLevel = 15;
-            } else {
+            if (DIRECTIONS[i][1] == -1 && currentLevel == 15) newLevel = 15;
+            else
                 newLevel = currentLevel > 1 ? currentLevel - 1 : 0;
-            }
 
             if (newLevel > neighborLevel) {
                 setSkyLight(world, BlockPos(nx, ny, nz), newLevel);

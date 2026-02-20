@@ -29,7 +29,7 @@ WorldRenderer::WorldRenderer(World *world, int width, int height) : m_worldShade
     colormapManager->load("sky", "colormap/sky.png");
 
     m_mesherRunning = true;
-    m_mesherPool    = std::make_unique<BS::thread_pool<>>(1);
+    m_mesherPool    = std::make_unique<BS::thread_pool<>>((size_t) std::max(1u, std::thread::hardware_concurrency() - 2));
 }
 
 WorldRenderer::~WorldRenderer() {
@@ -126,24 +126,22 @@ void WorldRenderer::rebuild() {
 }
 
 void WorldRenderer::rebuildChunk(const ChunkPos &pos) {
-    auto it = m_world->getChunks().find(pos);
-    if (it == m_world->getChunks().end()) return;
+    if (m_world->getChunks().find(pos) == m_world->getChunks().end()) return;
 
     {
         std::lock_guard<std::mutex> lock(m_rebuildQueueMutex);
-        m_rebuildQueue.push(pos);
+        if (m_rebuildQueued.insert(pos).second) m_rebuildQueue.push(pos);
     }
 
     scheduleMesher();
 }
 
 void WorldRenderer::rebuildChunkUrgent(const ChunkPos &pos) {
-    auto it = m_world->getChunks().find(pos);
-    if (it == m_world->getChunks().end()) return;
+    if (m_world->getChunks().find(pos) == m_world->getChunks().end()) return;
 
     {
         std::lock_guard<std::mutex> lock(m_rebuildQueueMutex);
-        m_urgentQueue.push(pos);
+        if (m_urgentQueued.insert(pos).second) m_urgentQueue.push(pos);
     }
 
     scheduleMesher();
@@ -548,15 +546,18 @@ void WorldRenderer::bindWorldShader(const Vec3 &cameraPos, const Mat4 &viewMatri
 }
 
 void WorldRenderer::uploadPendingMeshes() {
-    int uploadsPerFrame = 2;
+    int uploadsPerFrame = 16;
 
     while (uploadsPerFrame-- > 0) {
-        std::lock_guard<std::mutex> lock(m_meshQueueMutex);
+        std::pair<ChunkPos, std::vector<ChunkMesher::MeshBuildResult>> pair;
 
-        if (m_pendingMeshes.empty()) break;
+        {
+            std::lock_guard<std::mutex> lock(m_meshQueueMutex);
+            if (m_pendingMeshes.empty()) break;
 
-        auto pair = std::move(m_pendingMeshes.front());
-        m_pendingMeshes.pop_front();
+            pair = std::move(m_pendingMeshes.front());
+            m_pendingMeshes.pop_front();
+        }
 
         const ChunkPos &pos                                = pair.first;
         std::vector<ChunkMesher::MeshBuildResult> &results = pair.second;
@@ -603,6 +604,8 @@ void WorldRenderer::renderChunks(const Mat4 &viewMatrix, const Mat4 &projection)
 }
 
 void WorldRenderer::renderChunkGrid() const {
+    GlStateManager::disableDepthTest();
+
     ImmediateRenderer *renderer = ImmediateRenderer::getForWorld();
     renderer->begin(GL_LINES);
     renderer->color(0xFF00FF00);
@@ -723,49 +726,46 @@ void WorldRenderer::renderFogPass(const Mat4 &projection) {
 }
 
 void WorldRenderer::scheduleMesher() {
-    if (!m_mesherRunning) return;
-    if (!m_mesherPool) return;
+    if (!m_mesherRunning || !m_mesherPool) return;
 
-    bool expected = false;
-    if (!m_mesherScheduled.compare_exchange_strong(expected, true)) return;
-
-    m_mesherPool->detach_task([this] { pumpMesher(); });
-}
-
-void WorldRenderer::pumpMesher() {
-    while (m_mesherRunning) {
-        ChunkPos pos;
-        bool has = false;
-
-        {
-            std::lock_guard<std::mutex> lock(m_rebuildQueueMutex);
-
-            if (!m_urgentQueue.empty()) {
-                pos = m_urgentQueue.front();
-                m_urgentQueue.pop();
-                has = true;
-            } else if (!m_rebuildQueue.empty()) {
-                pos = m_rebuildQueue.front();
-                m_rebuildQueue.pop();
-                has = true;
-            }
-        }
-
-        if (!has) break;
-
-        auto it = m_world->getChunks().find(pos);
-        if (it == m_world->getChunks().end()) continue;
-
-        std::vector<ChunkMesher::MeshBuildResult> results;
-        ChunkMesher::buildMeshes(m_world, it->second.get(), results);
-
-        submitMesh(pos, std::move(results));
-    }
-
-    m_mesherScheduled = false;
+    std::vector<ChunkPos> urgent;
+    std::vector<ChunkPos> normal;
 
     {
         std::lock_guard<std::mutex> lock(m_rebuildQueueMutex);
-        if (m_mesherRunning && (!m_urgentQueue.empty() || !m_rebuildQueue.empty())) scheduleMesher();
+
+        while (!m_urgentQueue.empty()) {
+            urgent.push_back(m_urgentQueue.front());
+            m_urgentQueue.pop();
+        }
+        m_urgentQueued.clear();
+
+        while (!m_rebuildQueue.empty()) {
+            normal.push_back(m_rebuildQueue.front());
+            m_rebuildQueue.pop();
+        }
+        m_rebuildQueued.clear();
+    }
+
+    for (ChunkPos pos : urgent) {
+        m_mesherPool->detach_task([this, pos] {
+            if (!m_mesherRunning) return;
+            auto it = m_world->getChunks().find(pos);
+            if (it == m_world->getChunks().end()) return;
+            std::vector<ChunkMesher::MeshBuildResult> results;
+            ChunkMesher::buildMeshes(m_world, it->second.get(), results);
+            submitMesh(pos, std::move(results));
+        });
+    }
+
+    for (ChunkPos pos : normal) {
+        m_mesherPool->detach_task([this, pos] {
+            if (!m_mesherRunning) return;
+            auto it = m_world->getChunks().find(pos);
+            if (it == m_world->getChunks().end()) return;
+            std::vector<ChunkMesher::MeshBuildResult> results;
+            ChunkMesher::buildMeshes(m_world, it->second.get(), results);
+            submitMesh(pos, std::move(results));
+        });
     }
 }

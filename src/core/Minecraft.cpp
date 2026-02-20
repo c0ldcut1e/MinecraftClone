@@ -121,7 +121,6 @@ void Minecraft::start() {
         EventManager::process();
 
         m_fixedStepper->addFrame(Time::getDelta());
-
         while (m_fixedStepper->shouldStep()) {
             m_world->tick();
             m_fixedStepper->consumeStep();

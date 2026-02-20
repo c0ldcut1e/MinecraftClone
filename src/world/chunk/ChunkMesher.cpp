@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "../../utils/Direction.h"
+#include "../../utils/math/Math.h"
 #include "../block/Block.h"
 #include "../lighting/LightEngine.h"
 
@@ -71,10 +72,26 @@ static inline void addFace(std::vector<float> &vertices, float x1, float y1, flo
     push(vertices, x1, y1, z1, uMax, vMax, r, g, b);
 }
 
-static inline uint16_t sampleLightKey(World *world, int x, int y, int z) {
-    uint8_t lr, lg, lb;
-    LightEngine::getLightLevel(world, BlockPos(x, y, z), &lr, &lg, &lb);
-    return packLight(lr, lg, lb);
+static inline uint16_t sampleLightKey(World *world, const Chunk *chunk, int wx, int wy, int wz) {
+    int cx = Math::floorDiv(wx, Chunk::SIZE_X);
+    int cy = Math::floorDiv(wy, Chunk::SIZE_Y);
+    int cz = Math::floorDiv(wz, Chunk::SIZE_Z);
+
+    int lx = Math::floorMod(wx, Chunk::SIZE_X);
+    int ly = Math::floorMod(wy, Chunk::SIZE_Y);
+    int lz = Math::floorMod(wz, Chunk::SIZE_Z);
+
+    const Chunk *_chunk = chunk;
+    ChunkPos chunkPos   = chunk->getPos();
+
+    if (cx != chunkPos.x || cy != chunkPos.y || cz != chunkPos.z) {
+        _chunk = world->getChunk(ChunkPos(cx, cy, cz));
+        if (!_chunk) return packLight(0, 0, 0);
+    }
+
+    uint8_t r, g, b;
+    _chunk->getLight(lx, ly, lz, r, g, b);
+    return packLight(r, g, b);
 }
 
 static inline Block *getBlockWorld(World *world, const Chunk *chunk, int x, int y, int z) {
@@ -158,10 +175,10 @@ static void greedy2D(std::vector<MaskCell> &mask, int width, int height, auto &&
 void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<MeshBuildResult> &outMeshes) {
     std::unordered_map<Texture *, std::vector<float>> buckets;
 
-    ChunkPos cpos = chunk->getPos();
-    int baseX     = cpos.x * Chunk::SIZE_X;
-    int baseY     = cpos.y * Chunk::SIZE_Y;
-    int baseZ     = cpos.z * Chunk::SIZE_Z;
+    ChunkPos chunkPos = chunk->getPos();
+    int baseX         = chunkPos.x * Chunk::SIZE_X;
+    int baseY         = chunkPos.y * Chunk::SIZE_Y;
+    int baseZ         = chunkPos.z * Chunk::SIZE_Z;
 
     auto emit = [&](Direction *direction, Texture *texture, uint16_t lightKey, float x1, float y1, float z1, float x2, float y2, float z2) {
         if (!texture) return;
@@ -222,7 +239,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                         if (texture) {
                             cell.filled   = true;
                             cell.texture  = texture;
-                            cell.lightKey = sampleLightKey(world, baseX + x, baseY + y, baseZ + z);
+                            cell.lightKey = sampleLightKey(world, chunk, baseX + x, baseY + y, baseZ + z);
                         }
                     }
                 }
@@ -254,7 +271,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                         if (texture) {
                             cell.filled   = true;
                             cell.texture  = texture;
-                            cell.lightKey = sampleLightKey(world, baseX + x - 1, baseY + y, baseZ + z);
+                            cell.lightKey = sampleLightKey(world, chunk, baseX + x - 1, baseY + y, baseZ + z);
                         }
                     }
                 }
@@ -291,7 +308,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                         if (texture) {
                             cell.filled   = true;
                             cell.texture  = texture;
-                            cell.lightKey = sampleLightKey(world, baseX + x, baseY + y, baseZ + z);
+                            cell.lightKey = sampleLightKey(world, chunk, baseX + x, baseY + y, baseZ + z);
                         }
                     }
                 }
@@ -323,7 +340,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                         if (texture) {
                             cell.filled   = true;
                             cell.texture  = texture;
-                            cell.lightKey = sampleLightKey(world, baseX + x, baseY + y, baseZ + z - 1);
+                            cell.lightKey = sampleLightKey(world, chunk, baseX + x, baseY + y, baseZ + z - 1);
                         }
                     }
                 }
@@ -360,7 +377,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                         if (texture) {
                             cell.filled   = true;
                             cell.texture  = texture;
-                            cell.lightKey = sampleLightKey(world, baseX + x, baseY + y, baseZ + z);
+                            cell.lightKey = sampleLightKey(world, chunk, baseX + x, baseY + y, baseZ + z);
                         }
                     }
                 }
@@ -392,7 +409,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                         if (texture) {
                             cell.filled   = true;
                             cell.texture  = texture;
-                            cell.lightKey = sampleLightKey(world, baseX + x, baseY + y - 1, baseZ + z);
+                            cell.lightKey = sampleLightKey(world, chunk, baseX + x, baseY + y - 1, baseZ + z);
                         }
                     }
                 }

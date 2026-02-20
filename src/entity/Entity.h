@@ -15,7 +15,6 @@ public:
 
     virtual uint64_t getType();
 
-    virtual void update(float partialTicks);
     virtual void tick();
 
     World *getWorld() const;

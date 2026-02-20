@@ -33,33 +33,26 @@ Shader::~Shader() { RenderCommand::deleteProgram(m_program); }
 
 void Shader::bind() const { RenderCommand::useProgram(m_program); }
 
-void Shader::setInt(const char *name, int value) const {
-    int location = RenderCommand::getUniformLocation(m_program, name);
-    RenderCommand::setUniform1i(location, value);
+int Shader::getLocation(const char *name) const {
+    auto it = m_locationCache.find(name);
+    if (it != m_locationCache.end()) return it->second;
+    int location          = RenderCommand::getUniformLocation(m_program, name);
+    m_locationCache[name] = location;
+    return location;
 }
 
-void Shader::setFloat(const char *name, float value) const {
-    int location = RenderCommand::getUniformLocation(m_program, name);
-    RenderCommand::setUniform1f(location, value);
-}
+void Shader::setInt(const char *name, int value) const { RenderCommand::setUniform1i(getLocation(name), value); }
 
-void Shader::setVec2(const char *name, float x, float y) const {
-    int location = RenderCommand::getUniformLocation(m_program, name);
-    RenderCommand::setUniform2f(location, x, y);
-}
+void Shader::setFloat(const char *name, float value) const { RenderCommand::setUniform1f(getLocation(name), value); }
 
-void Shader::setVec3(const char *name, float x, float y, float z) const {
-    int location = RenderCommand::getUniformLocation(m_program, name);
-    RenderCommand::setUniform3f(location, x, y, z);
-}
+void Shader::setVec2(const char *name, float x, float y) const { RenderCommand::setUniform2f(getLocation(name), x, y); }
+
+void Shader::setVec3(const char *name, float x, float y, float z) const { RenderCommand::setUniform3f(getLocation(name), x, y, z); }
 
 void Shader::setMat4(const char *name, const double *data) const {
-    int location = RenderCommand::getUniformLocation(m_program, name);
-
     float matrix[16];
-    for (int i = 0; i < 16; i++) matrix[i] = data[i];
-
-    RenderCommand::setUniformMatrix4fv(location, 1, false, matrix);
+    for (int i = 0; i < 16; i++) matrix[i] = (float) data[i];
+    RenderCommand::setUniformMatrix4fv(getLocation(name), 1, false, matrix);
 }
 
 char *Shader::loadFile(const char *path) {

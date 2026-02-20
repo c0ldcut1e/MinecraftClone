@@ -29,7 +29,7 @@ void BlockRegistry::init() {
 
     Block glowstone("glowstone", true, "textures/block/glowstone.png");
     glowstone.setLightEmission(15);
-    glowstone.setLightColor(0xFF, 0xFF, 0xFF);
+    glowstone.setLightColor(0xFF, 0xDC, 0x85);
     registry->registerValue("glowstone", glowstone);
 }
 

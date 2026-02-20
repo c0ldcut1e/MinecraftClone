@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <unordered_map>
 
 class Shader {
 public:
@@ -16,7 +18,10 @@ public:
     void setMat4(const char *name, const double *data) const;
 
 private:
+    int getLocation(const char *name) const;
+
     uint32_t m_program;
+    mutable std::unordered_map<std::string, int> m_locationCache;
 
     char *loadFile(const char *path);
     uint32_t compileShader(uint32_t type, const char *source);

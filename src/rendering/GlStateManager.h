@@ -55,7 +55,11 @@ public:
 
     static void setColorMask(bool r, bool g, bool b, bool a);
 
+    static void enablePolygonOffsetFill();
+    static void disablePolygonOffsetFill();
+    static void setPolygonOffset(float factor, float units);
     static void setPolygonMode(uint32_t face, uint32_t mode);
+
     static void setLineWidth(float width);
     static void setPointSize(float size);
 
@@ -106,6 +110,9 @@ private:
     static bool s_colorMaskB;
     static bool s_colorMaskA;
 
+    static bool s_polygonOffsetFill;
+    static float s_polygonOffsetFactor;
+    static float s_polygonOffsetUnits;
     static uint32_t s_polygonFace;
     static uint32_t s_polygonMode;
 

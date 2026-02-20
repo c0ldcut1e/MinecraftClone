@@ -10,7 +10,7 @@ public:
 
     uint64_t getType() override;
 
-    void update(float partialTicks) override;
+    void update(float partialTicks);
     void tick() override;
 
     void onKeyPressed(int key);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <climits>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -34,8 +35,17 @@ public:
     void rebuildChunkUrgent(const ChunkPos &pos);
 
 private:
+    struct SkyUpdateResult {
+        ChunkPos pos;
+        size_t index;
+        uint64_t meshId;
+        std::vector<float> vertices;
+    };
+
     static std::vector<uint8_t> buildCloudMap();
     static const std::vector<uint8_t> &getCloudMap();
+
+    static std::vector<float> buildStarVertices();
 
     void submitMesh(const ChunkPos &pos, std::vector<ChunkMesher::MeshBuildResult> &&results);
 
@@ -44,10 +54,12 @@ private:
     void renderSky(const Mat4 &viewMatrix, const Mat4 &projection);
     void renderFastClouds(const Mat4 &viewMatrix, const Mat4 &projection);
     void renderClouds(const Mat4 &viewMatrix, const Mat4 &projection);
+    void renderStars(const Mat4 &viewMatrix, const Mat4 &projection);
     void bindWorldShader(const Vec3 &cameraPos, const Mat4 &viewMatrix, const Mat4 &projection);
     void uploadPendingMeshes();
     void renderChunks(const Mat4 &viewMatrix, const Mat4 &projection);
     void renderChunkGrid() const;
+    void renderBlockOutline();
     void renderEntities(float partialTicks);
     void renderEntityNameTags(float partialTicks);
     void renderFogPass(const Mat4 &projection);
@@ -58,6 +70,11 @@ private:
     Shader *m_skyShader;
     Shader *m_cloudShader;
     Shader *m_fogShader;
+    Shader *m_starShader;
+
+    uint32_t m_starVao;
+    uint32_t m_starVbo;
+    int m_starVertexCount;
 
     Framebuffer *m_sceneFramebuffer;
 
@@ -67,9 +84,19 @@ private:
 
     EntityRenderer m_entityRenderer;
 
-    bool m_renderChunkGrid = false;
+    bool m_renderChunkGrid;
 
     CloudMesh m_cloudMesh;
+    float m_cloudOffset;
+    int m_cloudLastCamCellX;
+    int m_cloudLastCamCellZ;
+    float m_cloudLastBuiltOffset;
+    float m_cloudLightSmooth;
+
+    uint8_t m_lastSkyLightClamp{255};
+
+    std::mutex m_skyMutex;
+    std::deque<SkyUpdateResult> m_skyResults;
 
     std::unordered_map<ChunkPos, std::vector<std::unique_ptr<ChunkMesh>>, ChunkPosHash> m_chunks;
     std::mutex m_meshQueueMutex;

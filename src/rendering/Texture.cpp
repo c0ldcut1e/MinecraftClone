@@ -13,7 +13,6 @@ Texture::Texture(const char *path) : m_id(0), m_pixelWidth(0), m_pixelHeight(0) 
     int width;
     int height;
     int channels;
-
     uint8_t *data = stbi_load(path, &width, &height, &channels, 4);
     if (!data) throw std::runtime_error(std::string("failed to load texture: " + std::string(path)));
 
@@ -63,6 +62,8 @@ void Texture::samplePixel(int pixelX, int pixelY, float &r, float &g, float &b) 
     g             = (float) m_pixels[offset + 1] / 255.0f;
     b             = (float) m_pixels[offset + 2] / 255.0f;
 }
+
+uint32_t Texture::getId() const { return m_id; }
 
 int Texture::getPixelWidth() const { return m_pixelWidth; }
 

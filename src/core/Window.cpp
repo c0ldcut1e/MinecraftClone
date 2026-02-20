@@ -9,7 +9,7 @@
 
 #ifndef _WIN32
 static bool envTruthy(const char *name) {
-    const char *variable = std::getenv(name);
+    const char *variable = getenv(name);
     if (!variable || !*variable) return false;
     if (variable[0] == '0') return false;
     if (variable[0] == 'f' || variable[0] == 'F') return false;
@@ -18,8 +18,8 @@ static bool envTruthy(const char *name) {
 }
 
 static bool isWaylandSession() {
-    if (std::getenv("WAYLAND_DISPLAY")) return true;
-    const char *type = std::getenv("XDG_SESSION_TYPE");
+    if (getenv("WAYLAND_DISPLAY")) return true;
+    const char *type = getenv("XDG_SESSION_TYPE");
     if (!type) return false;
     return std::string(type) == "wayland";
 }

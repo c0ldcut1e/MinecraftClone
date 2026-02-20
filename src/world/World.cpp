@@ -15,9 +15,17 @@
 #include "lighting/LightEngine.h"
 #include "models/ModelRegistry.h"
 
-World::World() : m_emptyChunksSolid(true), m_sunPosition(0.0, 1000.0, 0.0), m_renderDistance(12) {}
+World::World() : m_emptyChunksSolid(true), m_renderDistance(12) {}
 
 void World::update(float partialTicks) {
+    updateChunks();
+    updateLighting();
+    updateMeshes();
+
+    Minecraft::getInstance()->getLocalPlayer()->update(partialTicks);
+}
+
+void World::updateChunks() {
     if (ChunkManager *chunkManager = Minecraft::getInstance()->getChunkManager()) {
         std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> ready;
         chunkManager->drainFinished(ready, 2);
@@ -42,72 +50,70 @@ void World::update(float partialTicks) {
         }
     }
 
-    {
-        const int LIGHT_BUDGET = 32;
+    const int URGENT_BUDGET = 2;
 
-        int processed = 0;
-        while (processed < LIGHT_BUDGET && !m_lightUpdates.empty()) {
-            BlockPos pos = m_lightUpdates.front();
-            m_lightUpdates.pop_front();
+    WorldRenderer *worldRenderer = Minecraft::getInstance()->getWorldRenderer();
+    for (int i = 0; i < URGENT_BUDGET; i++) {
+        ChunkPos pos;
+        bool has = false;
 
-            LightEngine::updateFrom(this, pos);
+        {
+            std::lock_guard<std::mutex> lock(m_dirtyMutex);
 
-            processed++;
-        }
-    }
-
-    {
-        const int URGENT_BUDGET = 2;
-
-        WorldRenderer *worldRenderer = Minecraft::getInstance()->getWorldRenderer();
-        for (int i = 0; i < URGENT_BUDGET; i++) {
-            ChunkPos pos;
-            bool has = false;
-
-            {
-                std::lock_guard<std::mutex> lock(m_dirtyMutex);
-
-                if (!m_urgentDirtyChunks.empty()) {
-                    pos = m_urgentDirtyChunks.front();
-                    m_urgentDirtyChunks.pop_front();
-                    m_urgentDirtyChunksSet.erase(pos);
-                    has = true;
-                }
+            if (!m_urgentDirtyChunks.empty()) {
+                pos = m_urgentDirtyChunks.front();
+                m_urgentDirtyChunks.pop_front();
+                m_urgentDirtyChunksSet.erase(pos);
+                has = true;
             }
-
-            if (!has) break;
-            if (worldRenderer) worldRenderer->rebuildChunkUrgent(pos);
         }
+
+        if (!has) break;
+        if (worldRenderer) worldRenderer->rebuildChunkUrgent(pos);
     }
-
-    {
-        const int MESH_BUDGET = 16;
-
-        for (int i = 0; i < MESH_BUDGET; i++) {
-            ChunkPos pos;
-            bool has = false;
-
-            {
-                std::lock_guard<std::mutex> lock(m_dirtyMutex);
-
-                if (!m_dirtyChunks.empty()) {
-                    pos = m_dirtyChunks.front();
-                    m_dirtyChunks.pop_front();
-                    m_dirtyChunksSet.erase(pos);
-                    has = true;
-                }
-            }
-
-            if (!has) break;
-            Minecraft::getInstance()->getWorldRenderer()->rebuildChunk(pos);
-        }
-    }
-
-    for (std::unique_ptr<Entity> &entity : m_entities)
-        if (entity) entity->update(partialTicks);
 }
 
-void World::tick() { tickEntities(); }
+void World::updateLighting() {
+    const int LIGHT_BUDGET = 32;
+
+    int processed = 0;
+    while (processed < LIGHT_BUDGET && !m_lightUpdates.empty()) {
+        BlockPos pos = m_lightUpdates.front();
+        m_lightUpdates.pop_front();
+
+        LightEngine::updateFrom(this, pos);
+
+        processed++;
+    }
+}
+
+void World::updateMeshes() {
+    const int MESH_BUDGET = 16;
+
+    for (int i = 0; i < MESH_BUDGET; i++) {
+        ChunkPos pos;
+        bool has = false;
+
+        {
+            std::lock_guard<std::mutex> lock(m_dirtyMutex);
+
+            if (!m_dirtyChunks.empty()) {
+                pos = m_dirtyChunks.front();
+                m_dirtyChunks.pop_front();
+                m_dirtyChunksSet.erase(pos);
+                has = true;
+            }
+        }
+
+        if (!has) break;
+        Minecraft::getInstance()->getWorldRenderer()->rebuildChunk(pos);
+    }
+}
+
+void World::tick() {
+    tickEntities();
+    m_worldTime.advance();
+}
 
 bool World::hasChunk(const ChunkPos &pos) const { return m_chunks.find(pos) != m_chunks.end(); }
 
@@ -425,10 +431,6 @@ HitResult *World::clip(const Vec3 &origin, const Vec3 &direction, float maxDista
     return result;
 }
 
-const Vec3 &World::getSunPosition() const { return m_sunPosition; }
-
-void World::setSunPosition(const Vec3 &position) { m_sunPosition = position; }
-
 void World::setRenderDistance(int distance) { m_renderDistance = distance; }
 
 int World::getRenderDistance() const { return m_renderDistance; }
@@ -452,3 +454,21 @@ uint8_t World::getLightLevel(const BlockPos &pos) const {
 Fog &World::getFog() { return m_fog; }
 
 const Fog &World::getFog() const { return m_fog; }
+
+const WorldTime &World::getWorldTime() const { return m_worldTime; }
+
+void World::setWorldTime(uint64_t ticks) { m_worldTime.setTicks(ticks); }
+
+float World::getDayFraction() const { return m_worldTime.getDayFraction(); }
+
+float World::getCelestialAngle() const { return m_worldTime.getCelestialAngle(); }
+
+float World::getDaylightFactor() const { return m_worldTime.getDaylightFactor(); }
+
+uint8_t World::getSkyLightClamp() const { return m_worldTime.getSkyLightClamp(); }
+
+void World::setDaylightCurveTicks(int darkStartTick, int darkPeakTick) { m_worldTime.setDaylightCurve(darkStartTick, darkPeakTick); }
+
+int World::getDarkStartTick() const { return m_worldTime.getDarkStartTick(); }
+
+int World::getDarkPeakTick() const { return m_worldTime.getDarkPeakTick(); }

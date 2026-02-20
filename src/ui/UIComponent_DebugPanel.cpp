@@ -36,6 +36,8 @@ void UIComponent_DebugPanel::render() {
     swprintf(buffer, 0xFF, L"dt: %.3f ms  fps: %.1f", delta * 1000.0, delta > 0.0 ? 1.0 / delta : 0.0);
     lines.emplace_back(buffer);
 
+    lines.emplace_back(L"");
+
     if (me) {
         const Vec3 &pos = me->getPosition();
         swprintf(buffer, 0xFF, L"pos: %.3f / %.3f / %.3f", (float) pos.x, (float) pos.y, (float) pos.z);
@@ -52,6 +54,8 @@ void UIComponent_DebugPanel::render() {
         int cy = Math::floorDiv((int) pos.y, Chunk::SIZE_Y);
         int cz = Math::floorDiv((int) pos.z, Chunk::SIZE_Z);
 
+        lines.emplace_back(L"");
+
         swprintf(buffer, 0xFF, L"chunk: %d / %d / %d", cx, cy, cz);
         lines.emplace_back(buffer);
 
@@ -59,9 +63,7 @@ void UIComponent_DebugPanel::render() {
             swprintf(buffer, 0xFF, L"chunks loaded: %d  renderDistance: %d", (uint32_t) world->getChunks().size(), world->getRenderDistance());
             lines.emplace_back(buffer);
 
-            const Vec3 &sun = world->getSunPosition();
-            swprintf(buffer, 0xFF, L"sun: %.1f / %.1f / %.1f", (float) sun.x, (float) sun.y, (float) sun.z);
-            lines.emplace_back(buffer);
+            lines.emplace_back(L"");
 
             HitResult *result = world->clip(pos.add(Vec3(0.0, 1.6, 0.0)), front, 8.0f);
             if (result) {
@@ -108,6 +110,11 @@ void UIComponent_DebugPanel::render() {
 
                 delete result;
             }
+
+            lines.emplace_back(L"");
+
+            swprintf(buffer, 0xFF, L"worldTime: %llu", world->getWorldTime().getTicks());
+            lines.emplace_back(buffer);
         }
 
         Font *font      = minecraft->getDefaultFont();

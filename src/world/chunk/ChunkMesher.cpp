@@ -13,7 +13,7 @@
 struct MaskCell {
     Texture *texture;
     uint32_t tint;
-    uint16_t lightKey;
+    uint16_t rawLight;
     bool filled;
 };
 
@@ -30,7 +30,10 @@ static inline void unpackLight(uint16_t k, uint8_t &r, uint8_t &g, uint8_t &b) {
     b = (uint8_t) (k & 0xF);
 }
 
-static inline void push(std::vector<float> &vertices, float x, float y, float z, float u, float v, float r, float g, float b) {
+static inline uint16_t packRawLight(uint8_t br, uint8_t bg, uint8_t bb, uint8_t sky) { return (uint16_t) ((br & 15) | ((bg & 15) << 4) | ((bb & 15) << 8) | ((sky & 15) << 12)); }
+
+static inline void push(std::vector<float> &vertices, std::vector<uint16_t> &rawLights, std::vector<float> &shades, std::vector<uint32_t> &tints, float x, float y, float z, float u, float v, float r, float g, float b, uint16_t rawLight, float shadeMul,
+                        uint32_t tint) {
     vertices.push_back(x);
     vertices.push_back(y);
     vertices.push_back(z);
@@ -39,6 +42,10 @@ static inline void push(std::vector<float> &vertices, float x, float y, float z,
     vertices.push_back(r);
     vertices.push_back(g);
     vertices.push_back(b);
+
+    rawLights.push_back(rawLight);
+    shades.push_back(shadeMul);
+    tints.push_back(tint);
 }
 
 static inline void shade(Direction *direction, uint8_t lr, uint8_t lg, uint8_t lb, float &r, float &g, float &b) {
@@ -63,14 +70,15 @@ static inline void shade(Direction *direction, uint8_t lr, uint8_t lg, uint8_t l
     b = baseB * _shade;
 }
 
-static inline void addFace(std::vector<float> &vertices, float x1, float y1, float z1, float x2, float y2, float z2, float x3, float y3, float z3, float x4, float y4, float z4, float uMax, float vMax, float r, float g, float b) {
-    push(vertices, x1, y1, z1, uMax, vMax, r, g, b);
-    push(vertices, x2, y2, z2, uMax, 0.0f, r, g, b);
-    push(vertices, x3, y3, z3, 0.0f, 0.0f, r, g, b);
+static inline void addFace(std::vector<float> &vertices, std::vector<uint16_t> &rawLights, std::vector<float> &shades, std::vector<uint32_t> &tints, float x1, float y1, float z1, float x2, float y2, float z2, float x3, float y3, float z3, float x4, float y4,
+                           float z4, float uMax, float vMax, float r, float g, float b, uint16_t rawLight, float shadeMul, uint32_t tint) {
+    push(vertices, rawLights, shades, tints, x1, y1, z1, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x2, y2, z2, uMax, 0.0f, r, g, b, rawLight, shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x3, y3, z3, 0.0f, 0.0f, r, g, b, rawLight, shadeMul, tint);
 
-    push(vertices, x3, y3, z3, 0.0f, 0.0f, r, g, b);
-    push(vertices, x4, y4, z4, 0.0f, vMax, r, g, b);
-    push(vertices, x1, y1, z1, uMax, vMax, r, g, b);
+    push(vertices, rawLights, shades, tints, x3, y3, z3, 0.0f, 0.0f, r, g, b, rawLight, shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x4, y4, z4, 0.0f, vMax, r, g, b, rawLight, shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x1, y1, z1, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
 }
 
 static inline uint16_t sampleLightKey(World *world, const Chunk *chunk, int wx, int wy, int wz) {
@@ -87,12 +95,17 @@ static inline uint16_t sampleLightKey(World *world, const Chunk *chunk, int wx, 
 
     if (cx != chunkPos.x || cy != chunkPos.y || cz != chunkPos.z) {
         _chunk = world->getChunk(ChunkPos(cx, cy, cz));
-        if (!_chunk) return packLight(0, 0, 0);
+        if (!_chunk) return packRawLight(0, 0, 0, 0);
     }
 
-    uint8_t r, g, b;
-    _chunk->getLight(lx, ly, lz, r, g, b);
-    return packLight(r, g, b);
+    uint8_t br;
+    uint8_t bg;
+    uint8_t bb;
+    _chunk->getBlockLight(lx, ly, lz, br, bg, bb);
+
+    uint8_t sky = _chunk->getSkyLight(lx, ly, lz);
+
+    return packRawLight(br, bg, bb, sky);
 }
 
 static inline Block *getBlockWorld(World *world, const Chunk *chunk, int x, int y, int z) {
@@ -142,7 +155,7 @@ static void greedy2D(std::vector<MaskCell> &mask, int width, int height, auto &&
             int rWidth = 1;
             while (i + rWidth < width) {
                 MaskCell _cell = mask[(size_t) (i + rWidth) + (size_t) width * (size_t) j];
-                if (!_cell.filled || _cell.texture != cell.texture || _cell.lightKey != cell.lightKey || _cell.tint != cell.tint) break;
+                if (!_cell.filled || _cell.texture != cell.texture || _cell.rawLight != cell.rawLight || _cell.tint != cell.tint) break;
                 rWidth++;
             }
 
@@ -151,7 +164,7 @@ static void greedy2D(std::vector<MaskCell> &mask, int width, int height, auto &&
             while (j + rHeight < height && ok) {
                 for (int k = 0; k < rWidth; k++) {
                     MaskCell _cell = mask[(size_t) (i + k) + (size_t) width * (size_t) (j + rHeight)];
-                    if (!_cell.filled || _cell.texture != cell.texture || _cell.lightKey != cell.lightKey || _cell.tint != cell.tint) {
+                    if (!_cell.filled || _cell.texture != cell.texture || _cell.rawLight != cell.rawLight || _cell.tint != cell.tint) {
                         ok = false;
                         break;
                     }
@@ -160,28 +173,35 @@ static void greedy2D(std::vector<MaskCell> &mask, int width, int height, auto &&
                 if (ok) rHeight++;
             }
 
-            emitRect(i, j, rWidth, rHeight, cell.texture, cell.lightKey, cell.tint);
+            emitRect(i, j, rWidth, rHeight, cell.texture, cell.rawLight, cell.tint);
 
             for (int y = 0; y < rHeight; y++)
                 for (int x = 0; x < rWidth; x++) {
                     MaskCell &_cell = mask[(size_t) (i + x) + (size_t) width * (size_t) (j + y)];
                     _cell.filled    = false;
                     _cell.texture   = nullptr;
-                    _cell.lightKey  = 0;
+                    _cell.rawLight  = 0;
                     _cell.tint      = 0xFFFFFF;
                 }
         }
 }
 
 void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<MeshBuildResult> &outMeshes) {
-    std::unordered_map<Texture *, std::vector<float>> buckets;
+    struct Bucket {
+        std::vector<float> vertices;
+        std::vector<uint16_t> rawLights;
+        std::vector<float> shades;
+        std::vector<uint32_t> tints;
+    };
+
+    std::unordered_map<Texture *, Bucket> buckets;
 
     ChunkPos chunkPos = chunk->getPos();
     int baseX         = chunkPos.x * Chunk::SIZE_X;
     int baseY         = chunkPos.y * Chunk::SIZE_Y;
     int baseZ         = chunkPos.z * Chunk::SIZE_Z;
 
-    auto emit = [&](Direction *direction, Texture *texture, uint16_t lightKey, uint32_t tint, float x1, float y1, float z1, float x2, float y2, float z2) {
+    auto emit = [&](Direction *direction, Texture *texture, uint16_t rawLight, uint32_t tint, float x1, float y1, float z1, float x2, float y2, float z2) {
         if (!texture) return;
 
         float uMax = 1.0f;
@@ -197,10 +217,24 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
             vMax = fabsf(z2 - z1);
         }
 
-        uint8_t lr;
-        uint8_t lg;
-        uint8_t lb;
-        unpackLight(lightKey, lr, lg, lb);
+        float shadeMul = 1.0f;
+        if (direction == Direction::NORTH || direction == Direction::SOUTH) shadeMul = 0.8f;
+        else if (direction == Direction::EAST || direction == Direction::WEST)
+            shadeMul = 0.6f;
+        else if (direction == Direction::DOWN)
+            shadeMul = 0.5f;
+
+        uint8_t br  = (uint8_t) (rawLight & 15);
+        uint8_t bg  = (uint8_t) ((rawLight >> 4) & 15);
+        uint8_t bb  = (uint8_t) ((rawLight >> 8) & 15);
+        uint8_t sky = (uint8_t) ((rawLight >> 12) & 15);
+
+        uint8_t clamp = world->getSkyLightClamp();
+        if (sky > clamp) sky = clamp;
+
+        uint8_t lr = br > sky ? br : sky;
+        uint8_t lg = bg > sky ? bg : sky;
+        uint8_t lb = bb > sky ? bb : sky;
 
         float r;
         float g;
@@ -211,19 +245,18 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
         g *= (float) ((tint >> 8) & 0xFF) / 255.0f;
         b *= (float) (tint & 0xFF) / 255.0f;
 
-        std::vector<float> &v = buckets[texture];
-
-        if (direction == Direction::NORTH) addFace(v, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, uMax, vMax, r, g, b);
+        Bucket &bucket = buckets[texture];
+        if (direction == Direction::NORTH) addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
         else if (direction == Direction::SOUTH)
-            addFace(v, x2, y1, z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, uMax, vMax, r, g, b);
+            addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1, z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
         else if (direction == Direction::UP)
-            addFace(v, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, uMax, vMax, r, g, b);
+            addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
         else if (direction == Direction::DOWN)
-            addFace(v, x1, y1, z2, x1, y1, z1, x2, y1, z1, x2, y1, z2, uMax, vMax, r, g, b);
+            addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z2, x1, y1, z1, x2, y1, z1, x2, y1, z2, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
         else if (direction == Direction::EAST)
-            addFace(v, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, uMax, vMax, r, g, b);
+            addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
         else if (direction == Direction::WEST)
-            addFace(v, x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, uMax, vMax, r, g, b);
+            addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
     };
 
     {
@@ -239,7 +272,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                     MaskCell &cell = mask[(size_t) z + (size_t) Chunk::SIZE_Z * (size_t) y];
                     cell.filled    = false;
                     cell.texture   = nullptr;
-                    cell.lightKey  = 0;
+                    cell.rawLight  = 0;
                     cell.tint      = 0xFFFFFF;
 
                     if (a && !b && x > 0) {
@@ -248,19 +281,19 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                         if (texture) {
                             cell.filled   = true;
                             cell.texture  = texture;
-                            cell.lightKey = sampleLightKey(world, chunk, baseX + x, baseY + y, baseZ + z);
+                            cell.rawLight = sampleLightKey(world, chunk, baseX + x, baseY + y, baseZ + z);
                             cell.tint     = block->resolveTint(Direction::EAST, world, chunk, x - 1, z);
                         }
                     }
                 }
 
-            greedy2D(mask, Chunk::SIZE_Z, Chunk::SIZE_Y, [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t lightKey, uint32_t tint) {
+            greedy2D(mask, Chunk::SIZE_Z, Chunk::SIZE_Y, [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t rawLight, uint32_t tint) {
                 float X  = (float) (baseX + x);
                 float y1 = (float) (baseY + j);
                 float y2 = (float) (baseY + (j + rHeight));
                 float z1 = (float) (baseZ + i);
                 float z2 = (float) (baseZ + (i + rWidth));
-                emit(Direction::EAST, texture, lightKey, tint, X, y1, z1, X, y2, z2);
+                emit(Direction::EAST, texture, rawLight, tint, X, y1, z1, X, y2, z2);
             });
         }
 
@@ -273,7 +306,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                     MaskCell &cell = mask[(size_t) z + (size_t) Chunk::SIZE_Z * (size_t) y];
                     cell.filled    = false;
                     cell.texture   = nullptr;
-                    cell.lightKey  = 0;
+                    cell.rawLight  = 0;
                     cell.tint      = 0xFFFFFF;
 
                     if (b && !a && x < Chunk::SIZE_X) {
@@ -282,19 +315,19 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                         if (texture) {
                             cell.filled   = true;
                             cell.texture  = texture;
-                            cell.lightKey = sampleLightKey(world, chunk, baseX + x - 1, baseY + y, baseZ + z);
+                            cell.rawLight = sampleLightKey(world, chunk, baseX + x - 1, baseY + y, baseZ + z);
                             cell.tint     = block->resolveTint(Direction::WEST, world, chunk, x, z);
                         }
                     }
                 }
 
-            greedy2D(mask, Chunk::SIZE_Z, Chunk::SIZE_Y, [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t lightKey, uint32_t tint) {
+            greedy2D(mask, Chunk::SIZE_Z, Chunk::SIZE_Y, [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t rawLight, uint32_t tint) {
                 float X  = (float) (baseX + x);
                 float y1 = (float) (baseY + j);
                 float y2 = (float) (baseY + (j + rHeight));
                 float z1 = (float) (baseZ + i);
                 float z2 = (float) (baseZ + (i + rWidth));
-                emit(Direction::WEST, texture, lightKey, tint, X, y1, z1, X, y2, z2);
+                emit(Direction::WEST, texture, rawLight, tint, X, y1, z1, X, y2, z2);
             });
         }
     }
@@ -312,7 +345,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                     MaskCell &cell = mask[(size_t) x + (size_t) Chunk::SIZE_X * (size_t) y];
                     cell.filled    = false;
                     cell.texture   = nullptr;
-                    cell.lightKey  = 0;
+                    cell.rawLight  = 0;
                     cell.tint      = 0xFFFFFF;
 
                     if (a && !b && z > 0) {
@@ -321,19 +354,19 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                         if (texture) {
                             cell.filled   = true;
                             cell.texture  = texture;
-                            cell.lightKey = sampleLightKey(world, chunk, baseX + x, baseY + y, baseZ + z);
+                            cell.rawLight = sampleLightKey(world, chunk, baseX + x, baseY + y, baseZ + z);
                             cell.tint     = block->resolveTint(Direction::SOUTH, world, chunk, x, z - 1);
                         }
                     }
                 }
 
-            greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Y, [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t lightKey, uint32_t tint) {
+            greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Y, [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t rawLight, uint32_t tint) {
                 float Z  = (float) (baseZ + z);
                 float x1 = (float) (baseX + i);
                 float x2 = (float) (baseX + (i + rWidth));
                 float y1 = (float) (baseY + j);
                 float y2 = (float) (baseY + (j + rHeight));
-                emit(Direction::SOUTH, texture, lightKey, tint, x1, y1, Z, x2, y2, Z);
+                emit(Direction::SOUTH, texture, rawLight, tint, x1, y1, Z, x2, y2, Z);
             });
         }
 
@@ -346,7 +379,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                     MaskCell &cell = mask[(size_t) x + (size_t) Chunk::SIZE_X * (size_t) y];
                     cell.filled    = false;
                     cell.texture   = nullptr;
-                    cell.lightKey  = 0;
+                    cell.rawLight  = 0;
                     cell.tint      = 0xFFFFFF;
 
                     if (b && !a && z < Chunk::SIZE_Z) {
@@ -355,19 +388,19 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                         if (texture) {
                             cell.filled   = true;
                             cell.texture  = texture;
-                            cell.lightKey = sampleLightKey(world, chunk, baseX + x, baseY + y, baseZ + z - 1);
+                            cell.rawLight = sampleLightKey(world, chunk, baseX + x, baseY + y, baseZ + z - 1);
                             cell.tint     = block->resolveTint(Direction::NORTH, world, chunk, x, z);
                         }
                     }
                 }
 
-            greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Y, [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t lightKey, uint32_t tint) {
+            greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Y, [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t rawLight, uint32_t tint) {
                 float Z  = (float) (baseZ + z);
                 float x1 = (float) (baseX + i);
                 float x2 = (float) (baseX + (i + rWidth));
                 float y1 = (float) (baseY + j);
                 float y2 = (float) (baseY + (j + rHeight));
-                emit(Direction::NORTH, texture, lightKey, tint, x1, y1, Z, x2, y2, Z);
+                emit(Direction::NORTH, texture, rawLight, tint, x1, y1, Z, x2, y2, Z);
             });
         }
     }
@@ -385,7 +418,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                     MaskCell &cell = mask[(size_t) x + (size_t) Chunk::SIZE_X * (size_t) z];
                     cell.filled    = false;
                     cell.texture   = nullptr;
-                    cell.lightKey  = 0;
+                    cell.rawLight  = 0;
                     cell.tint      = 0xFFFFFF;
 
                     if (a && !b && y > 0) {
@@ -394,19 +427,19 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                         if (texture) {
                             cell.filled   = true;
                             cell.texture  = texture;
-                            cell.lightKey = sampleLightKey(world, chunk, baseX + x, baseY + y, baseZ + z);
+                            cell.rawLight = sampleLightKey(world, chunk, baseX + x, baseY + y, baseZ + z);
                             cell.tint     = block->resolveTint(Direction::UP, world, chunk, x, z);
                         }
                     }
                 }
 
-            greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Z, [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t lightKey, uint32_t tint) {
+            greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Z, [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t rawLight, uint32_t tint) {
                 float Y  = (float) (baseY + y);
                 float x1 = (float) (baseX + i);
                 float x2 = (float) (baseX + (i + rWidth));
                 float z1 = (float) (baseZ + j);
                 float z2 = (float) (baseZ + (j + rHeight));
-                emit(Direction::UP, texture, lightKey, tint, x1, Y, z1, x2, Y, z2);
+                emit(Direction::UP, texture, rawLight, tint, x1, Y, z1, x2, Y, z2);
             });
         }
 
@@ -419,7 +452,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                     MaskCell &cell = mask[(size_t) x + (size_t) Chunk::SIZE_X * (size_t) z];
                     cell.filled    = false;
                     cell.texture   = nullptr;
-                    cell.lightKey  = 0;
+                    cell.rawLight  = 0;
                     cell.tint      = 0xFFFFFF;
 
                     if (b && !a && y < Chunk::SIZE_Y) {
@@ -428,19 +461,19 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                         if (texture) {
                             cell.filled   = true;
                             cell.texture  = texture;
-                            cell.lightKey = sampleLightKey(world, chunk, baseX + x, baseY + y - 1, baseZ + z);
+                            cell.rawLight = sampleLightKey(world, chunk, baseX + x, baseY + y - 1, baseZ + z);
                             cell.tint     = block->resolveTint(Direction::DOWN, world, chunk, x, z);
                         }
                     }
                 }
 
-            greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Z, [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t lightKey, uint32_t tint) {
+            greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Z, [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t rawLight, uint32_t tint) {
                 float Y  = (float) (baseY + y);
                 float x1 = (float) (baseX + i);
                 float x2 = (float) (baseX + (i + rWidth));
                 float z1 = (float) (baseZ + j);
                 float z2 = (float) (baseZ + (j + rHeight));
-                emit(Direction::DOWN, texture, lightKey, tint, x1, Y, z1, x2, Y, z2);
+                emit(Direction::DOWN, texture, rawLight, tint, x1, Y, z1, x2, Y, z2);
             });
         }
     }
@@ -450,11 +483,14 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
 
     for (auto it = buckets.begin(); it != buckets.end(); ++it) {
         if (!it->first) continue;
-        if (it->second.empty()) continue;
+        if (it->second.vertices.empty()) continue;
 
         MeshBuildResult result;
-        result.texture  = it->first;
-        result.vertices = std::move(it->second);
+        result.texture   = it->first;
+        result.vertices  = std::move(it->second.vertices);
+        result.rawLights = std::move(it->second.rawLights);
+        result.shades    = std::move(it->second.shades);
+        result.tints     = std::move(it->second.tints);
         outMeshes.push_back(std::move(result));
     }
 }

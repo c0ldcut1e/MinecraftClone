@@ -8,6 +8,7 @@
 #include <unordered_set>
 
 #include "../utils/HitResult.h"
+#include "WorldTime.h"
 #include "block/BlockPos.h"
 #include "chunk/Chunk.h"
 #include "chunk/ChunkPos.h"
@@ -22,6 +23,10 @@ public:
 
     void update(float partialTicks);
     void tick();
+
+    void updateChunks();
+    void updateLighting();
+    void updateMeshes();
 
     Chunk *getChunk(const ChunkPos &pos);
     const Chunk *getChunk(const ChunkPos &pos) const;
@@ -45,9 +50,6 @@ public:
     bool intersectsBlock(const AABB &aabb) const;
     HitResult *clip(const Vec3 &origin, const Vec3 &direction, float maxDistance);
 
-    const Vec3 &getSunPosition() const;
-    void setSunPosition(const Vec3 &position);
-
     void setRenderDistance(int distance);
     int getRenderDistance() const;
 
@@ -57,6 +59,18 @@ public:
 
     Fog &getFog();
     const Fog &getFog() const;
+
+    const WorldTime &getWorldTime() const;
+    void setWorldTime(uint64_t ticks);
+
+    float getDayFraction() const;
+    float getCelestialAngle() const;
+    float getDaylightFactor() const;
+    uint8_t getSkyLightClamp() const;
+
+    void setDaylightCurveTicks(int darkStartTick, int darkPeakTick);
+    int getDarkStartTick() const;
+    int getDarkPeakTick() const;
 
 private:
     std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> m_chunks;
@@ -70,9 +84,9 @@ private:
 
     std::vector<std::unique_ptr<Entity>> m_entities;
 
-    Vec3 m_sunPosition;
-
     int m_renderDistance;
 
     Fog m_fog;
+
+    WorldTime m_worldTime;
 };

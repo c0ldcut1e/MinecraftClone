@@ -23,7 +23,7 @@ CXXFLAGS	:= -std=c++20 -Wall -Wextra -D_USE_MATH_DEFINES \
 CFLAGS		:= -Wall -Wextra \
             	$(addprefix -I,$(INCLUDES))
 
-LDFLAGS := -L$(HOME)/vcpkg/installed/x64-mingw-dynamic/lib
+LDFLAGS := -static-libstdc++ -static-libgcc -L$(HOME)/vcpkg/installed/x64-mingw-dynamic/lib
 LIBS 	:= -lglfw3dll -lfreetype -lopengl32 -lgdi32 -luser32 -lkernel32 -lshell32 -lwinmm
 
 all: $(BINDIR)/$(TARGET)
@@ -45,7 +45,7 @@ clean:
 	rm -rf $(BINDIR)/logs
 	rm -f $(BINDIR)/$(TARGET)
 
-start: $(BINDIR)/$(TARGET)
+start: all
 	cd $(BINDIR) && ./$(TARGET)
 
 .PHONY: all clean start

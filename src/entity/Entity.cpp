@@ -13,8 +13,6 @@ Entity::~Entity() {}
 
 uint64_t Entity::getType() { return TYPE; }
 
-void Entity::update(float partialTicks) { (void) partialTicks; }
-
 void Entity::tick() {
     m_totalTickCount++;
 

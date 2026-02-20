@@ -22,16 +22,13 @@ void BlockRegistry::init() {
     grass.setTexture(Direction::UP, s_textures.get("textures/grass_top.png").get());
     grass.setTexture(Direction::DOWN, s_textures.get("textures/dirt.png").get());
     registry->registerValue("grass", grass);
+    registry->registerValue("sand", Block("sand", true, "textures/sand.png"));
+    registry->registerValue("gravel", Block("gravel", true, "textures/gravel.png"));
 
     Block glowstone("glowstone", true, "textures/glowstone.png");
-    glowstone.setLightEmission(20);
-    glowstone.setLightColor(0xE3, 0x9F, 0x00);
+    glowstone.setLightEmission(15);
+    glowstone.setLightColor(0xFF, 0xFF, 0xFF);
     registry->registerValue("glowstone", glowstone);
-
-    Block light("light", false, "");
-    light.setLightEmission(15);
-    light.setLightColor(0xFF, 0xEE, 0xFF);
-    registry->registerValue("light", light);
 }
 
 TextureRepository *BlockRegistry::getTextureRepository() { return &s_textures; }

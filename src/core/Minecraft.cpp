@@ -1,6 +1,9 @@
 #include "Minecraft.h"
 
+#include <cmath>
 #include <stdexcept>
+
+#include <glad/glad.h>
 
 #include <GLFW/glfw3.h>
 
@@ -11,8 +14,8 @@
 #include "../ui/UIScene_DebugOverlay.h"
 #include "../ui/UIScene_HUD.h"
 #include "../utils/Time.h"
-#include "../utils/Utils.h"
 #include "../world/WorldRenderer.h"
+#include "../world/biome/BiomeRegistry.h"
 #include "../world/block/BlockRegistry.h"
 #include "../world/models/ModelRegistry.h"
 #include "Logger.h"
@@ -28,8 +31,6 @@
 Minecraft::Minecraft()
     : m_width(1280), m_height(720), m_window(m_width, m_height, "game"), m_shutdown(false), m_fixedStepper(nullptr), m_camera(nullptr), m_world(nullptr), m_localPlayer(nullptr), m_worldRenderer(nullptr), m_chunkManager(nullptr), m_defaultFont(nullptr),
       m_uiController(nullptr), m_farPlane(3000.0), m_projection(), m_mouseLocked(true) {
-    RenderCommand::enableExperimentalFeatures();
-    if (!RenderCommand::initialize()) throw std::runtime_error("Failed to initialize OpenGL");
     Logger::logInfo("OpenGL initialized: %s", glGetString(GL_VERSION));
 
     initGlfwEventBridge(m_window.getHandle());
@@ -39,7 +40,7 @@ Minecraft::Minecraft()
 
     m_camera        = new Camera();
     m_world         = new World();
-    m_worldRenderer = new WorldRenderer(m_world);
+    m_worldRenderer = new WorldRenderer(m_world, m_width, m_height);
     m_chunkManager  = new ChunkManager(m_world);
 
     m_defaultFont = new Font("fonts/default.ttf", 24);
@@ -76,10 +77,11 @@ Minecraft::Minecraft()
             m_width  = event.getWidth();
             m_height = event.getHeight();
 
-            glViewport(0, 0, event.getWidth(), event.getHeight());
+            RenderCommand::setViewport(0, 0, event.getWidth(), event.getHeight());
             m_projection = Mat4::perspective(70.0 * (M_PI / 180.0), (double) event.getWidth() / (double) event.getHeight(), 0.1, m_farPlane);
             ImmediateRenderer::getForScreen()->setScreenProjection(Mat4::orthographic(0.0, (double) event.getWidth(), (double) event.getHeight(), 0.0, -1.0, 1.0));
             m_defaultFont->setScreenProjection(Mat4::orthographic(0.0, (double) event.getWidth(), (double) event.getHeight(), 0.0, -1.0, 1.0));
+            m_worldRenderer->onResize(event.getWidth(), event.getHeight());
         });
     });
 
@@ -89,8 +91,8 @@ Minecraft::Minecraft()
 
     m_projection = Mat4::perspective(70.0 * (M_PI / 180.0), (double) m_width / (double) m_height, 0.1, m_farPlane);
 
-    int spawnZ    = 0;
     int spawnX    = 0;
+    int spawnZ    = 0;
     int spawnY    = 100;
     m_localPlayer = new LocalPlayer(m_world, L"", m_camera);
     m_localPlayer->setPosition(Vec3(spawnX + 0.5, spawnY, spawnZ + 0.5));
@@ -192,8 +194,6 @@ ChunkManager *Minecraft::getChunkManager() const { return m_chunkManager; }
 Font *Minecraft::getDefaultFont() const { return m_defaultFont; }
 
 void Minecraft::renderFrame() {
-    RenderCommand::clearDepth();
-
     m_worldRenderer->render(m_fixedStepper->getPartialTicks());
 
     m_uiController->render();
@@ -216,6 +216,7 @@ void Minecraft::toggleMouseLock() {
 
 void Minecraft::initRegistries() {
     BlockRegistry::init();
+    BiomeRegistry::init();
     ModelRegistry::init();
     EntityRendererRegistry::init();
 }

@@ -1,5 +1,7 @@
 #include "ImmediateRenderer.h"
 
+#include <glad/glad.h>
+
 #include "GlStateManager.h"
 #include "RenderCommand.h"
 
@@ -14,7 +16,7 @@ ImmediateRenderer *ImmediateRenderer::getForWorld() {
 }
 
 ImmediateRenderer::ImmediateRenderer(uint16_t type)
-    : m_vao(0), m_vbo(0), m_mode(RC_TRIANGLES), m_texture(nullptr), m_shader("shaders/immediate.vert", "shaders/immediate.frag"), m_type(type), m_view(Mat4::identity()), m_projection(Mat4::identity()),
+    : m_vao(0), m_vbo(0), m_mode(GL_TRIANGLES), m_texture(nullptr), m_shader("shaders/immediate.vert", "shaders/immediate.frag"), m_type(type), m_view(Mat4::identity()), m_projection(Mat4::identity()),
       m_screenProjection(Mat4::orthographic(0.0, 1920.0, 1080.0, 0.0, -1.0, 1.0)) {
     m_currentColor[0] = 1.0f;
     m_currentColor[1] = 1.0f;
@@ -28,13 +30,13 @@ ImmediateRenderer::ImmediateRenderer(uint16_t type)
     RenderCommand::bindArrayBuffer(m_vbo);
 
     RenderCommand::enableVertexAttrib(0);
-    RenderCommand::setVertexAttribPointer(0, 3, RC_FLOAT, false, sizeof(Vertex), 0);
+    RenderCommand::setVertexAttribPointer(0, 3, GL_FLOAT, false, sizeof(Vertex), 0);
 
     RenderCommand::enableVertexAttrib(1);
-    RenderCommand::setVertexAttribPointer(1, 2, RC_FLOAT, false, sizeof(Vertex), 3 * sizeof(float));
+    RenderCommand::setVertexAttribPointer(1, 2, GL_FLOAT, false, sizeof(Vertex), 3 * sizeof(float));
 
     RenderCommand::enableVertexAttrib(2);
-    RenderCommand::setVertexAttribPointer(2, 4, RC_FLOAT, false, sizeof(Vertex), 5 * sizeof(float));
+    RenderCommand::setVertexAttribPointer(2, 4, GL_FLOAT, false, sizeof(Vertex), 5 * sizeof(float));
 }
 
 ImmediateRenderer::~ImmediateRenderer() {
@@ -93,7 +95,7 @@ void ImmediateRenderer::end() {
 
     RenderCommand::bindVertexArray(m_vao);
     RenderCommand::bindArrayBuffer(m_vbo);
-    RenderCommand::uploadArrayBuffer(m_vertices.data(), (uint32_t) (m_vertices.size() * sizeof(Vertex)), RC_DYNAMIC_DRAW);
+    RenderCommand::uploadArrayBuffer(m_vertices.data(), (uint32_t) (m_vertices.size() * sizeof(Vertex)), GL_DYNAMIC_DRAW);
 
     m_shader.bind();
 
@@ -107,9 +109,9 @@ void ImmediateRenderer::end() {
         finalModel      = Mat4::identity();
     }
 
-    m_shader.setMat4("u_view", finalView.data());
-    m_shader.setMat4("u_projection", finalProjection.data());
-    m_shader.setMat4("u_model", finalModel.data());
+    m_shader.setMat4("u_view", finalView.data);
+    m_shader.setMat4("u_projection", finalProjection.data);
+    m_shader.setMat4("u_model", finalModel.data);
     m_shader.setInt("u_texture", 0);
 
     if (m_texture) {

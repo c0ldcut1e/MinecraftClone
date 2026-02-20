@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <vector>
 
-#include <GL/glew.h>
+#include <glad/glad.h>
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -52,13 +52,13 @@ Font::Font(const char *ttfPath, int pixelHeight)
     RenderCommand::bindVertexArray(m_vao);
     RenderCommand::bindArrayBuffer(m_vbo);
 
-    RenderCommand::uploadArrayBuffer(nullptr, (uint32_t) (6 * 5 * sizeof(float)), RC_DYNAMIC_DRAW);
+    RenderCommand::uploadArrayBuffer(nullptr, (uint32_t) (6 * 5 * sizeof(float)), GL_DYNAMIC_DRAW);
 
     RenderCommand::enableVertexAttrib(0);
-    RenderCommand::setVertexAttribPointer(0, 3, RC_FLOAT, false, 5 * sizeof(float), 0);
+    RenderCommand::setVertexAttribPointer(0, 3, GL_FLOAT, false, 5 * sizeof(float), 0);
 
     RenderCommand::enableVertexAttrib(1);
-    RenderCommand::setVertexAttribPointer(1, 2, RC_FLOAT, false, 5 * sizeof(float), 3 * sizeof(float));
+    RenderCommand::setVertexAttribPointer(1, 2, GL_FLOAT, false, 5 * sizeof(float), 3 * sizeof(float));
 
     m_shader.bind();
     m_shader.setInt("u_font", 0);
@@ -92,11 +92,11 @@ void Font::setNearest(bool nearest) {
 
         RenderCommand::bindTexture2D(kv.second.texture);
 
-        uint32_t filter = m_nearest ? RC_NEAREST : RC_LINEAR;
-        RenderCommand::setTextureParameteri(RC_TEXTURE_MIN_FILTER, filter);
-        RenderCommand::setTextureParameteri(RC_TEXTURE_MAG_FILTER, filter);
-        RenderCommand::setTextureParameteri(RC_TEXTURE_WRAP_S, RC_CLAMP_TO_EDGE);
-        RenderCommand::setTextureParameteri(RC_TEXTURE_WRAP_T, RC_CLAMP_TO_EDGE);
+        uint32_t filter = m_nearest ? GL_NEAREST : GL_LINEAR;
+        RenderCommand::setTextureParameteri(GL_TEXTURE_MIN_FILTER, filter);
+        RenderCommand::setTextureParameteri(GL_TEXTURE_MAG_FILTER, filter);
+        RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
 }
 
@@ -132,7 +132,7 @@ float Font::getWidth(std::wstring_view text, float scale) const {
 void Font::render(std::wstring_view text, float x, float y, float scale, uint32_t argb) {
     if (text.empty()) return;
 
-    m_shader.setMat4("u_model", GlStateManager::getMatrix().data());
+    m_shader.setMat4("u_model", GlStateManager::getMatrix().data);
 
     float r;
     float g;
@@ -148,9 +148,9 @@ void Font::render(std::wstring_view text, float x, float y, float scale, uint32_
     GlStateManager::setBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     m_shader.bind();
-    m_shader.setMat4("u_view", Mat4::identity().data());
-    m_shader.setMat4("u_projection", m_screenProjection.data());
-    m_shader.setMat4("u_model", GlStateManager::getMatrix().data());
+    m_shader.setMat4("u_view", Mat4::identity().data);
+    m_shader.setMat4("u_projection", m_screenProjection.data);
+    m_shader.setMat4("u_model", GlStateManager::getMatrix().data);
     m_shader.setVec3("u_color", r, g, b);
     m_shader.setFloat("u_alpha", a);
 
@@ -184,8 +184,8 @@ void Font::render(std::wstring_view text, float x, float y, float scale, uint32_
         RenderCommand::activeTexture(0);
         RenderCommand::bindTexture2D(ch.texture);
 
-        RenderCommand::uploadArrayBuffer(vertices, (uint32_t) sizeof(vertices), RC_DYNAMIC_DRAW);
-        RenderCommand::renderArrays(RC_TRIANGLES, 0, 6);
+        RenderCommand::uploadArrayBuffer(vertices, (uint32_t) sizeof(vertices), GL_DYNAMIC_DRAW);
+        RenderCommand::renderArrays(GL_TRIANGLES, 0, 6);
 
         penX += (float) (ch.advance >> 6) * scale;
     }
@@ -203,7 +203,7 @@ void Font::renderShadow(std::wstring_view text, float x, float y, float scale, u
 void Font::worldRender(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb) {
     if (text.empty()) return;
 
-    m_shader.setMat4("u_model", GlStateManager::getMatrix().data());
+    m_shader.setMat4("u_model", GlStateManager::getMatrix().data);
 
     float r;
     float g;
@@ -218,9 +218,9 @@ void Font::worldRender(std::wstring_view text, const Vec3 &pos, float scale, uin
     GlStateManager::setBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     m_shader.bind();
-    m_shader.setMat4("u_view", m_worldView.data());
-    m_shader.setMat4("u_projection", m_worldProjection.data());
-    m_shader.setMat4("u_model", GlStateManager::getMatrix().data());
+    m_shader.setMat4("u_view", m_worldView.data);
+    m_shader.setMat4("u_projection", m_worldProjection.data);
+    m_shader.setMat4("u_model", GlStateManager::getMatrix().data);
     m_shader.setVec3("u_color", r, g, b);
     m_shader.setFloat("u_alpha", a);
 
@@ -258,8 +258,8 @@ void Font::worldRender(std::wstring_view text, const Vec3 &pos, float scale, uin
         RenderCommand::activeTexture(0);
         RenderCommand::bindTexture2D(ch.texture);
 
-        RenderCommand::uploadArrayBuffer(vertices, (uint32_t) sizeof(vertices), RC_DYNAMIC_DRAW);
-        RenderCommand::renderArrays(RC_TRIANGLES, 0, 6);
+        RenderCommand::uploadArrayBuffer(vertices, (uint32_t) sizeof(vertices), GL_DYNAMIC_DRAW);
+        RenderCommand::renderArrays(GL_TRIANGLES, 0, 6);
 
         penX += (float) (ch.advance >> 6) * scale;
     }
@@ -297,16 +297,16 @@ const Font::Glyph &Font::getOrCreateGlyph(uint32_t codepoint) {
     uint32_t texture = RenderCommand::createTexture();
     RenderCommand::bindTexture2D(texture);
 
-    RenderCommand::pixelStorei(RC_UNPACK_ALIGNMENT, 1);
+    RenderCommand::pixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-    uint32_t filter = m_nearest ? RC_NEAREST : RC_LINEAR;
+    uint32_t filter = m_nearest ? GL_NEAREST : GL_LINEAR;
 
-    RenderCommand::setTextureParameteri(RC_TEXTURE_MIN_FILTER, filter);
-    RenderCommand::setTextureParameteri(RC_TEXTURE_MAG_FILTER, filter);
-    RenderCommand::setTextureParameteri(RC_TEXTURE_WRAP_S, RC_CLAMP_TO_EDGE);
-    RenderCommand::setTextureParameteri(RC_TEXTURE_WRAP_T, RC_CLAMP_TO_EDGE);
+    RenderCommand::setTextureParameteri(GL_TEXTURE_MIN_FILTER, filter);
+    RenderCommand::setTextureParameteri(GL_TEXTURE_MAG_FILTER, filter);
+    RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    RenderCommand::uploadTexture2D((int) glyphSlot->bitmap.width, (int) glyphSlot->bitmap.rows, RC_RED, RC_RED, RC_UNSIGNED_BYTE, glyphSlot->bitmap.buffer);
+    RenderCommand::uploadTexture2D((int) glyphSlot->bitmap.width, (int) glyphSlot->bitmap.rows, GL_RED, GL_RED, GL_UNSIGNED_BYTE, glyphSlot->bitmap.buffer);
 
     Glyph glyph;
     glyph.texture  = texture;

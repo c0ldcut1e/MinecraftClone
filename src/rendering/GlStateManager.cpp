@@ -2,7 +2,7 @@
 
 #include <cmath>
 
-#include <GL/glew.h>
+#include <glad/glad.h>
 
 #include "RenderCommand.h"
 
@@ -48,7 +48,7 @@ float GlStateManager::s_pointSize = 1.0f;
 
 static inline Mat4 gsmTranslation(double x, double y, double z) {
     Mat4 matrix        = Mat4::identity();
-    double *matrixData = (double *) matrix.data();
+    double *matrixData = (double *) matrix.data;
     matrixData[12]     = x;
     matrixData[13]     = y;
     matrixData[14]     = z;
@@ -57,7 +57,7 @@ static inline Mat4 gsmTranslation(double x, double y, double z) {
 
 static inline Mat4 gsmScale(double x, double y, double z) {
     Mat4 matrix        = Mat4::identity();
-    double *matrixData = (double *) matrix.data();
+    double *matrixData = (double *) matrix.data;
     matrixData[0]      = x;
     matrixData[5]      = y;
     matrixData[10]     = z;
@@ -77,7 +77,7 @@ static inline Mat4 gsmRotation(double angleRadians, double x, double y, double z
     double t = 1.0 - c;
 
     Mat4 matrix        = Mat4::identity();
-    double *matrixData = (double *) matrix.data();
+    double *matrixData = (double *) matrix.data;
 
     matrixData[0] = t * x * x + c;
     matrixData[1] = t * x * y + s * z;

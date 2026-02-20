@@ -1,14 +1,13 @@
 #pragma once
 
 #include <atomic>
-#include <condition_variable>
 #include <deque>
 #include <memory>
 #include <mutex>
-#include <queue>
-#include <thread>
 #include <unordered_set>
 #include <vector>
+
+#include <BS_thread_pool.hpp>
 
 #include "../World.h"
 #include "ChunkPos.h"
@@ -28,24 +27,17 @@ private:
     struct GenerationTask {
         ChunkPos pos;
         int priority;
-
-        bool operator<(const GenerationTask &other) const { return priority < other.priority; }
     };
 
-    void workerThread();
     void generateChunk(const ChunkPos &pos);
-    void queueChunkGeneration(const ChunkPos &pos, int priority);
+    void queueChunkGeneration(const ChunkPos &pos);
     bool isChunkInRenderDistance(const ChunkPos &pos, const ChunkPos &center) const;
     int calculatePriority(const ChunkPos &pos, const ChunkPos &center) const;
 
     World *m_world;
 
-    std::vector<std::thread> m_workers;
+    std::unique_ptr<BS::thread_pool<>> m_pool;
     std::atomic<bool> m_running;
-
-    std::priority_queue<GenerationTask> m_taskQueue;
-    std::mutex m_queueMutex;
-    std::condition_variable m_queueCondition;
 
     std::unordered_set<ChunkPos, ChunkPosHash> m_generatingChunks;
     std::mutex m_generatingMutex;

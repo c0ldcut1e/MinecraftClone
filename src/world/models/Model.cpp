@@ -1,6 +1,6 @@
 #include "Model.h"
 
-#include <GL/glew.h>
+#include <glad/glad.h>
 
 #include "../../core/Logger.h"
 #include "../../rendering/GlStateManager.h"

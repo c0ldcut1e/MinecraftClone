@@ -6,16 +6,31 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
-#include <unistd.h>
+#include <string>
 
-static std::ofstream g_logFile;
-static std::mutex g_mutex;
-static std::filesystem::path g_logsDir;
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
+static std::ofstream s_logFile;
+static std::mutex s_mutex;
+static std::filesystem::path s_logsDir;
+
+static std::tm safeLocalTime(std::time_t time) {
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &time);
+#else
+    localtime_r(&time, &tm);
+#endif
+    return tm;
+}
 
 static std::string getTimeString() {
-    std::time_t t = std::time(nullptr);
-    std::tm tm;
-    localtime_r(&t, &tm);
+    std::time_t time = std::time(nullptr);
+    std::tm tm       = safeLocalTime(time);
 
     char buffer[16];
     std::strftime(buffer, sizeof(buffer), "%H:%M:%S", &tm);
@@ -23,37 +38,47 @@ static std::string getTimeString() {
 }
 
 static std::string getFileTimestamp() {
-    std::time_t t = std::time(nullptr);
-    std::tm tm;
-    localtime_r(&t, &tm);
+    std::time_t time = std::time(nullptr);
+    std::tm tm       = safeLocalTime(time);
 
     char buffer[32];
     std::strftime(buffer, sizeof(buffer), "%Y-%m-%d_%H-%M-%S", &tm);
     return buffer;
 }
 
+static std::filesystem::path getExeDir() {
+#ifdef _WIN32
+    wchar_t wpath[MAX_PATH];
+    DWORD length = GetModuleFileNameW(nullptr, wpath, MAX_PATH);
+    if (length == 0 || length == MAX_PATH) return std::filesystem::current_path();
+    return std::filesystem::path(wpath).parent_path();
+#else
+    char exePath[4096];
+    ssize_t length = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
+    if (length <= 0) return std::filesystem::current_path();
+    exePath[length] = '\0';
+    return std::filesystem::path(exePath).parent_path();
+#endif
+}
+
 void Logger::init() {
-    char exePath[1024];
-    ssize_t len  = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
-    exePath[len] = '\0';
+    std::filesystem::path base = getExeDir();
+    s_logsDir                  = base / "logs";
+    std::filesystem::create_directories(s_logsDir);
 
-    std::filesystem::path base = std::filesystem::path(exePath).parent_path();
-    g_logsDir                  = base / "logs";
-    std::filesystem::create_directories(g_logsDir);
+    std::filesystem::path latest = s_logsDir / "latest.log";
 
-    std::filesystem::path latest = g_logsDir / "latest.log";
+    if (std::filesystem::exists(latest)) std::filesystem::rename(latest, s_logsDir / (getFileTimestamp() + ".log"));
 
-    if (std::filesystem::exists(latest)) std::filesystem::rename(latest, g_logsDir / (getFileTimestamp() + ".log"));
-
-    g_logFile.open(latest, std::ios::out | std::ios::app);
+    s_logFile.open(latest, std::ios::out | std::ios::app);
 }
 
 void Logger::shutdown() {
-    if (g_logFile.is_open()) g_logFile.close();
+    if (s_logFile.is_open()) s_logFile.close();
 }
 
 void Logger::log(const char *level, const char *fmt, ...) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::lock_guard<std::mutex> lock(s_mutex);
 
     char messageBuffer[2048];
 
@@ -65,12 +90,15 @@ void Logger::log(const char *level, const char *fmt, ...) {
     std::string timeStr = getTimeString();
     std::string final   = "[" + timeStr + "] [" + level + "]: " + messageBuffer;
 
+#ifndef _WIN32
     const char *color = "\033[0m";
     if (std::string(level) == "INFO") color = "\033[92m";
     if (std::string(level) == "WARN") color = "\033[93m";
     if (std::string(level) == "ERROR") color = "\033[91m";
+    std::printf("%s%s\033[0m\n", color, final.c_str());
+#else
+    std::printf("%s\n", final.c_str());
+#endif
 
-    printf("%s%s\033[0m\n", color, final.c_str());
-
-    if (g_logFile.is_open()) g_logFile << final << std::endl;
+    if (s_logFile.is_open()) s_logFile << final << std::endl;
 }

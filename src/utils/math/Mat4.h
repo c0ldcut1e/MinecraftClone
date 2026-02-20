@@ -17,8 +17,5 @@ public:
     Mat4 multiply(const Mat4 &other) const;
     Mat4 inverse() const;
 
-    const double *data() const;
-
-private:
-    double m_data[16];
+    double data[16];
 };

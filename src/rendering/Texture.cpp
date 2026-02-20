@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 
+#include <glad/glad.h>
 #include <stb_image.h>
 
 #include "../core/Logger.h"
@@ -18,12 +19,12 @@ Texture::Texture(const char *path) : m_id(0) {
     m_id = RenderCommand::createTexture();
     RenderCommand::bindTexture2D(m_id);
 
-    RenderCommand::setTextureParameteri(RC_TEXTURE_MIN_FILTER, RC_NEAREST);
-    RenderCommand::setTextureParameteri(RC_TEXTURE_MAG_FILTER, RC_NEAREST);
-    RenderCommand::setTextureParameteri(RC_TEXTURE_WRAP_S, RC_REPEAT);
-    RenderCommand::setTextureParameteri(RC_TEXTURE_WRAP_T, RC_REPEAT);
+    RenderCommand::setTextureParameteri(GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    RenderCommand::setTextureParameteri(GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_S, GL_REPEAT);
+    RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-    RenderCommand::uploadTexture2D(width, height, RC_RGBA8, RC_RGBA, RC_UNSIGNED_BYTE, data);
+    RenderCommand::uploadTexture2D(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, data);
     RenderCommand::generateMipmap2D();
 
     stbi_image_free(data);

@@ -4,14 +4,16 @@
 #include <cstdlib>
 #include <stdexcept>
 
+#include <glad/glad.h>
+
 #include "RenderCommand.h"
 
 Shader::Shader(const char *vertexPath, const char *fragmentPath) {
     char *vertexSource   = loadFile(vertexPath);
     char *fragmentSource = loadFile(fragmentPath);
 
-    uint vertex   = compileShader(RC_VERTEX_SHADER, vertexSource);
-    uint fragment = compileShader(RC_FRAGMENT_SHADER, fragmentSource);
+    uint32_t vertex   = compileShader(GL_VERTEX_SHADER, vertexSource);
+    uint32_t fragment = compileShader(GL_FRAGMENT_SHADER, fragmentSource);
 
     free(vertexSource);
     free(fragmentSource);
@@ -76,8 +78,8 @@ char *Shader::loadFile(const char *path) {
     return buffer;
 }
 
-uint Shader::compileShader(uint type, const char *src) {
-    uint shader = RenderCommand::createShader(type);
+uint32_t Shader::compileShader(uint32_t type, const char *src) {
+    uint32_t shader = RenderCommand::createShader(type);
 
     RenderCommand::shaderSource(shader, src);
     RenderCommand::compileShader(shader);

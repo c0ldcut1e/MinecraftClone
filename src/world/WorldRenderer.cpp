@@ -1,7 +1,8 @@
 #include "WorldRenderer.h"
 
 #include <cmath>
-#include <thread>
+
+#include <glad/glad.h>
 
 #include "../core/Minecraft.h"
 #include "../entity/EntityRendererRegistry.h"
@@ -15,51 +16,43 @@
 #include "models/ModelDefinition.h"
 #include "models/ModelPartsSkinned.h"
 
-WorldRenderer::WorldRenderer(World *world) : m_worldShader(nullptr), m_skyShader(nullptr), m_world(world), m_renderChunkGrid(false) {
+WorldRenderer::WorldRenderer(World *world, int width, int height) : m_worldShader(nullptr), m_skyShader(nullptr), m_cloudShader(nullptr), m_fogShader(nullptr), m_sceneFramebuffer(nullptr), m_world(world), m_renderChunkGrid(false) {
     m_worldShader = new Shader("shaders/world.vert", "shaders/world.frag");
     m_skyShader   = new Shader("shaders/sky.vert", "shaders/sky.frag");
+    m_cloudShader = new Shader("shaders/cloud.vert", "shaders/cloud.frag");
+    m_fogShader   = new Shader("shaders/fog.vert", "shaders/fog.frag");
+
+    m_sceneFramebuffer = new Framebuffer(width, height);
 
     ColormapManager *colormapManager = ColormapManager::getInstance();
     colormapManager->load("fog", "colormap/fog.png");
     colormapManager->load("sky", "colormap/sky.png");
 
     m_mesherRunning = true;
-    m_mesherThread  = std::thread([this]() {
-        while (m_mesherRunning) {
-            ChunkPos pos;
-
-            {
-                std::unique_lock<std::mutex> lock(m_rebuildQueueMutex);
-                m_rebuildCondition.wait(lock, [this]() { return !m_mesherRunning || !m_urgentQueue.empty() || !m_rebuildQueue.empty(); });
-
-                if (!m_mesherRunning) break;
-
-                if (!m_urgentQueue.empty()) {
-                    pos = m_urgentQueue.front();
-                    m_urgentQueue.pop();
-                } else if (!m_rebuildQueue.empty()) {
-                    pos = m_rebuildQueue.front();
-                    m_rebuildQueue.pop();
-                } else {
-                    continue;
-                }
-            }
-
-            auto it = m_world->getChunks().find(pos);
-            if (it == m_world->getChunks().end()) continue;
-
-            std::vector<ChunkMesher::MeshBuildResult> results;
-            ChunkMesher::buildMeshes(m_world, it->second.get(), results);
-
-            submitMesh(pos, std::move(results));
-        }
-    });
+    m_mesherPool    = std::make_unique<BS::thread_pool<>>(1);
 }
 
 WorldRenderer::~WorldRenderer() {
     m_mesherRunning = false;
-    m_rebuildCondition.notify_all();
-    if (m_mesherThread.joinable()) m_mesherThread.join();
+    if (m_mesherPool) {
+        m_mesherPool->wait();
+        m_mesherPool.reset();
+    }
+
+    if (m_sceneFramebuffer) {
+        delete m_sceneFramebuffer;
+        m_sceneFramebuffer = nullptr;
+    }
+
+    if (m_fogShader) {
+        delete m_fogShader;
+        m_fogShader = nullptr;
+    }
+
+    if (m_cloudShader) {
+        delete m_cloudShader;
+        m_cloudShader = nullptr;
+    }
 
     if (m_skyShader) {
         delete m_skyShader;
@@ -72,6 +65,8 @@ WorldRenderer::~WorldRenderer() {
     }
 }
 
+void WorldRenderer::onResize(int width, int height) { m_sceneFramebuffer->resize(width, height); }
+
 void WorldRenderer::render(float partialTicks) {
     Minecraft *minecraft = Minecraft::getInstance();
 
@@ -80,29 +75,31 @@ void WorldRenderer::render(float partialTicks) {
     Mat4 projection      = minecraft->getProjection();
 
     setupMatrices(cameraPos);
+    setupFog();
 
     ImmediateRenderer::getForWorld()->setViewProjection(viewMatrix, projection);
     minecraft->getDefaultFont()->setNearest(true);
     minecraft->getDefaultFont()->setWorldViewProjection(viewMatrix, projection);
 
-    setupFog();
+    m_sceneFramebuffer->bind();
+    RenderCommand::clearAll();
 
-    float fogR;
-    float fogG;
-    float fogB;
-    GlStateManager::getFogColor(fogR, fogG, fogB);
+    renderSky(viewMatrix, projection);
 
-    renderSky(cameraPos, viewMatrix, projection);
-    renderClouds();
-
-    bindWorldShader(cameraPos, viewMatrix, projection, fogR, fogG, fogB);
+    bindWorldShader(cameraPos, viewMatrix, projection);
     uploadPendingMeshes();
-
     renderChunks(viewMatrix, projection);
-    if (m_renderChunkGrid) renderChunkGrid();
+
+    renderClouds(viewMatrix, projection);
 
     renderEntities(partialTicks);
     renderEntityNameTags(partialTicks);
+
+    m_sceneFramebuffer->unbind();
+
+    renderFogPass(projection);
+
+    if (m_renderChunkGrid) renderChunkGrid();
 
     GlStateManager::popMatrix();
 }
@@ -114,13 +111,13 @@ void WorldRenderer::rebuild() {
         std::vector<ChunkMesher::MeshBuildResult> results;
         ChunkMesher::buildMeshes(m_world, chunkPtr.get(), results);
 
-        std::vector<RenderMesh> meshes;
+        std::vector<std::unique_ptr<ChunkMesh>> meshes;
         meshes.reserve(results.size());
 
         for (ChunkMesher::MeshBuildResult &result : results) {
-            RenderMesh renderMesh;
-            renderMesh.mesh = std::make_unique<ChunkMesh>(result.texture);
-            renderMesh.mesh->upload(result.vertices.data(), (uint32_t) result.vertices.size());
+            std::unique_ptr<ChunkMesh> renderMesh;
+            renderMesh = std::make_unique<ChunkMesh>(result.texture);
+            renderMesh->upload(result.vertices.data(), (uint32_t) result.vertices.size());
             meshes.push_back(std::move(renderMesh));
         }
 
@@ -137,7 +134,7 @@ void WorldRenderer::rebuildChunk(const ChunkPos &pos) {
         m_rebuildQueue.push(pos);
     }
 
-    m_rebuildCondition.notify_one();
+    scheduleMesher();
 }
 
 void WorldRenderer::rebuildChunkUrgent(const ChunkPos &pos) {
@@ -149,7 +146,44 @@ void WorldRenderer::rebuildChunkUrgent(const ChunkPos &pos) {
         m_urgentQueue.push(pos);
     }
 
-    m_rebuildCondition.notify_one();
+    scheduleMesher();
+}
+
+std::vector<uint8_t> WorldRenderer::buildCloudMap() {
+    std::vector<uint8_t> cloudMap(256 * 256);
+
+    for (int z = 0; z < 256; z++)
+        for (int x = 0; x < 256; x++) {
+            uint32_t h                                       = (uint32_t) (x * 3129871) ^ (uint32_t) (z * 116129781);
+            h                                                = h * h * 42317861u + h * 11u;
+            cloudMap[(size_t) x + (size_t) 256 * (size_t) z] = ((h >> 16) & 15) < 8 ? 1 : 0;
+        }
+
+    std::vector<uint8_t> temp(256 * 256);
+
+    for (int pass = 0; pass < 3; pass++) {
+        for (int z = 0; z < 256; z++)
+            for (int x = 0; x < 256; x++) {
+                int c = 0;
+                for (int dz = -1; dz <= 1; dz++)
+                    for (int dx = -1; dx <= 1; dx++) {
+                        int nx = (x + dx) & 255;
+                        int nz = (z + dz) & 255;
+                        c += cloudMap[(size_t) nx + (size_t) 256 * (size_t) nz] ? 1 : 0;
+                    }
+
+                temp[(size_t) x + (size_t) 256 * (size_t) z] = c >= 5 ? 1 : 0;
+            }
+
+        cloudMap.swap(temp);
+    }
+
+    return cloudMap;
+}
+
+const std::vector<uint8_t> &WorldRenderer::getCloudMap() {
+    static std::vector<uint8_t> cloudMap = buildCloudMap();
+    return cloudMap;
 }
 
 void WorldRenderer::submitMesh(const ChunkPos &pos, std::vector<ChunkMesher::MeshBuildResult> &&results) {
@@ -164,17 +198,38 @@ void WorldRenderer::setupMatrices(const Vec3 &cameraPos) {
 }
 
 void WorldRenderer::setupFog() {
+    Fog &fog = m_world->getFog();
+    if (!fog.isEnabled()) {
+        GlStateManager::disableFog();
+        return;
+    }
+
+    if (fog.isDisabledInCaves()) {
+        LocalPlayer *me = Minecraft::getInstance()->getLocalPlayer();
+        if (me) {
+            const Vec3 &pos = me->getPosition();
+            BlockPos blockPos((int) floor(pos.x), (int) floor(pos.y), (int) floor(pos.z));
+            if (m_world->getSkyLightLevel(blockPos) == 0) {
+                GlStateManager::disableFog();
+                return;
+            }
+        }
+    }
+
     GlStateManager::enableFog();
-    GlStateManager::setFogColor(0.435294118f, 0.709803922f, 0.97254902f);
+
+    const Vec3 &fogColor = fog.getColor();
+    GlStateManager::setFogColor((float) fogColor.x, (float) fogColor.y, (float) fogColor.z);
 
     float renderEnd = (float) (m_world->getRenderDistance() * Chunk::SIZE_X);
-    float fogEnd    = renderEnd * 0.65f;
-    float fogStart  = fogEnd * 0.08f;
 
+    float fogStart = renderEnd * fog.getStartFactor();
+    float fogEnd   = renderEnd * fog.getEndFactor();
+    if (fogEnd < fogStart + 0.001f) fogEnd = fogStart + 0.001f;
     GlStateManager::setFogRange(fogStart, fogEnd);
 }
 
-void WorldRenderer::renderSky(const Vec3 &cameraPos, const Mat4 &viewMatrix, const Mat4 &projection) {
+void WorldRenderer::renderSky(const Mat4 &viewMatrix, const Mat4 &projection) {
     GlStateManager::disableDepthTest();
 
     m_skyShader->bind();
@@ -185,193 +240,137 @@ void WorldRenderer::renderSky(const Vec3 &cameraPos, const Mat4 &viewMatrix, con
     m_skyShader->setInt("u_fogColormap", 1);
     ColormapManager::getInstance()->bind("fog", 1);
 
-    m_skyShader->setVec2("u_fogLut", 0.5f, 0.5f);
+    Fog &fog = m_world->getFog();
+    m_skyShader->setVec2("u_fogLut", fog.getLutX(), fog.getLutY());
     m_skyShader->setVec3("u_skyLut", 0.85f, 0.30f, 0.70f);
 
-    m_skyShader->setInt("u_fogEnabled", GlStateManager::isFogEnabled() ? 1 : 0);
+    m_skyShader->setInt("u_fogEnabled", GlStateManager::isFogEnabled());
 
-    Mat4 invViewProj = projection.multiply(viewMatrix).inverse();
-    m_skyShader->setMat4("u_invViewProj", invViewProj.data());
-    m_skyShader->setVec3("u_cameraPos", cameraPos.x, cameraPos.y, cameraPos.z);
+    Mat4 invertedProjection = projection.inverse();
+    m_skyShader->setMat4("u_invProj", invertedProjection.data);
+
+    Mat4 viewRotationOnly     = viewMatrix;
+    viewRotationOnly.data[12] = 0.0f;
+    viewRotationOnly.data[13] = 0.0f;
+    viewRotationOnly.data[14] = 0.0f;
+
+    m_skyShader->setMat4("u_invViewRot", viewRotationOnly.inverse().data);
 
     RenderCommand::renderArrays(GL_TRIANGLES, 0, 3);
 
     GlStateManager::enableDepthTest();
 }
 
-void WorldRenderer::renderFastClouds() {
-    Minecraft *minecraft = Minecraft::getInstance();
-    const Vec3 cameraPos = minecraft->getCamera()->getPosition();
+void WorldRenderer::renderFastClouds(const Mat4 &viewMatrix, const Mat4 &projection) {
+    Minecraft *minecraft                 = Minecraft::getInstance();
+    const Vec3 cameraPos                 = minecraft->getCamera()->getPosition();
+    const std::vector<uint8_t> &cloudMap = getCloudMap();
 
-    static bool inited = false;
-    static std::vector<uint8_t> cloudMap;
     static float cloudOffset = 0.0f;
-
-    if (!inited) {
-        cloudMap.resize(256 * 256);
-
-        for (int z = 0; z < 256; z++)
-            for (int x = 0; x < 256; x++) {
-                uint32_t height                                  = (uint32_t) (x * 3129871) ^ (uint32_t) (z * 116129781);
-                height                                           = height * height * 42317861u + height * 11u;
-                cloudMap[(size_t) x + (size_t) 256 * (size_t) z] = ((height >> 16) & 15) < 8 ? 1 : 0;
-            }
-
-        std::vector<uint8_t> temp;
-        temp.resize(256 * 256);
-
-        for (int pass = 0; pass < 3; pass++) {
-            for (int z = 0; z < 256; z++)
-                for (int x = 0; x < 256; x++) {
-                    int c = 0;
-                    for (int dz = -1; dz <= 1; dz++)
-                        for (int dx = -1; dx <= 1; dx++) {
-                            int nx = (x + dx) & 255;
-                            int nz = (z + dz) & 255;
-                            c += cloudMap[(size_t) nx + (size_t) 256 * (size_t) nz] ? 1 : 0;
-                        }
-
-                    temp[(size_t) x + (size_t) 256 * (size_t) z] = c >= 5 ? 1 : 0;
-                }
-
-            cloudMap.swap(temp);
-        }
-
-        inited = true;
-    }
-
-    cloudOffset += (float) Time::getDelta() * 0.60f;
+    cloudOffset += (float) Time::getDelta() * 0.8f;
     if (cloudOffset > 3072.0f) cloudOffset -= 3072.0f;
 
     float renderEnd = (float) (m_world->getRenderDistance() * Chunk::SIZE_X);
     float radius    = renderEnd + 256.0f;
 
     const int cellSize = 12;
-    float cloudY       = 128.0f;
+    const float cloudY = 128.0f;
 
-    int camCellX = (int) floor((cameraPos.x + cloudOffset) / (float) cellSize);
-    int camCellZ = (int) floor(cameraPos.z / (float) cellSize);
-
+    int camCellX    = (int) floor((cameraPos.x + cloudOffset) / (float) cellSize);
+    int camCellZ    = (int) floor(cameraPos.z / (float) cellSize);
     int radiusCells = (int) ceil(radius / (float) cellSize);
 
-    int width  = radiusCells * 2 + 1;
-    int height = radiusCells * 2 + 1;
+    int gridWidth  = radiusCells * 2 + 1;
+    int gridHeight = radiusCells * 2 + 1;
 
-    std::vector<uint8_t> mask;
-    mask.resize((size_t) width * (size_t) height);
+    std::vector<uint8_t> mask((size_t) gridWidth * (size_t) gridHeight);
 
-    for (int z = 0; z < height; z++)
-        for (int x = 0; x < width; x++) {
-            int wx = camCellX + (x - radiusCells);
-            int wz = camCellZ + (z - radiusCells);
-
-            uint8_t v                                      = cloudMap[(size_t) (wx & 255) + (size_t) 256 * (size_t) (wz & 255)];
-            mask[(size_t) x + (size_t) width * (size_t) z] = v;
+    for (int z = 0; z < gridHeight; z++)
+        for (int x = 0; x < gridWidth; x++) {
+            int wx                                             = camCellX + (x - radiusCells);
+            int wz                                             = camCellZ + (z - radiusCells);
+            mask[(size_t) x + (size_t) gridWidth * (size_t) z] = cloudMap[(size_t) (wx & 255) + (size_t) 256 * (size_t) (wz & 255)];
         }
-
-    GlStateManager::disableCull();
-
-    GlStateManager::enableBlend();
-    GlStateManager::setBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    ImmediateRenderer *renderer = ImmediateRenderer::getForWorld();
-    renderer->begin(GL_TRIANGLES);
-    renderer->color(0xDFFFFFFF);
 
     float baseX = (float) (camCellX - radiusCells) * (float) cellSize - cloudOffset;
     float baseZ = (float) (camCellZ - radiusCells) * (float) cellSize;
 
-    float fogR;
-    float fogG;
-    float fogB;
-    GlStateManager::getFogColor(fogR, fogG, fogB);
+    std::vector<float> vertices;
+    vertices.reserve(4096);
 
-    float fogStart;
-    float fogEnd;
-    GlStateManager::getFogRange(fogStart, fogEnd);
+    auto pushVertex = [&](float x, float y, float z, float r, float g, float b, float a) {
+        vertices.push_back(x);
+        vertices.push_back(y);
+        vertices.push_back(z);
+        vertices.push_back(r);
+        vertices.push_back(g);
+        vertices.push_back(b);
+        vertices.push_back(a);
+    };
 
-    for (int z = 0; z < height; z++)
-        for (int x = 0; x < width; x++) {
-            if (!mask[(size_t) x + (size_t) width * (size_t) z]) continue;
+    std::vector<uint8_t> topMask = mask;
+
+    for (int z = 0; z < gridHeight; z++)
+        for (int x = 0; x < gridWidth; x++) {
+            if (!topMask[(size_t) x + (size_t) gridWidth * (size_t) z]) continue;
 
             int rw = 1;
-            while (x + rw < width && mask[(size_t) (x + rw) + (size_t) width * (size_t) z]) rw++;
+            while (x + rw < gridWidth && topMask[(size_t) (x + rw) + (size_t) gridWidth * (size_t) z]) rw++;
 
             int rh  = 1;
             bool ok = true;
-            while (z + rh < height && ok) {
+            while (z + rh < gridHeight && ok) {
                 for (int k = 0; k < rw; k++)
-                    if (!mask[(size_t) (x + k) + (size_t) width * (size_t) (z + rh)]) {
+                    if (!topMask[(size_t) (x + k) + (size_t) gridWidth * (size_t) (z + rh)]) {
                         ok = false;
                         break;
                     }
-
                 if (ok) rh++;
             }
 
             for (int zz = 0; zz < rh; zz++)
-                for (int xx = 0; xx < rw; xx++) mask[(size_t) (x + xx) + (size_t) width * (size_t) (z + zz)] = 0;
+                for (int xx = 0; xx < rw; xx++) topMask[(size_t) (x + xx) + (size_t) gridWidth * (size_t) (z + zz)] = 0;
 
             float x1 = baseX + (float) x * (float) cellSize;
             float z1 = baseZ + (float) z * (float) cellSize;
             float x2 = baseX + (float) (x + rw) * (float) cellSize;
             float z2 = baseZ + (float) (z + rh) * (float) cellSize;
 
-            renderer->vertex(x1, cloudY, z1);
-            renderer->vertex(x2, cloudY, z1);
-            renderer->vertex(x2, cloudY, z2);
-
-            renderer->vertex(x1, cloudY, z1);
-            renderer->vertex(x2, cloudY, z2);
-            renderer->vertex(x1, cloudY, z2);
+            pushVertex(x1, cloudY, z1, 1.0f, 1.0f, 1.0f, 0.875f);
+            pushVertex(x2, cloudY, z1, 1.0f, 1.0f, 1.0f, 0.875f);
+            pushVertex(x2, cloudY, z2, 1.0f, 1.0f, 1.0f, 0.875f);
+            pushVertex(x1, cloudY, z1, 1.0f, 1.0f, 1.0f, 0.875f);
+            pushVertex(x2, cloudY, z2, 1.0f, 1.0f, 1.0f, 0.875f);
+            pushVertex(x1, cloudY, z2, 1.0f, 1.0f, 1.0f, 0.875f);
         }
 
-    renderer->end();
+    m_cloudMesh.upload(vertices);
+
+    GlStateManager::disableCull();
+    GlStateManager::enableBlend();
+    GlStateManager::setBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    RenderCommand::enablePolygonOffsetFill();
+    RenderCommand::setPolygonOffset(1.0f, 1.0f);
+
+    m_cloudShader->bind();
+    m_cloudShader->setMat4("u_model", GlStateManager::getMatrix().data);
+    m_cloudShader->setMat4("u_view", viewMatrix.data);
+    m_cloudShader->setMat4("u_projection", projection.data);
+
+    m_cloudMesh.render();
+
+    RenderCommand::disablePolygonOffsetFill();
     GlStateManager::disableBlend();
+    GlStateManager::enableCull();
 }
 
-void WorldRenderer::renderClouds() {
-    Minecraft *minecraft = Minecraft::getInstance();
-    const Vec3 cameraPos = minecraft->getCamera()->getPosition();
+void WorldRenderer::renderClouds(const Mat4 &viewMatrix, const Mat4 &projection) {
+    Minecraft *minecraft                 = Minecraft::getInstance();
+    const Vec3 cameraPos                 = minecraft->getCamera()->getPosition();
+    const std::vector<uint8_t> &cloudMap = getCloudMap();
 
-    static bool inited = false;
-    static std::vector<uint8_t> cloudMap;
     static float cloudOffset = 0.0f;
-
-    if (!inited) {
-        cloudMap.resize(256 * 256);
-
-        for (int z = 0; z < 256; z++)
-            for (int x = 0; x < 256; x++) {
-                uint32_t h                                       = (uint32_t) (x * 3129871) ^ (uint32_t) (z * 116129781);
-                h                                                = h * h * 42317861u + h * 11u;
-                cloudMap[(size_t) x + (size_t) 256 * (size_t) z] = ((h >> 16) & 15) < 8 ? 1 : 0;
-            }
-
-        std::vector<uint8_t> temp;
-        temp.resize(256 * 256);
-
-        for (int pass = 0; pass < 3; pass++) {
-            for (int z = 0; z < 256; z++)
-                for (int x = 0; x < 256; x++) {
-                    int c = 0;
-                    for (int dz = -1; dz <= 1; dz++)
-                        for (int dx = -1; dx <= 1; dx++) {
-                            int nx = (x + dx) & 255;
-                            int nz = (z + dz) & 255;
-                            c += cloudMap[(size_t) nx + (size_t) 256 * (size_t) nz] ? 1 : 0;
-                        }
-
-                    temp[(size_t) x + (size_t) 256 * (size_t) z] = c >= 5 ? 1 : 0;
-                }
-
-            cloudMap.swap(temp);
-        }
-
-        inited = true;
-    }
-
-    cloudOffset += (float) Time::getDelta() * 0.60f;
+    cloudOffset += (float) Time::getDelta() * 0.8f;
     if (cloudOffset > 3072.0f) cloudOffset -= 3072.0f;
 
     float renderEnd = (float) (m_world->getRenderDistance() * Chunk::SIZE_X);
@@ -379,229 +378,167 @@ void WorldRenderer::renderClouds() {
 
     const int cellSize = 12;
     const float thick  = 4.0f;
-    float cloudY       = 128.0f;
+    const float cloudY = 128.0f;
 
-    int camCellX = (int) floor((cameraPos.x + cloudOffset) / (float) cellSize);
-    int camCellZ = (int) floor(cameraPos.z / (float) cellSize);
-
+    int camCellX    = (int) floor((cameraPos.x + cloudOffset) / (float) cellSize);
+    int camCellZ    = (int) floor(cameraPos.z / (float) cellSize);
     int radiusCells = (int) ceil(radius / (float) cellSize);
 
-    int width  = radiusCells * 2 + 1;
-    int height = radiusCells * 2 + 1;
+    int gridWidth  = radiusCells * 2 + 1;
+    int gridHeight = radiusCells * 2 + 1;
 
-    std::vector<uint8_t> mask;
-    mask.resize((size_t) width * (size_t) height);
+    std::vector<uint8_t> mask((size_t) gridWidth * (size_t) gridHeight);
 
-    for (int z = 0; z < height; z++)
-        for (int x = 0; x < width; x++) {
-            int wx = camCellX + (x - radiusCells);
-            int wz = camCellZ + (z - radiusCells);
-
-            uint8_t v                                      = cloudMap[(size_t) (wx & 255) + (size_t) 256 * (size_t) (wz & 255)];
-            mask[(size_t) x + (size_t) width * (size_t) z] = v;
+    for (int z = 0; z < gridHeight; z++)
+        for (int x = 0; x < gridWidth; x++) {
+            int wx                                             = camCellX + (x - radiusCells);
+            int wz                                             = camCellZ + (z - radiusCells);
+            mask[(size_t) x + (size_t) gridWidth * (size_t) z] = cloudMap[(size_t) (wx & 255) + (size_t) 256 * (size_t) (wz & 255)];
         }
-
-    GlStateManager::disableCull();
-
-    GlStateManager::enableBlend();
-    GlStateManager::setBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    ImmediateRenderer *renderer = ImmediateRenderer::getForWorld();
 
     float baseX = (float) (camCellX - radiusCells) * (float) cellSize - cloudOffset;
     float baseZ = (float) (camCellZ - radiusCells) * (float) cellSize;
 
+    std::vector<float> vertices;
+    vertices.reserve(4096);
+
+    auto pushVertex = [&](float x, float y, float z, float r, float g, float b, float a) {
+        vertices.push_back(x);
+        vertices.push_back(y);
+        vertices.push_back(z);
+        vertices.push_back(r);
+        vertices.push_back(g);
+        vertices.push_back(b);
+        vertices.push_back(a);
+    };
+
+    auto pushQuad = [&](float x1, float y1, float z1, float x2, float y2, float z2, float x3, float y3, float z3, float x4, float y4, float z4, float r, float g, float b, float a) {
+        pushVertex(x1, y1, z1, r, g, b, a);
+        pushVertex(x2, y2, z2, r, g, b, a);
+        pushVertex(x3, y3, z3, r, g, b, a);
+        pushVertex(x1, y1, z1, r, g, b, a);
+        pushVertex(x3, y3, z3, r, g, b, a);
+        pushVertex(x4, y4, z4, r, g, b, a);
+    };
+
     {
         std::vector<uint8_t> topMask = mask;
 
-        renderer->begin(GL_TRIANGLES);
-        renderer->color(0xDFFFFFFF);
-
-        for (int z = 0; z < height; z++)
-            for (int x = 0; x < width; x++) {
-                if (!topMask[(size_t) x + (size_t) width * (size_t) z]) continue;
+        for (int z = 0; z < gridHeight; z++)
+            for (int x = 0; x < gridWidth; x++) {
+                if (!topMask[(size_t) x + (size_t) gridWidth * (size_t) z]) continue;
 
                 int rw = 1;
-                while (x + rw < width && topMask[(size_t) (x + rw) + (size_t) width * (size_t) z]) rw++;
+                while (x + rw < gridWidth && topMask[(size_t) (x + rw) + (size_t) gridWidth * (size_t) z]) rw++;
 
                 int rh  = 1;
                 bool ok = true;
-                while (z + rh < height && ok) {
+                while (z + rh < gridHeight && ok) {
                     for (int k = 0; k < rw; k++)
-                        if (!topMask[(size_t) (x + k) + (size_t) width * (size_t) (z + rh)]) {
+                        if (!topMask[(size_t) (x + k) + (size_t) gridWidth * (size_t) (z + rh)]) {
                             ok = false;
                             break;
                         }
-
                     if (ok) rh++;
                 }
 
                 for (int zz = 0; zz < rh; zz++)
-                    for (int xx = 0; xx < rw; xx++) topMask[(size_t) (x + xx) + (size_t) width * (size_t) (z + zz)] = 0;
+                    for (int xx = 0; xx < rw; xx++) topMask[(size_t) (x + xx) + (size_t) gridWidth * (size_t) (z + zz)] = 0;
 
                 float x1 = baseX + (float) x * (float) cellSize;
                 float z1 = baseZ + (float) z * (float) cellSize;
                 float x2 = baseX + (float) (x + rw) * (float) cellSize;
                 float z2 = baseZ + (float) (z + rh) * (float) cellSize;
+                float y  = cloudY + thick;
 
-                float y = cloudY + thick;
-
-                renderer->vertex(x1, y, z1);
-                renderer->vertex(x2, y, z1);
-                renderer->vertex(x2, y, z2);
-
-                renderer->vertex(x1, y, z1);
-                renderer->vertex(x2, y, z2);
-                renderer->vertex(x1, y, z2);
+                pushQuad(x1, y, z1, x2, y, z1, x2, y, z2, x1, y, z2, 1.0f, 1.0f, 1.0f, 0.875f);
             }
-
-        renderer->end();
     }
 
     {
         std::vector<uint8_t> botMask = mask;
 
-        GlStateManager::disableBlend();
-
-        renderer->begin(GL_TRIANGLES);
-        renderer->color(0xFFF0F0F0);
-
-        for (int z = 0; z < height; z++)
-            for (int x = 0; x < width; x++) {
-                if (!botMask[(size_t) x + (size_t) width * (size_t) z]) continue;
+        for (int z = 0; z < gridHeight; z++)
+            for (int x = 0; x < gridWidth; x++) {
+                if (!botMask[(size_t) x + (size_t) gridWidth * (size_t) z]) continue;
 
                 int rw = 1;
-                while (x + rw < width && botMask[(size_t) (x + rw) + (size_t) width * (size_t) z]) rw++;
+                while (x + rw < gridWidth && botMask[(size_t) (x + rw) + (size_t) gridWidth * (size_t) z]) rw++;
 
                 int rh  = 1;
                 bool ok = true;
-                while (z + rh < height && ok) {
+                while (z + rh < gridHeight && ok) {
                     for (int k = 0; k < rw; k++)
-                        if (!botMask[(size_t) (x + k) + (size_t) width * (size_t) (z + rh)]) {
+                        if (!botMask[(size_t) (x + k) + (size_t) gridWidth * (size_t) (z + rh)]) {
                             ok = false;
                             break;
                         }
-
                     if (ok) rh++;
                 }
 
                 for (int zz = 0; zz < rh; zz++)
-                    for (int xx = 0; xx < rw; xx++) botMask[(size_t) (x + xx) + (size_t) width * (size_t) (z + zz)] = 0;
+                    for (int xx = 0; xx < rw; xx++) botMask[(size_t) (x + xx) + (size_t) gridWidth * (size_t) (z + zz)] = 0;
 
                 float x1 = baseX + (float) x * (float) cellSize;
                 float z1 = baseZ + (float) z * (float) cellSize;
                 float x2 = baseX + (float) (x + rw) * (float) cellSize;
                 float z2 = baseZ + (float) (z + rh) * (float) cellSize;
+                float y  = cloudY;
 
-                float y = cloudY;
-
-                renderer->vertex(x1, y, z2);
-                renderer->vertex(x2, y, z2);
-                renderer->vertex(x2, y, z1);
-
-                renderer->vertex(x1, y, z2);
-                renderer->vertex(x2, y, z1);
-                renderer->vertex(x1, y, z1);
+                pushQuad(x1, y, z2, x2, y, z2, x2, y, z1, x1, y, z1, 0.941f, 0.941f, 0.941f, 1.0f);
             }
-
-        renderer->end();
-
-        GlStateManager::enableBlend();
-        GlStateManager::setBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
 
-    {
-        renderer->begin(GL_TRIANGLES);
-        renderer->color(0xD8FFFFFF);
+    for (int z = 0; z < gridHeight; z++)
+        for (int x = 0; x < gridWidth; x++) {
+            if (!mask[(size_t) x + (size_t) gridWidth * (size_t) z]) continue;
 
-        for (int z = 0; z < height; z++)
-            for (int x = 0; x < width; x++) {
-                if (!mask[(size_t) x + (size_t) width * (size_t) z]) continue;
+            bool hasNX = (x > 0) && (mask[(size_t) (x - 1) + (size_t) gridWidth * (size_t) z] != 0);
+            bool hasPX = (x < gridWidth - 1) && (mask[(size_t) (x + 1) + (size_t) gridWidth * (size_t) z] != 0);
+            bool hasNZ = (z > 0) && (mask[(size_t) x + (size_t) gridWidth * (size_t) (z - 1)] != 0);
+            bool hasPZ = (z < gridHeight - 1) && (mask[(size_t) x + (size_t) gridWidth * (size_t) (z + 1)] != 0);
 
-                bool nx0 = (x == 0) ? false : (mask[(size_t) (x - 1) + (size_t) width * (size_t) z] != 0);
-                bool nx1 = (x == width - 1) ? false : (mask[(size_t) (x + 1) + (size_t) width * (size_t) z] != 0);
-                bool nz0 = (z == 0) ? false : (mask[(size_t) x + (size_t) width * (size_t) (z - 1)] != 0);
-                bool nz1 = (z == height - 1) ? false : (mask[(size_t) x + (size_t) width * (size_t) (z + 1)] != 0);
+            float x1 = baseX + (float) x * (float) cellSize;
+            float z1 = baseZ + (float) z * (float) cellSize;
+            float x2 = x1 + (float) cellSize;
+            float z2 = z1 + (float) cellSize;
+            float y1 = cloudY;
+            float y2 = cloudY + thick;
 
-                float x1 = baseX + (float) x * (float) cellSize;
-                float z1 = baseZ + (float) z * (float) cellSize;
-                float x2 = x1 + (float) cellSize;
-                float z2 = z1 + (float) cellSize;
+            if (!hasNX) pushQuad(x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, 0.847f, 0.847f, 0.847f, 1.0f);
+            if (!hasPX) pushQuad(x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, 0.847f, 0.847f, 0.847f, 1.0f);
+            if (!hasNZ) pushQuad(x2, y1, z1, x2, y2, z1, x1, y2, z1, x1, y1, z1, 0.847f, 0.847f, 0.847f, 1.0f);
+            if (!hasPZ) pushQuad(x1, y1, z2, x1, y2, z2, x2, y2, z2, x2, y1, z2, 0.847f, 0.847f, 0.847f, 1.0f);
+        }
 
-                float y1 = cloudY;
-                float y2 = cloudY + thick;
+    m_cloudMesh.upload(vertices);
 
-                if (!nx0) {
-                    renderer->vertex(x1, y1, z2);
-                    renderer->vertex(x1, y2, z2);
-                    renderer->vertex(x1, y2, z1);
+    GlStateManager::disableCull();
+    GlStateManager::enableBlend();
+    GlStateManager::setBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    RenderCommand::enablePolygonOffsetFill();
+    RenderCommand::setPolygonOffset(1.0f, 1.0f);
 
-                    renderer->vertex(x1, y1, z2);
-                    renderer->vertex(x1, y2, z1);
-                    renderer->vertex(x1, y1, z1);
-                }
+    m_cloudShader->bind();
+    m_cloudShader->setMat4("u_model", GlStateManager::getMatrix().data);
+    m_cloudShader->setMat4("u_view", viewMatrix.data);
+    m_cloudShader->setMat4("u_projection", projection.data);
 
-                if (!nx1) {
-                    renderer->vertex(x2, y1, z1);
-                    renderer->vertex(x2, y2, z1);
-                    renderer->vertex(x2, y2, z2);
+    m_cloudMesh.render();
 
-                    renderer->vertex(x2, y1, z1);
-                    renderer->vertex(x2, y2, z2);
-                    renderer->vertex(x2, y1, z2);
-                }
-
-                if (!nz0) {
-                    renderer->vertex(x2, y1, z1);
-                    renderer->vertex(x2, y2, z1);
-                    renderer->vertex(x1, y2, z1);
-
-                    renderer->vertex(x2, y1, z1);
-                    renderer->vertex(x1, y2, z1);
-                    renderer->vertex(x1, y1, z1);
-                }
-
-                if (!nz1) {
-                    renderer->vertex(x1, y1, z2);
-                    renderer->vertex(x1, y2, z2);
-                    renderer->vertex(x2, y2, z2);
-
-                    renderer->vertex(x1, y1, z2);
-                    renderer->vertex(x2, y2, z2);
-                    renderer->vertex(x2, y1, z2);
-                }
-            }
-
-        renderer->end();
-    }
-
+    RenderCommand::disablePolygonOffsetFill();
     GlStateManager::disableBlend();
+    GlStateManager::enableCull();
 }
 
-void WorldRenderer::bindWorldShader(const Vec3 &cameraPos, const Mat4 &viewMatrix, const Mat4 &projection, float fogR, float fogG, float fogB) {
+void WorldRenderer::bindWorldShader(const Vec3 &cameraPos, const Mat4 &viewMatrix, const Mat4 &projection) {
     m_worldShader->bind();
     m_worldShader->setInt("u_texture", 0);
 
-    m_worldShader->setMat4("u_model", GlStateManager::getMatrix().data());
-    m_worldShader->setMat4("u_view", viewMatrix.data());
-    m_worldShader->setMat4("u_projection", projection.data());
+    m_worldShader->setMat4("u_model", GlStateManager::getMatrix().data);
+    m_worldShader->setMat4("u_view", viewMatrix.data);
+    m_worldShader->setMat4("u_projection", projection.data);
     m_worldShader->setVec3("u_cameraPos", cameraPos.x, cameraPos.y, cameraPos.z);
-
-    bool fogEnabled = GlStateManager::isFogEnabled();
-    m_worldShader->setInt("u_fogEnabled", fogEnabled);
-
-    if (fogEnabled) {
-        float _fogStart;
-        float _fogEnd;
-        GlStateManager::getFogRange(_fogStart, _fogEnd);
-
-        m_worldShader->setVec2("u_fogRange", _fogStart, _fogEnd);
-
-        m_worldShader->setInt("u_fogColormap", 1);
-        ColormapManager::getInstance()->bind("fog", 1);
-
-        m_worldShader->setVec2("u_fogLut", 0.5f, 0.5f);
-    }
 
     GlStateManager::enableCull();
     GlStateManager::setFrontFace(GL_CCW);
@@ -624,13 +561,13 @@ void WorldRenderer::uploadPendingMeshes() {
         const ChunkPos &pos                                = pair.first;
         std::vector<ChunkMesher::MeshBuildResult> &results = pair.second;
 
-        std::vector<RenderMesh> meshes;
+        std::vector<std::unique_ptr<ChunkMesh>> meshes;
         meshes.reserve(results.size());
 
         for (ChunkMesher::MeshBuildResult &result : results) {
-            RenderMesh renderMesh;
-            renderMesh.mesh = std::make_unique<ChunkMesh>(result.texture);
-            renderMesh.mesh->upload(result.vertices.data(), (uint32_t) result.vertices.size());
+            std::unique_ptr<ChunkMesh> renderMesh;
+            renderMesh = std::make_unique<ChunkMesh>(result.texture);
+            renderMesh->upload(result.vertices.data(), (uint32_t) result.vertices.size());
             meshes.push_back(std::move(renderMesh));
         }
 
@@ -661,14 +598,12 @@ void WorldRenderer::renderChunks(const Mat4 &viewMatrix, const Mat4 &projection)
 
         if (!m_frustum.testAABB(chunkAABB)) continue;
 
-        for (const RenderMesh &mesh : meshes) mesh.mesh->render();
+        for (const std::unique_ptr<ChunkMesh> &mesh : meshes) mesh->render();
     }
 }
 
 void WorldRenderer::renderChunkGrid() const {
     ImmediateRenderer *renderer = ImmediateRenderer::getForWorld();
-    renderer->setViewProjection(Minecraft::getInstance()->getCamera()->getViewMatrix(), Minecraft::getInstance()->getProjection());
-
     renderer->begin(GL_LINES);
     renderer->color(0xFF00FF00);
 
@@ -745,5 +680,92 @@ void WorldRenderer::renderEntityNameTags(float partialTicks) {
 
         GlStateManager::disableDepthTest();
         font->worldRenderShadow(wstrUuid, textPos, 0.015f, 0xFFFFFFFF);
+    }
+}
+
+void WorldRenderer::renderFogPass(const Mat4 &projection) {
+    GlStateManager::disableDepthTest();
+
+    m_fogShader->bind();
+
+    RenderCommand::activeTexture(0);
+    RenderCommand::bindTexture2D(m_sceneFramebuffer->getColorTexture());
+    m_fogShader->setInt("u_colorTexture", 0);
+
+    RenderCommand::activeTexture(1);
+    RenderCommand::bindTexture2D(m_sceneFramebuffer->getDepthTexture());
+    m_fogShader->setInt("u_depthTexture", 1);
+
+    m_fogShader->setInt("u_fogColormap", 2);
+    ColormapManager::getInstance()->bind("fog", 2);
+
+    Fog &fog = m_world->getFog();
+    m_fogShader->setVec2("u_fogLut", fog.getLutX(), fog.getLutY());
+
+    bool fogEnabled = GlStateManager::isFogEnabled();
+    m_fogShader->setInt("u_fogEnabled", fogEnabled);
+
+    if (fogEnabled) {
+        float fogStart;
+        float fogEnd;
+        GlStateManager::getFogRange(fogStart, fogEnd);
+        m_fogShader->setVec2("u_fogRange", fogStart, fogEnd);
+    }
+
+    Minecraft *minecraft        = Minecraft::getInstance();
+    Mat4 viewMatrix             = minecraft->getCamera()->getViewMatrix();
+    Mat4 invertedViewProjection = projection.multiply(viewMatrix).inverse();
+    m_fogShader->setMat4("u_invViewProj", invertedViewProjection.data);
+
+    RenderCommand::renderArrays(GL_TRIANGLES, 0, 3);
+
+    GlStateManager::enableDepthTest();
+}
+
+void WorldRenderer::scheduleMesher() {
+    if (!m_mesherRunning) return;
+    if (!m_mesherPool) return;
+
+    bool expected = false;
+    if (!m_mesherScheduled.compare_exchange_strong(expected, true)) return;
+
+    m_mesherPool->detach_task([this] { pumpMesher(); });
+}
+
+void WorldRenderer::pumpMesher() {
+    while (m_mesherRunning) {
+        ChunkPos pos;
+        bool has = false;
+
+        {
+            std::lock_guard<std::mutex> lock(m_rebuildQueueMutex);
+
+            if (!m_urgentQueue.empty()) {
+                pos = m_urgentQueue.front();
+                m_urgentQueue.pop();
+                has = true;
+            } else if (!m_rebuildQueue.empty()) {
+                pos = m_rebuildQueue.front();
+                m_rebuildQueue.pop();
+                has = true;
+            }
+        }
+
+        if (!has) break;
+
+        auto it = m_world->getChunks().find(pos);
+        if (it == m_world->getChunks().end()) continue;
+
+        std::vector<ChunkMesher::MeshBuildResult> results;
+        ChunkMesher::buildMeshes(m_world, it->second.get(), results);
+
+        submitMesh(pos, std::move(results));
+    }
+
+    m_mesherScheduled = false;
+
+    {
+        std::lock_guard<std::mutex> lock(m_rebuildQueueMutex);
+        if (m_mesherRunning && (!m_urgentQueue.empty() || !m_rebuildQueue.empty())) scheduleMesher();
     }
 }

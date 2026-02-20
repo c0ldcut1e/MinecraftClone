@@ -1,5 +1,7 @@
 #include "EntityRenderer.h"
 
+#include <glad/glad.h>
+
 #include "../core/Logger.h"
 #include "../core/Minecraft.h"
 #include "../rendering/ImmediateRenderer.h"

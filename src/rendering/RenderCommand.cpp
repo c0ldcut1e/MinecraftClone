@@ -1,10 +1,12 @@
 #include "RenderCommand.h"
 
-#include <GL/glew.h>
+#include <glad/glad.h>
 
-bool RenderCommand::initialize() { return glewInit() == GLEW_OK; }
+#include <GLFW/glfw3.h>
 
-void RenderCommand::enableExperimentalFeatures() { glewExperimental = GL_TRUE; }
+bool RenderCommand::initialize() { return gladLoadGLLoader((GLADloadproc) glfwGetProcAddress) != 0; }
+
+void RenderCommand::enableExperimentalFeatures() {}
 
 void RenderCommand::setViewport(int32_t x, int32_t y, int32_t width, int32_t height) { glViewport(x, y, width, height); }
 
@@ -152,15 +154,11 @@ void RenderCommand::bindElementArrayBuffer(uint32_t id) { glBindBuffer(GL_ELEMEN
 
 void RenderCommand::bindUniformBuffer(uint32_t id) { glBindBuffer(GL_UNIFORM_BUFFER, (GLuint) id); }
 
-void RenderCommand::bindShaderStorageBuffer(uint32_t id) { glBindBuffer(GL_SHADER_STORAGE_BUFFER, (GLuint) id); }
-
 void RenderCommand::uploadArrayBuffer(const void *data, uint32_t size, uint32_t usage) { glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr) size, data, (GLenum) usage); }
 
 void RenderCommand::uploadElementArrayBuffer(const void *data, uint32_t size, uint32_t usage) { glBufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr) size, data, (GLenum) usage); }
 
 void RenderCommand::uploadUniformBuffer(const void *data, uint32_t size, uint32_t usage) { glBufferData(GL_UNIFORM_BUFFER, (GLsizeiptr) size, data, (GLenum) usage); }
-
-void RenderCommand::uploadShaderStorageBuffer(const void *data, uint32_t size, uint32_t usage) { glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr) size, data, (GLenum) usage); }
 
 void RenderCommand::bufferSubData(uint32_t target, int32_t offset, uint32_t size, const void *data) { glBufferSubData((GLenum) target, (GLintptr) offset, (GLsizeiptr) size, data); }
 

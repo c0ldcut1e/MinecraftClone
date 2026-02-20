@@ -24,7 +24,7 @@ CFLAGS		:= -Wall -Wextra \
             	$(addprefix -I,$(INCLUDES))
 
 LDFLAGS	:=
-LIBS	:= -lGLEW -lglfw -lX11 -lXrandr -lXi -lXcursor -lXinerama -lopenal -lGL -ldl -lpthread -lfreetype
+LIBS 	:= -lglfw -lopenal -lGL -ldl -lpthread -lfreetype
 
 all: $(BINDIR)/$(TARGET)
 

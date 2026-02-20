@@ -11,24 +11,12 @@ uniform vec3 u_cameraPos;
 
 out vec2 v_uv;
 out vec3 v_light;
-out float v_fogSpherical;
-out float v_fogCylindrical;
 out float v_worldY;
 
 void main() {
     vec4 viewPos = u_view * u_model * vec4(a_position, 1.0);
-    gl_Position = u_projection * viewPos;
-
-    v_uv = a_uv;
-    v_light = a_light;
-
-    vec3 p = viewPos.xyz;
-    v_fogSpherical = length(p);
-
-    float distXZ = length(p.xz);
-    float distY  = abs(p.y);
-    v_fogCylindrical = max(distXZ, distY);
-
-    // left here even if unused now (future use, height-based fog etc.)
-    v_worldY = p.y + u_cameraPos.y;
+    gl_Position  = u_projection * viewPos;
+    v_uv         = a_uv;
+    v_light      = a_light;
+    v_worldY     = viewPos.y + u_cameraPos.y;
 }

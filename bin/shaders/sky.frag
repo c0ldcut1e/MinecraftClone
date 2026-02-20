@@ -2,61 +2,53 @@
 
 in vec2 v_ndc;
 
-uniform mat4 u_invViewProj;
-uniform vec3 u_cameraPos;
+uniform mat4 u_invProj;        // NEW: inverse(projection)
+uniform mat4 u_invViewRot;     // NEW: inverse(view rotation) only, in mat4 form
 
 uniform sampler2D u_skyColormap;
 uniform sampler2D u_fogColormap;
-
 uniform int u_fogEnabled;
-
-// fog lookup stays stable
 uniform vec2 u_fogLut;
-
-// sky lookup controls:
-// x = maxX (how far right we allow sampling)
-// y = yTop (preferred row near top)
-// z = yHorizon (preferred row near horizon)
 uniform vec3 u_skyLut;
 
 out vec4 FragColor;
 
-vec3 sample_colormap(sampler2D map, float x, float y) {
-    return texture(map, vec2(clamp(x, 0.0, 1.0), clamp(y, 0.0, 1.0))).rgb;
+vec3 sample_lod0(sampler2D map, vec2 uv) {
+    uv = clamp(uv, 0.0, 1.0);
+    return textureLod(map, uv, 0.0).rgb;
 }
 
 void main() {
-    vec4 clip = vec4(v_ndc, 1.0, 1.0);
-    vec4 wpos = u_invViewProj * clip;
-    wpos.xyz /= wpos.w;
+    // Build view-space ray from NDC using inverse projection
+    vec4 v = u_invProj * vec4(v_ndc, 1.0, 1.0);
+    vec3 dirView = normalize(v.xyz / v.w);
 
-    vec3 dir = normalize(wpos.xyz - u_cameraPos);
+    // Rotate ray into world space using ONLY rotation (no translation)
+    vec3 dir = normalize(mat3(u_invViewRot) * dirView);
 
-    // 0..1 where 1 is straight up
     float up = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
-    up = clamp(up, 0.002, 0.998);
 
-    // Base sky sampling
-    float skyMaxX = clamp(u_skyLut.x, 0.0, 1.0);
-    float x = mix(0.0, skyMaxX, up);
+    float xSafe = 0.06;
+    float yLow  = 0.18;
+    float yHigh = 0.88;
+    vec3 skyLow  = sample_lod0(u_skyColormap, vec2(xSafe, yLow));
+    vec3 skyHigh = sample_lod0(u_skyColormap, vec2(xSafe, yHigh));
+    float t = pow(smoothstep(0.0, 1.0, up), 0.85);
+    vec3 skyCol = mix(skyLow, skyHigh, t);
 
-    float y = mix(u_skyLut.z, u_skyLut.y, up);
-
-    // IMPORTANT: sky.png is a TRIANGLE LUT:
-    // valid region is bottom-left triangle where x + y <= 1.
-    // Force y under the diagonal so we never sample the white top-right triangle.
-    float eps = 0.002;
-    y = min(y, 1.0 - x - eps);
-    y = max(y, 0.0);
-
-    vec3 skyCol = sample_colormap(u_skyColormap, x, y);
-    vec3 fogCol = sample_colormap(u_fogColormap, u_fogLut.x, u_fogLut.y);
-
-    // Fog haze toward horizon
+    vec3 fogCol = sample_lod0(u_fogColormap, u_fogLut);
     float horizon = 1.0 - up;
-    float haze = smoothstep(0.10, 0.70, horizon);
+    float haze = smoothstep(0.0, 0.75, horizon);
+    haze = pow(haze, 0.4);
     if (u_fogEnabled == 0) haze = 0.0;
-
     vec3 col = mix(skyCol, fogCol, haze);
+
+    vec3 alphaVoidColor = vec3(0.39, 0.43, 0.78);
+    float belowHorizon = clamp(-dir.y, 0.0, 1.0);
+    float voidBlend = smoothstep(0.15, 0.20, belowHorizon);
+    float deepFade  = smoothstep(0.6, 1.0, belowHorizon);
+    vec3 voidCol = mix(alphaVoidColor, vec3(0.02, 0.02, 0.08), deepFade);
+    col = mix(col, voidCol, voidBlend);
+
     FragColor = vec4(col, 1.0);
 }

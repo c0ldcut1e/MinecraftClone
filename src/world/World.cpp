@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <cstdint>
 
 #include "../core/Logger.h"
 #include "../core/Minecraft.h"
@@ -13,7 +14,7 @@
 #include "lighting/LightEngine.h"
 #include "models/ModelRegistry.h"
 
-World::World() : m_emptyChunksSolid(true), m_sunPosition(0.0, 1000.0, 0.0), m_renderDistance(12) {}
+World::World() : m_emptyChunksSolid(true), m_sunPosition(0.0, 1000.0, 0.0), m_renderDistance(32) {}
 
 void World::update(float partialTicks) {
     if (ChunkManager *chunkManager = Minecraft::getInstance()->getChunkManager()) {
@@ -409,3 +410,23 @@ void World::setSunPosition(const Vec3 &position) { m_sunPosition = position; }
 void World::setRenderDistance(int distance) { m_renderDistance = distance; }
 
 int World::getRenderDistance() const { return m_renderDistance; }
+
+uint8_t World::getSkyLightLevel(const BlockPos &pos) const { return LightEngine::getSkyLight((World *) this, pos); }
+
+uint8_t World::getBlockLightLevel(const BlockPos &pos) const {
+    uint8_t r;
+    uint8_t g;
+    uint8_t b;
+    LightEngine::getBlockLight((World *) this, pos, &r, &g, &b);
+    return std::max(r, std::max(g, b));
+}
+
+uint8_t World::getLightLevel(const BlockPos &pos) const {
+    uint8_t sky   = getSkyLightLevel(pos);
+    uint8_t block = getBlockLightLevel(pos);
+    return std::max(sky, block);
+}
+
+Fog &World::getFog() { return m_fog; }
+
+const Fog &World::getFog() const { return m_fog; }

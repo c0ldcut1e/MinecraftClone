@@ -11,8 +11,7 @@ out vec4 FragColor;
 void main() {
     vec4 color = v_color;
 
-    if (u_useTexture == 1)
-        color *= texture(u_texture, v_uv);
+    if (u_useTexture == 1) color *= texture(u_texture, v_uv);
 
     FragColor = color;
 }

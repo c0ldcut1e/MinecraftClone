@@ -40,7 +40,7 @@ static inline void push(std::vector<float> &vertices, float x, float y, float z,
 }
 
 static inline void shade(Direction *direction, uint8_t lr, uint8_t lg, uint8_t lb, float &r, float &g, float &b) {
-    float minLight = 0.05f;
+    float minLight = 0.03f;
     float baseR    = (float) lr / 15.0f;
     float baseG    = (float) lg / 15.0f;
     float baseB    = (float) lb / 15.0f;

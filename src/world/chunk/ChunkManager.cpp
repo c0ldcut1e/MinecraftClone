@@ -1,9 +1,13 @@
 #include "ChunkManager.h"
 
+#include <algorithm>
 #include <cmath>
 #include <queue>
+
+#ifndef _WIN32
 #include <sys/resource.h>
 #include <unistd.h>
+#endif
 
 #include "../../core/Logger.h"
 #include "../../core/Minecraft.h"
@@ -25,19 +29,19 @@ void ChunkManager::start() {
     threadCount /= 2;
     Logger::logInfo("Starting chunk generation with %d threads", threadCount);
 
-    for (int i = 0; i < threadCount; i++) m_workers.emplace_back(&ChunkManager::workerThread, this);
+    m_pool = std::make_unique<BS::thread_pool<>>((size_t) threadCount);
 }
 
 void ChunkManager::stop() {
     if (!m_running.load()) return;
 
     m_running.store(false);
-    m_queueCondition.notify_all();
 
-    for (std::thread &worker : m_workers)
-        if (worker.joinable()) worker.join();
+    if (m_pool) {
+        m_pool->wait();
+        m_pool.reset();
+    }
 
-    m_workers.clear();
     Logger::logInfo("Chunk generation stopped");
 }
 
@@ -49,67 +53,58 @@ void ChunkManager::update(const Vec3 &playerPosition) {
     if (playerChunk == m_lastPlayerChunk) return;
     m_lastPlayerChunk = playerChunk;
 
-    std::vector<ChunkPos> missingChunks;
+    std::vector<GenerationTask> tasks;
 
     int renderDistance = m_world->getRenderDistance();
     for (int dz = -renderDistance; dz <= renderDistance; dz++)
         for (int dx = -renderDistance; dx <= renderDistance; dx++) {
             ChunkPos pos{cx + dx, 0, cz + dz};
             if (!isChunkInRenderDistance(pos, playerChunk)) continue;
-            if (!m_world->hasChunk(pos)) missingChunks.push_back(pos);
-        }
+            if (m_world->hasChunk(pos)) continue;
 
-    if (!missingChunks.empty()) {
-        std::lock_guard<std::mutex> genLock(m_generatingMutex);
-        std::lock_guard<std::mutex> queueLock(m_queueMutex);
+            int priority = calculatePriority(pos, playerChunk);
 
-        for (const ChunkPos &pos : missingChunks) {
-            if (m_generatingChunks.find(pos) == m_generatingChunks.end()) {
-                int priority = calculatePriority(pos, playerChunk);
+            {
+                std::lock_guard<std::mutex> genLock(m_generatingMutex);
+                if (m_generatingChunks.find(pos) != m_generatingChunks.end()) continue;
                 m_generatingChunks.insert(pos);
-                m_taskQueue.push({pos, priority});
             }
+
+            tasks.push_back({pos, priority});
         }
 
-        m_queueCondition.notify_all();
+    if (tasks.empty()) return;
+    if (!m_pool) return;
+    if (!m_running.load()) return;
+
+    std::sort(tasks.begin(), tasks.end(), [](const GenerationTask &a, const GenerationTask &b) { return a.priority > b.priority; });
+
+    for (const GenerationTask &t : tasks) {
+        m_pool->detach_task([this, pos = t.pos] {
+            if (!m_running.load()) {
+                std::lock_guard<std::mutex> genLock(m_generatingMutex);
+                m_generatingChunks.erase(pos);
+                return;
+            }
+
+            generateChunk(pos);
+
+            std::lock_guard<std::mutex> genLock(m_generatingMutex);
+            m_generatingChunks.erase(pos);
+        });
     }
 }
 
 void ChunkManager::drainFinished(std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> &out) {
     std::lock_guard<std::mutex> lock(m_finishedMutex);
-
     out.swap(m_finished);
 }
 
-void ChunkManager::workerThread() {
-    setpriority(PRIO_PROCESS, 0, 10);
-
-    while (m_running.load()) {
-        GenerationTask task;
-
-        {
-            std::unique_lock<std::mutex> lock(m_queueMutex);
-
-            m_queueCondition.wait(lock, [this] { return !m_running.load() || !m_taskQueue.empty(); });
-
-            if (!m_running.load()) break;
-            if (m_taskQueue.empty()) continue;
-
-            task = m_taskQueue.top();
-            m_taskQueue.pop();
-        }
-
-        generateChunk(task.pos);
-
-        {
-            std::lock_guard<std::mutex> lock(m_generatingMutex);
-
-            m_generatingChunks.erase(task.pos);
-        }
-    }
-}
-
 void ChunkManager::generateChunk(const ChunkPos &pos) {
+#ifndef _WIN32
+    setpriority(PRIO_PROCESS, 0, 10);
+#endif
+
     thread_local TerrainGenerator generator(0xDEADCAFE);
 
     std::unique_ptr<Chunk> chunk = std::make_unique<Chunk>(pos);
@@ -146,7 +141,7 @@ void ChunkManager::generateChunk(const ChunkPos &pos) {
             for (int x = 0; x < Chunk::SIZE_X; x++)
                 if (chunk->getSkyLight(x, y, z) == 15) lightQueue.push({x, y, z, 15});
 
-    static const int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    static const int DIRECTIONS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
 
     while (!lightQueue.empty()) {
         LightNode node = lightQueue.front();
@@ -156,9 +151,9 @@ void ChunkManager::generateChunk(const ChunkPos &pos) {
         if (currentLevel == 0) continue;
 
         for (int i = 0; i < 6; i++) {
-            int nx = node.x + DIRS[i][0];
-            int ny = node.y + DIRS[i][1];
-            int nz = node.z + DIRS[i][2];
+            int nx = node.x + DIRECTIONS[i][0];
+            int ny = node.y + DIRECTIONS[i][1];
+            int nz = node.z + DIRECTIONS[i][2];
 
             if (nx < 0 || nx >= Chunk::SIZE_X || ny < 0 || ny >= Chunk::SIZE_Y || nz < 0 || nz >= Chunk::SIZE_Z) continue;
 
@@ -167,11 +162,9 @@ void ChunkManager::generateChunk(const ChunkPos &pos) {
             uint8_t neighborLevel = chunk->getSkyLight(nx, ny, nz);
 
             uint8_t newLevel;
-            if (DIRS[i][1] == -1 && currentLevel == 15) {
-                newLevel = 15;
-            } else {
+            if (DIRECTIONS[i][1] == -1 && currentLevel == 15) newLevel = 15;
+            else
                 newLevel = currentLevel > 1 ? currentLevel - 1 : 0;
-            }
 
             if (newLevel > neighborLevel) {
                 chunk->setSkyLight(nx, ny, nz, newLevel);
@@ -244,22 +237,18 @@ void ChunkManager::generateChunk(const ChunkPos &pos) {
             if (currentLevel == 0) continue;
 
             for (int i = 0; i < 6; i++) {
-                int nx = node.x + DIRS[i][0];
-                int ny = node.y + DIRS[i][1];
-                int nz = node.z + DIRS[i][2];
-
+                int nx = node.x + DIRECTIONS[i][0];
+                int ny = node.y + DIRECTIONS[i][1];
+                int nz = node.z + DIRECTIONS[i][2];
                 if (nx < 0 || nx >= Chunk::SIZE_X || ny < 0 || ny >= Chunk::SIZE_Y || nz < 0 || nz >= Chunk::SIZE_Z) continue;
-
                 if (Block::byId(chunk->getBlockId(nx, ny, nz))->isSolid()) continue;
 
                 uint8_t neighborLevel = chunk->getSkyLight(nx, ny, nz);
 
                 uint8_t newLevel;
-                if (DIRS[i][1] == -1 && currentLevel == 15) {
-                    newLevel = 15;
-                } else {
+                if (DIRECTIONS[i][1] == -1 && currentLevel == 15) newLevel = 15;
+                else
                     newLevel = currentLevel > 1 ? currentLevel - 1 : 0;
-                }
 
                 if (newLevel > neighborLevel) {
                     chunk->setSkyLight(nx, ny, nz, newLevel);
@@ -271,26 +260,32 @@ void ChunkManager::generateChunk(const ChunkPos &pos) {
 
     {
         std::lock_guard<std::mutex> lock(m_finishedMutex);
-
         m_finished.emplace_back(pos, std::move(chunk));
     }
 }
 
-void ChunkManager::queueChunkGeneration(const ChunkPos &pos, int priority) {
-    {
-        std::lock_guard<std::mutex> lock(m_generatingMutex);
+void ChunkManager::queueChunkGeneration(const ChunkPos &pos) {
+    if (!m_pool) return;
+    if (!m_running.load()) return;
 
+    {
+        std::lock_guard<std::mutex> genLock(m_generatingMutex);
         if (m_generatingChunks.find(pos) != m_generatingChunks.end()) return;
         m_generatingChunks.insert(pos);
     }
 
-    {
-        std::lock_guard<std::mutex> lock(m_queueMutex);
+    m_pool->detach_task([this, pos] {
+        if (!m_running.load()) {
+            std::lock_guard<std::mutex> genLock(m_generatingMutex);
+            m_generatingChunks.erase(pos);
+            return;
+        }
 
-        m_taskQueue.push({pos, priority});
-    }
+        generateChunk(pos);
 
-    m_queueCondition.notify_one();
+        std::lock_guard<std::mutex> genLock(m_generatingMutex);
+        m_generatingChunks.erase(pos);
+    });
 }
 
 bool ChunkManager::isChunkInRenderDistance(const ChunkPos &pos, const ChunkPos &center) const {

@@ -3,66 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 
-#define RC_FLOAT                     0x1406
-#define RC_UNSIGNED_BYTE             0x1401
-#define RC_UNSIGNED_INT              0x1405
-
-#define RC_STATIC_DRAW               0x88E4
-#define RC_DYNAMIC_DRAW              0x88E8
-#define RC_STREAM_DRAW               0x88E0
-
-#define RC_TRIANGLES                 0x0004
-#define RC_LINES                     0x0001
-#define RC_POINTS                    0x0000
-
-#define RC_VERTEX_SHADER             0x8B31
-#define RC_FRAGMENT_SHADER           0x8B30
-
-#define RC_TEXTURE_MIN_FILTER        0x2801
-#define RC_TEXTURE_MAG_FILTER        0x2800
-#define RC_TEXTURE_WRAP_S            0x2802
-#define RC_TEXTURE_WRAP_T            0x2803
-
-#define RC_NEAREST                   0x2600
-#define RC_LINEAR                    0x2601
-#define RC_REPEAT                    0x2901
-#define RC_CLAMP_TO_EDGE             0x812F
-
-#define RC_RGBA8                     0x8058
-#define RC_RGBA                      0x1908
-#define RC_RGB                       0x1907
-#define RC_RED                       0x1903
-
-#define RC_UNSIGNED_BYTE             0x1401
-
-#define RC_COLOR_BUFFER_BIT          0x00004000
-#define RC_DEPTH_BUFFER_BIT          0x00000100
-#define RC_STENCIL_BUFFER_BIT        0x00000400
-
-#define RC_FRONT                     0x0404
-#define RC_BACK                      0x0405
-#define RC_FRONT_AND_BACK            0x0408
-
-#define RC_CW                        0x0900
-#define RC_CCW                       0x0901
-
-#define RC_LESS                      0x0201
-#define RC_LEQUAL                    0x0203
-#define RC_GREATER                   0x0204
-#define RC_GEQUAL                    0x0206
-#define RC_EQUAL                     0x0202
-#define RC_ALWAYS                    0x0207
-
-#define RC_BLEND_SRC_ALPHA           0x0302
-#define RC_BLEND_ONE_MINUS_SRC_ALPHA 0x0303
-
-#define RC_TEXTURE_2D                0x0DE1
-#define RC_ARRAY_BUFFER              0x8892
-#define RC_FRAMEBUFFER               0x8D40
-
-#define RC_UNPACK_ALIGNMENT          0x0CF5
-#define RC_FILL                      0x1B02
-
 class RenderCommand {
 public:
     static bool initialize();
@@ -152,12 +92,10 @@ public:
     static void bindArrayBuffer(uint32_t id);
     static void bindElementArrayBuffer(uint32_t id);
     static void bindUniformBuffer(uint32_t id);
-    static void bindShaderStorageBuffer(uint32_t id);
 
     static void uploadArrayBuffer(const void *data, uint32_t size, uint32_t usage);
     static void uploadElementArrayBuffer(const void *data, uint32_t size, uint32_t usage);
     static void uploadUniformBuffer(const void *data, uint32_t size, uint32_t usage);
-    static void uploadShaderStorageBuffer(const void *data, uint32_t size, uint32_t usage);
 
     static void bufferSubData(uint32_t target, int offset, uint32_t size, const void *data);
 

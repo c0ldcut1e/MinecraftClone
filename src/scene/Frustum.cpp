@@ -5,7 +5,7 @@
 Frustum::Frustum() {}
 
 void Frustum::extractPlanes(const Mat4 &viewProjection) {
-    const double *matrix = viewProjection.data();
+    const double *matrix = viewProjection.data;
 
     m_planes[0].normal.x = matrix[3] + matrix[0];
     m_planes[0].normal.y = matrix[7] + matrix[4];

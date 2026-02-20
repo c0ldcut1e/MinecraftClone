@@ -1,6 +1,6 @@
 #include "UIComponent_Crosshair.h"
 
-#include <GL/glew.h>
+#include <glad/glad.h>
 
 #include "../core/Minecraft.h"
 #include "../rendering/GlStateManager.h"
@@ -111,5 +111,5 @@ void UIComponent_Crosshair::ensureCaptureTexture(int captureSize) {
     m_captureSize = captureSize;
 
     RenderCommand::bindTexture2D(m_captureTexture);
-    RenderCommand::uploadTexture2D(m_captureSize, m_captureSize, RC_RGBA8, RC_RGBA, RC_UNSIGNED_BYTE, nullptr);
+    RenderCommand::uploadTexture2D(m_captureSize, m_captureSize, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 }

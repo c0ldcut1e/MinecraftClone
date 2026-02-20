@@ -10,22 +10,12 @@
 #include "block/BlockPos.h"
 #include "chunk/Chunk.h"
 #include "chunk/ChunkPos.h"
+#include "environment/Fog.h"
 
 class Entity;
 
 class World {
 public:
-    struct DynamicLight {
-        uint32_t id;
-        BlockPos pos;
-        BlockPos lastPos;
-        bool hasLastPos;
-        uint8_t r;
-        uint8_t g;
-        uint8_t b;
-        uint8_t radius;
-    };
-
     World();
     ~World() = default;
 
@@ -59,13 +49,14 @@ public:
     void setRenderDistance(int distance);
     int getRenderDistance() const;
 
-    uint32_t addDynamicLight(const BlockPos &pos, uint8_t r, uint8_t g, uint8_t b);
-    void moveDynamicLight(uint32_t id, const BlockPos &pos);
-    void removeDynamicLight(uint32_t id);
+    uint8_t getLightLevel(const BlockPos &pos) const;
+    uint8_t getSkyLightLevel(const BlockPos &pos) const;
+    uint8_t getBlockLightLevel(const BlockPos &pos) const;
+
+    Fog &getFog();
+    const Fog &getFog() const;
 
 private:
-    void rebuildDynamicLights();
-
     std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> m_chunks;
     std::deque<ChunkPos> m_dirtyChunks;
     std::deque<ChunkPos> m_urgentDirtyChunks;
@@ -78,4 +69,6 @@ private:
     Vec3 m_sunPosition;
 
     int m_renderDistance;
+
+    Fog m_fog;
 };

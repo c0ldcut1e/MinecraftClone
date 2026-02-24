@@ -2,8 +2,8 @@
 
 #include <string>
 
+#include "../utils/AABB.h"
 #include "../utils/UUID.h"
-#include "../utils/math/AABB.h"
 #include "../utils/math/Vec3.h"
 #include "../world/World.h"
 #include "../world/models/Model.h"

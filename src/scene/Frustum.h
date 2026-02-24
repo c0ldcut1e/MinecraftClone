@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../utils/math/AABB.h"
+#include "../utils/AABB.h"
 #include "../utils/math/Mat4.h"
 #include "../utils/math/Vec3.h"
 

@@ -5,8 +5,8 @@
 #include <unordered_map>
 
 #include "../../rendering/Texture.h"
+#include "../../utils/AABB.h"
 #include "../../utils/Direction.h"
-#include "../../utils/math/AABB.h"
 #include "BlockPos.h"
 
 class Chunk;

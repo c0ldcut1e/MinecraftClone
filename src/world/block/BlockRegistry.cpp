@@ -22,7 +22,7 @@ void BlockRegistry::init() {
     static Block s_grass("grass", true, "textures/block/grass_side.png");
     s_grass.setTexture(Direction::UP, s_textures.get("textures/block/grass_top.png").get());
     s_grass.setTexture(Direction::DOWN, s_textures.get("textures/block/dirt.png").get());
-    s_grass.setTintColormap(Direction::UP, "grasscolor");
+    s_grass.setTintColormap(Direction::UP, "foliage");
 
     static Block s_sand("sand", true, "textures/block/sand.png");
     static Block s_gravel("gravel", true, "textures/block/gravel.png");

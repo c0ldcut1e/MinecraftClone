@@ -48,7 +48,7 @@ WorldRenderer::WorldRenderer(World *world, int width, int height)
     ColormapManager *colormapManager = ColormapManager::getInstance();
     colormapManager->load("fog", "textures/colormap/fog.png");
     colormapManager->load("sky", "textures/colormap/sky.png");
-    colormapManager->load("grasscolor", "textures/colormap/grasscolor.png");
+    colormapManager->load("foliage", "textures/colormap/foliage.png");
 
     m_mesherRunning = true;
     m_mesherPool    = std::make_unique<BS::thread_pool<>>((size_t) std::max(1u, std::thread::hardware_concurrency() - 2));

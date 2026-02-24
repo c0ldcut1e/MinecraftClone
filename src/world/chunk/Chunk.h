@@ -22,10 +22,10 @@ public:
     void setBiomeAt(int x, int z, Biome *biome);
     Biome *getBiomeAt(int x, int z) const;
 
-    void getLight(int x, int y, int z, uint8_t &r, uint8_t &g, uint8_t &b) const;
+    void getLight(int x, int y, int z, uint8_t *r, uint8_t *g, uint8_t *b) const;
     void setLight(int x, int y, int z, uint8_t r, uint8_t g, uint8_t b);
 
-    void getBlockLight(int x, int y, int z, uint8_t &r, uint8_t &g, uint8_t &b) const;
+    void getBlockLight(int x, int y, int z, uint8_t *r, uint8_t *g, uint8_t *b) const;
     void setBlockLight(int x, int y, int z, uint8_t r, uint8_t g, uint8_t b);
 
     uint8_t getSkyLight(int x, int y, int z) const;

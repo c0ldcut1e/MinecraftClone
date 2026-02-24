@@ -9,7 +9,7 @@ public:
     ~Texture();
 
     void bind(uint32_t slot) const;
-    void samplePixel(int pixelX, int pixelY, float &r, float &g, float &b) const;
+    void samplePixel(int pixelX, int pixelY, float *r, float *g, float *b) const;
 
     uint32_t getId() const;
 

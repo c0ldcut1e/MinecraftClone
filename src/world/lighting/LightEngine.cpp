@@ -61,15 +61,6 @@ struct ChunkCache {
 
     explicit ChunkCache(World *world) : m_world(world) { m_map.reserve(64); }
 
-    Chunk *get(int cx, int cy, int cz) {
-        ChunkPos p(cx, cy, cz);
-        auto it = m_map.find(p);
-        if (it != m_map.end()) return it->second;
-        Chunk *chunk = m_world->getChunk(p);
-        m_map[p]     = chunk;
-        return chunk;
-    }
-
     Chunk *get(const ChunkPos &p) {
         auto it = m_map.find(p);
         if (it != m_map.end()) return it->second;
@@ -132,7 +123,7 @@ void LightEngine::propagateSkyLight(World *world, const ChunkPos &pos) {
         int lx0  = localCoord(node.x, Chunk::SIZE_X);
         int lz0  = localCoord(node.z, Chunk::SIZE_Z);
 
-        Chunk *nodeChunk = cache.get(ncx0, 0, ncz0);
+        Chunk *nodeChunk = cache.get(ChunkPos(ncx0, 0, ncz0));
         if (!nodeChunk) continue;
 
         uint8_t currentLevel = nodeChunk->getSkyLight(lx0, node.y, lz0);
@@ -148,7 +139,7 @@ void LightEngine::propagateSkyLight(World *world, const ChunkPos &pos) {
             int ncx = chunkCoord(nx, Chunk::SIZE_X);
             int ncz = chunkCoord(nz, Chunk::SIZE_Z);
 
-            Chunk *neighborChunk = cache.get(ncx, 0, ncz);
+            Chunk *neighborChunk = cache.get(ChunkPos(ncx, 0, ncz));
             if (!neighborChunk) continue;
 
             int lx = localCoord(nx, Chunk::SIZE_X);
@@ -193,7 +184,7 @@ void LightEngine::propagateBlockLight(World *world, const ChunkPos &pos) {
                 uint8_t lr;
                 uint8_t lg;
                 uint8_t lb;
-                block->getLightColor(lr, lg, lb);
+                block->getLightColor(&lr, &lg, &lb);
 
                 uint8_t finalR = (uint8_t) ((lr / 255.0f) * emission);
                 uint8_t finalG = (uint8_t) ((lg / 255.0f) * emission);
@@ -218,13 +209,13 @@ void LightEngine::propagateBlockLight(World *world, const ChunkPos &pos) {
         int lx0  = localCoord(node.x, Chunk::SIZE_X);
         int lz0  = localCoord(node.z, Chunk::SIZE_Z);
 
-        Chunk *nodeChunk = cache.get(ncx0, 0, ncz0);
+        Chunk *nodeChunk = cache.get(ChunkPos(ncx0, 0, ncz0));
         if (!nodeChunk) continue;
 
         uint8_t cr;
         uint8_t cg;
         uint8_t cb;
-        nodeChunk->getBlockLight(lx0, node.y, lz0, cr, cg, cb);
+        nodeChunk->getBlockLight(lx0, node.y, lz0, &cr, &cg, &cb);
 
         uint8_t maxCurrent = maxComponent(cr, cg, cb);
         if (maxCurrent <= 1) continue;
@@ -239,7 +230,7 @@ void LightEngine::propagateBlockLight(World *world, const ChunkPos &pos) {
             int ncx = chunkCoord(nx, Chunk::SIZE_X);
             int ncz = chunkCoord(nz, Chunk::SIZE_Z);
 
-            Chunk *neighborChunk = cache.get(ncx, 0, ncz);
+            Chunk *neighborChunk = cache.get(ChunkPos(ncx, 0, ncz));
             if (!neighborChunk) continue;
 
             int lx = localCoord(nx, Chunk::SIZE_X);
@@ -251,7 +242,7 @@ void LightEngine::propagateBlockLight(World *world, const ChunkPos &pos) {
             uint8_t nr;
             uint8_t ng;
             uint8_t nb;
-            neighborChunk->getBlockLight(lx, ny, lz, nr, ng, nb);
+            neighborChunk->getBlockLight(lx, ny, lz, &nr, &ng, &nb);
 
             uint8_t newR = cr > 1 ? cr - 1 : 0;
             uint8_t newG = cg > 1 ? cg - 1 : 0;
@@ -341,7 +332,7 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos) {
             int ncx = chunkCoord(nx, Chunk::SIZE_X);
             int ncz = chunkCoord(nz, Chunk::SIZE_Z);
 
-            Chunk *neighborChunk = cache.get(ncx, 0, ncz);
+            Chunk *neighborChunk = cache.get(ChunkPos(ncx, 0, ncz));
             if (!neighborChunk) continue;
 
             if (ncx != cx || ncz != cz) dirtyChunks.insert(ChunkPos(ncx, 0, ncz));
@@ -397,7 +388,7 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos) {
         int ncx = chunkCoord(nx, Chunk::SIZE_X);
         int ncz = chunkCoord(nz, Chunk::SIZE_Z);
 
-        Chunk *neighborChunk = cache.get(ncx, 0, ncz);
+        Chunk *neighborChunk = cache.get(ChunkPos(ncx, 0, ncz));
         if (!neighborChunk) continue;
 
         int lx = localCoord(nx, Chunk::SIZE_X);
@@ -416,7 +407,7 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos) {
         int lx0  = localCoord(node.x, Chunk::SIZE_X);
         int lz0  = localCoord(node.z, Chunk::SIZE_Z);
 
-        Chunk *nodeChunk = cache.get(ncx0, 0, ncz0);
+        Chunk *nodeChunk = cache.get(ChunkPos(ncx0, 0, ncz0));
         if (!nodeChunk) continue;
 
         uint8_t currentLevel = nodeChunk->getSkyLight(lx0, node.y, lz0);
@@ -432,7 +423,7 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos) {
             int ncx = chunkCoord(nx, Chunk::SIZE_X);
             int ncz = chunkCoord(nz, Chunk::SIZE_Z);
 
-            Chunk *neighborChunk = cache.get(ncx, 0, ncz);
+            Chunk *neighborChunk = cache.get(ChunkPos(ncx, 0, ncz));
             if (!neighborChunk) continue;
 
             if (ncx != cx || ncz != cz) dirtyChunks.insert(ChunkPos(ncx, 0, ncz));
@@ -466,7 +457,7 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos) {
             uint8_t oldR;
             uint8_t oldG;
             uint8_t oldB;
-            chunk->getBlockLight(lx, worldPos.y, lz, oldR, oldG, oldB);
+            chunk->getBlockLight(lx, worldPos.y, lz, &oldR, &oldG, &oldB);
 
             if (oldR > 0 || oldG > 0 || oldB > 0) {
                 chunk->setBlockLight(lx, worldPos.y, lz, 0, 0, 0);
@@ -487,7 +478,7 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos) {
 
             int ncx              = chunkCoord(nx, Chunk::SIZE_X);
             int ncz              = chunkCoord(nz, Chunk::SIZE_Z);
-            Chunk *neighborChunk = cache.get(ncx, 0, ncz);
+            Chunk *neighborChunk = cache.get(ChunkPos(ncx, 0, ncz));
             if (!neighborChunk) continue;
 
             if (ncx != cx || ncz != cz) dirtyChunks.insert(ChunkPos(ncx, 0, ncz));
@@ -501,7 +492,7 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos) {
             uint8_t nr;
             uint8_t ng;
             uint8_t nb;
-            neighborChunk->getBlockLight(lx, ny, lz, nr, ng, nb);
+            neighborChunk->getBlockLight(lx, ny, lz, &nr, &ng, &nb);
 
             if (nr == 0 && ng == 0 && nb == 0) continue;
 
@@ -527,7 +518,7 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos) {
         uint8_t lr;
         uint8_t lg;
         uint8_t lb;
-        changedBlock->getLightColor(lr, lg, lb);
+        changedBlock->getLightColor(&lr, &lg, &lb);
 
         uint8_t finalR = (uint8_t) ((lr / 255.0f) * emission);
         uint8_t finalG = (uint8_t) ((lg / 255.0f) * emission);
@@ -552,7 +543,7 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos) {
 
             int ncx              = chunkCoord(nx, Chunk::SIZE_X);
             int ncz              = chunkCoord(nz, Chunk::SIZE_Z);
-            Chunk *neighborChunk = cache.get(ncx, 0, ncz);
+            Chunk *neighborChunk = cache.get(ChunkPos(ncx, 0, ncz));
             if (!neighborChunk) continue;
 
             int lx               = localCoord(nx, Chunk::SIZE_X);
@@ -561,7 +552,7 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos) {
             if (neighborBlock->isSolid()) continue;
 
             uint8_t nr, ng, nb;
-            neighborChunk->getBlockLight(lx, ny, lz, nr, ng, nb);
+            neighborChunk->getBlockLight(lx, ny, lz, &nr, &ng, &nb);
 
             if (nr || ng || nb) blockAddQueue.push({nx, ny, nz, nr, ng, nb});
         }
@@ -576,11 +567,11 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos) {
         int lx0  = localCoord(node.x, Chunk::SIZE_X);
         int lz0  = localCoord(node.z, Chunk::SIZE_Z);
 
-        Chunk *nodeChunk = cache.get(ncx0, 0, ncz0);
+        Chunk *nodeChunk = cache.get(ChunkPos(ncx0, 0, ncz0));
         if (!nodeChunk) continue;
 
         uint8_t cr, cg, cb;
-        nodeChunk->getBlockLight(lx0, node.y, lz0, cr, cg, cb);
+        nodeChunk->getBlockLight(lx0, node.y, lz0, &cr, &cg, &cb);
 
         uint8_t maxCurrent = maxComponent(cr, cg, cb);
         if (maxCurrent <= 1) continue;
@@ -593,7 +584,7 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos) {
 
             int ncx              = chunkCoord(nx, Chunk::SIZE_X);
             int ncz              = chunkCoord(nz, Chunk::SIZE_Z);
-            Chunk *neighborChunk = cache.get(ncx, 0, ncz);
+            Chunk *neighborChunk = cache.get(ChunkPos(ncx, 0, ncz));
             if (!neighborChunk) continue;
 
             if (ncx != cx || ncz != cz) dirtyChunks.insert(ChunkPos(ncx, 0, ncz));
@@ -607,7 +598,7 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos) {
             uint8_t nr;
             uint8_t ng;
             uint8_t nb;
-            neighborChunk->getBlockLight(lx, ny, lz, nr, ng, nb);
+            neighborChunk->getBlockLight(lx, ny, lz, &nr, &ng, &nb);
 
             uint8_t newR = cr > 1 ? cr - 1 : 0;
             uint8_t newG = cg > 1 ? cg - 1 : 0;
@@ -648,7 +639,7 @@ void LightEngine::getBlockLight(World *world, const BlockPos &worldPos, uint8_t 
 
     int lx = localCoord(worldPos.x, Chunk::SIZE_X);
     int lz = localCoord(worldPos.z, Chunk::SIZE_Z);
-    chunk->getBlockLight(lx, worldPos.y, lz, *r, *g, *b);
+    chunk->getBlockLight(lx, worldPos.y, lz, r, g, b);
 }
 
 void LightEngine::setBlockLight(World *world, const BlockPos &worldPos, uint8_t r, uint8_t g, uint8_t b) {
@@ -718,5 +709,5 @@ void LightEngine::getLightLevel(World *world, const BlockPos &worldPos, uint8_t 
 
     int lx = localCoord(worldPos.x, Chunk::SIZE_X);
     int lz = localCoord(worldPos.z, Chunk::SIZE_Z);
-    chunk->getLight(lx, worldPos.y, lz, *r, *g, *b);
+    chunk->getLight(lx, worldPos.y, lz, r, g, b);
 }

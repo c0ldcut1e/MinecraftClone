@@ -14,7 +14,7 @@ class World;
 
 class Block {
 public:
-    enum class RenderType : uint8_t {
+    enum class RenderShape : uint8_t {
         CUBE  = 0,
         CROSS = 1,
         TORCH = 2,
@@ -49,6 +49,7 @@ public:
     uint32_t resolveTint(Direction *direction, World *world, const Chunk *chunk, int localX, int localZ) const;
 
     const std::string &getName() const;
+
     bool isSolid() const;
 
     void setAABB(const AABB &aabb);
@@ -58,10 +59,10 @@ public:
     uint8_t getLightEmission() const;
 
     void setLightColor(uint8_t r, uint8_t g, uint8_t b);
-    void getLightColor(uint8_t &r, uint8_t &g, uint8_t &b) const;
+    void getLightColor(uint8_t *r, uint8_t *g, uint8_t *b) const;
 
-    void setRenderType(RenderType type);
-    RenderType getRenderType() const;
+    void setRenderShape(RenderShape type);
+    RenderShape getRenderShape() const;
 
     void setUVRect(Direction *direction, float u0, float v0, float u1, float v1);
     UVRect getUVRect(Direction *direction) const;
@@ -76,6 +77,6 @@ protected:
     uint8_t m_lightR;
     uint8_t m_lightG;
     uint8_t m_lightB;
-    RenderType m_renderType;
+    RenderShape m_renderShape;
     std::unordered_map<Direction *, UVRect> m_uvRects;
 };

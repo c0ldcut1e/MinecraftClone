@@ -195,11 +195,11 @@ void ChunkManager::dispatchPending() {
     }
 }
 
-void ChunkManager::drainFinished(std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> &out, int max) {
+void ChunkManager::drainFinished(std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> *out, int max) {
     std::lock_guard<std::mutex> lock(m_finishedMutex);
     int count = 0;
     while (!m_finished.empty() && count < max) {
-        out.emplace_back(std::move(m_finished.front()));
+        out->emplace_back(std::move(m_finished.front()));
         m_finished.pop_front();
         count++;
     }

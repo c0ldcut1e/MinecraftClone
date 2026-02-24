@@ -13,6 +13,7 @@
 #include "../utils/Random.h"
 #include "../utils/Time.h"
 #include "../utils/math/Math.h"
+#include "block/Block.h"
 #include "models/Model.h"
 #include "models/ModelDefinition.h"
 #include "models/ModelPartsSkinned.h"
@@ -151,7 +152,7 @@ void WorldRenderer::rebuild() {
 
     for (const auto &[pos, chunkPtr] : m_world->getChunks()) {
         std::vector<ChunkMesher::MeshBuildResult> results;
-        ChunkMesher::buildMeshes(m_world, chunkPtr.get(), results);
+        ChunkMesher::buildMeshes(m_world, chunkPtr.get(), &results);
 
         std::vector<std::unique_ptr<ChunkMesh>> meshes;
         meshes.reserve(results.size());
@@ -885,14 +886,21 @@ void WorldRenderer::renderBlockOutline() {
     const BlockPos blockPos = hit->getBlockPos();
     delete hit;
 
-    constexpr float EPS = 0.0035f;
+    constexpr float EPSILON = 0.0035f;
 
-    float minX = (float) blockPos.x - EPS;
-    float minY = (float) blockPos.y - EPS;
-    float minZ = (float) blockPos.z - EPS;
-    float maxX = (float) blockPos.x + 1.0f + EPS;
-    float maxY = (float) blockPos.y + 1.0f + EPS;
-    float maxZ = (float) blockPos.z + 1.0f + EPS;
+    Block *block = Block::byId(m_world->getBlockId(blockPos));
+    if (!block) return;
+
+    AABB blockBox        = block->getAABB().translated(Vec3(blockPos.x, blockPos.y, blockPos.z));
+    const Vec3 &blockMin = blockBox.getMin();
+    const Vec3 &blockMax = blockBox.getMax();
+
+    float minX = (float) blockMin.x - EPSILON;
+    float minY = (float) blockMin.y - EPSILON;
+    float minZ = (float) blockMin.z - EPSILON;
+    float maxX = (float) blockMax.x + EPSILON;
+    float maxY = (float) blockMax.y + EPSILON;
+    float maxZ = (float) blockMax.z + EPSILON;
 
     GlStateManager::enableDepthTest();
     GlStateManager::setDepthMask(false);
@@ -991,7 +999,7 @@ void WorldRenderer::renderFogPass(const Mat4 &projection) {
     if (fogEnabled) {
         float fogStart;
         float fogEnd;
-        GlStateManager::getFogRange(fogStart, fogEnd);
+        GlStateManager::getFogRange(&fogStart, &fogEnd);
         m_fogShader->setVec2("u_fogRange", fogStart, fogEnd);
     }
 
@@ -1035,7 +1043,7 @@ void WorldRenderer::scheduleMesher() {
             auto it = m_world->getChunks().find(pos);
             if (it == m_world->getChunks().end()) return;
             std::vector<ChunkMesher::MeshBuildResult> results;
-            ChunkMesher::buildMeshes(m_world, it->second.get(), results);
+            ChunkMesher::buildMeshes(m_world, it->second.get(), &results);
             submitMesh(pos, std::move(results));
         });
 
@@ -1045,7 +1053,7 @@ void WorldRenderer::scheduleMesher() {
             auto it = m_world->getChunks().find(pos);
             if (it == m_world->getChunks().end()) return;
             std::vector<ChunkMesher::MeshBuildResult> results;
-            ChunkMesher::buildMeshes(m_world, it->second.get(), results);
+            ChunkMesher::buildMeshes(m_world, it->second.get(), &results);
             submitMesh(pos, std::move(results));
         });
 }
@@ -1112,7 +1120,7 @@ void WorldRenderer::pumpSkyLightClampUpdate(int scheduleBudget, int applyBudget)
             std::vector<uint16_t> rawLights;
             std::vector<float> shades;
             std::vector<uint32_t> tints;
-            mesh->snapshotSky(vertices, rawLights, shades, tints);
+            mesh->snapshotSky(&vertices, &rawLights, &shades, &tints);
 
             if (vertices.empty()) continue;
             if (rawLights.size() * 8 != vertices.size()) continue;

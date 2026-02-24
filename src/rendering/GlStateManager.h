@@ -48,10 +48,10 @@ public:
     static bool isFogEnabled();
 
     static void setFogColor(float r, float g, float b);
-    static void getFogColor(float &r, float &g, float &b);
+    static void getFogColor(float *r, float *g, float *b);
 
     static void setFogRange(float start, float end);
-    static void getFogRange(float &start, float &end);
+    static void getFogRange(float *start, float *end);
 
     static void setColorMask(bool r, bool g, bool b, bool a);
 

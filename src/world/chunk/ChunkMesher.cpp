@@ -24,10 +24,10 @@ static inline uint16_t packLight(uint8_t r, uint8_t g, uint8_t b) {
     return (uint16_t) ((r << 8) | (g << 4) | (b));
 }
 
-static inline void unpackLight(uint16_t k, uint8_t &r, uint8_t &g, uint8_t &b) {
-    r = (uint8_t) ((k >> 8) & 0xF);
-    g = (uint8_t) ((k >> 4) & 0xF);
-    b = (uint8_t) (k & 0xF);
+static inline void unpackLight(uint16_t k, uint8_t *r, uint8_t *g, uint8_t *b) {
+    *r = (uint8_t) ((k >> 8) & 0xF);
+    *g = (uint8_t) ((k >> 4) & 0xF);
+    *b = (uint8_t) (k & 0xF);
 }
 
 static inline uint16_t packRawLight(uint8_t br, uint8_t bg, uint8_t bb, uint8_t sky) { return (uint16_t) ((br & 15) | ((bg & 15) << 4) | ((bb & 15) << 8) | ((sky & 15) << 12)); }
@@ -48,7 +48,7 @@ static inline void push(std::vector<float> &vertices, std::vector<uint16_t> &raw
     tints.push_back(tint);
 }
 
-static inline void shade(Direction *direction, uint8_t lr, uint8_t lg, uint8_t lb, float &r, float &g, float &b) {
+static inline void shade(Direction *direction, uint8_t lr, uint8_t lg, uint8_t lb, float *r, float *g, float *b) {
     float minLight = 0.03f;
     float baseR    = (float) lr / 15.0f;
     float baseG    = (float) lg / 15.0f;
@@ -65,9 +65,9 @@ static inline void shade(Direction *direction, uint8_t lr, uint8_t lg, uint8_t l
     else if (direction == Direction::DOWN)
         _shade = 0.5f;
 
-    r = baseR * _shade;
-    g = baseG * _shade;
-    b = baseB * _shade;
+    *r = baseR * _shade;
+    *g = baseG * _shade;
+    *b = baseB * _shade;
 }
 
 static inline void addFace(std::vector<float> &vertices, std::vector<uint16_t> &rawLights, std::vector<float> &shades, std::vector<uint32_t> &tints, float x1, float y1, float z1, float x2, float y2, float z2, float x3, float y3, float z3, float x4, float y4,
@@ -112,47 +112,47 @@ static inline uint16_t sampleLightKey(World *world, const Chunk *chunk, int wx, 
     uint8_t br;
     uint8_t bg;
     uint8_t bb;
-    _chunk->getBlockLight(lx, ly, lz, br, bg, bb);
+    _chunk->getBlockLight(lx, ly, lz, &br, &bg, &bb);
 
     uint8_t sky = _chunk->getSkyLight(lx, ly, lz);
 
     return packRawLight(br, bg, bb, sky);
 }
 
-static inline Block *getBlockWorld(World *world, const Chunk *chunk, int x, int y, int z) {
-    if (y < 0 || y >= Chunk::SIZE_Y) return nullptr;
-    if (x >= 0 && x < Chunk::SIZE_X && z >= 0 && z < Chunk::SIZE_Z) return Block::byId(chunk->getBlockId(x, y, z));
+static inline Block *getBlockWorld(World *world, const Chunk *chunk, const BlockPos &pos) {
+    if (pos.y < 0 || pos.y >= Chunk::SIZE_Y) return nullptr;
+    if (pos.x >= 0 && pos.x < Chunk::SIZE_X && pos.z >= 0 && pos.z < Chunk::SIZE_Z) return Block::byId(chunk->getBlockId(pos.x, pos.y, pos.z));
 
-    ChunkPos pos = chunk->getPos();
-    int lx       = x;
-    int lz       = z;
+    ChunkPos chunkPos = chunk->getPos();
+    int lx           = pos.x;
+    int lz           = pos.z;
 
     if (lx < 0) {
-        pos.x -= 1;
+        chunkPos.x -= 1;
         lx += Chunk::SIZE_X;
     } else if (lx >= Chunk::SIZE_X) {
-        pos.x += 1;
+        chunkPos.x += 1;
         lx -= Chunk::SIZE_X;
     }
 
     if (lz < 0) {
-        pos.z -= 1;
+        chunkPos.z -= 1;
         lz += Chunk::SIZE_Z;
     } else if (lz >= Chunk::SIZE_Z) {
-        pos.z += 1;
+        chunkPos.z += 1;
         lz -= Chunk::SIZE_Z;
     }
 
-    Chunk *_chunk = world->getChunk(pos);
+    Chunk *_chunk = world->getChunk(chunkPos);
     if (!_chunk) return nullptr;
 
-    return Block::byId(_chunk->getBlockId(lx, y, lz));
+    return Block::byId(_chunk->getBlockId(lx, pos.y, lz));
 }
 
-static inline bool isSolidWorld(World *world, const Chunk *chunk, int x, int y, int z) {
-    if (y < 0 || y >= Chunk::SIZE_Y) return false;
+static inline bool isSolidWorld(World *world, const Chunk *chunk, const BlockPos &pos) {
+    if (pos.y < 0 || pos.y >= Chunk::SIZE_Y) return false;
 
-    Block *block = getBlockWorld(world, chunk, x, y, z);
+    Block *block = getBlockWorld(world, chunk, pos);
     if (!block) return true;
     return block->isSolid();
 }
@@ -197,7 +197,7 @@ static void greedy2D(std::vector<MaskCell> &mask, int width, int height, auto &&
         }
 }
 
-void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<MeshBuildResult> &outMeshes) {
+void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<MeshBuildResult> *outMeshes) {
     struct Bucket {
         std::vector<float> vertices;
         std::vector<uint16_t> rawLights;
@@ -250,7 +250,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
         float r;
         float g;
         float b;
-        shade(direction, lr, lg, lb, r, g, b);
+        shade(direction, lr, lg, lb, &r, &g, &b);
 
         r *= (float) ((tint >> 16) & 0xFF) / 255.0f;
         g *= (float) ((tint >> 8) & 0xFF) / 255.0f;
@@ -295,7 +295,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
         float r;
         float g;
         float b;
-        shade(direction, lr, lg, lb, r, g, b);
+        shade(direction, lr, lg, lb, &r, &g, &b);
 
         r *= (float) ((tint >> 16) & 0xFF) / 255.0f;
         g *= (float) ((tint >> 8) & 0xFF) / 255.0f;
@@ -331,7 +331,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
         float r;
         float g;
         float b;
-        shade(direction, lr, lg, lb, r, g, b);
+        shade(direction, lr, lg, lb, &r, &g, &b);
 
         r *= (float) ((tint >> 16) & 0xFF) / 255.0f;
         g *= (float) ((tint >> 8) & 0xFF) / 255.0f;
@@ -359,8 +359,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
         for (int x = 0; x <= Chunk::SIZE_X; x++) {
             for (int y = 0; y < Chunk::SIZE_Y; y++)
                 for (int z = 0; z < Chunk::SIZE_Z; z++) {
-                    bool a = isSolidWorld(world, chunk, x - 1, y, z);
-                    bool b = isSolidWorld(world, chunk, x, y, z);
+                    bool a = isSolidWorld(world, chunk, BlockPos(x - 1, y, z));
+                    bool b = isSolidWorld(world, chunk, BlockPos(x, y, z));
 
                     MaskCell &cell = mask[(size_t) z + (size_t) Chunk::SIZE_Z * (size_t) y];
                     cell.filled    = false;
@@ -393,8 +393,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
         for (int x = 0; x <= Chunk::SIZE_X; x++) {
             for (int y = 0; y < Chunk::SIZE_Y; y++)
                 for (int z = 0; z < Chunk::SIZE_Z; z++) {
-                    bool a = isSolidWorld(world, chunk, x - 1, y, z);
-                    bool b = isSolidWorld(world, chunk, x, y, z);
+                    bool a = isSolidWorld(world, chunk, BlockPos(x - 1, y, z));
+                    bool b = isSolidWorld(world, chunk, BlockPos(x, y, z));
 
                     MaskCell &cell = mask[(size_t) z + (size_t) Chunk::SIZE_Z * (size_t) y];
                     cell.filled    = false;
@@ -432,8 +432,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
         for (int z = 0; z <= Chunk::SIZE_Z; z++) {
             for (int y = 0; y < Chunk::SIZE_Y; y++)
                 for (int x = 0; x < Chunk::SIZE_X; x++) {
-                    bool a = isSolidWorld(world, chunk, x, y, z - 1);
-                    bool b = isSolidWorld(world, chunk, x, y, z);
+                    bool a = isSolidWorld(world, chunk, BlockPos(x, y, z - 1));
+                    bool b = isSolidWorld(world, chunk, BlockPos(x, y, z));
 
                     MaskCell &cell = mask[(size_t) x + (size_t) Chunk::SIZE_X * (size_t) y];
                     cell.filled    = false;
@@ -466,8 +466,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
         for (int z = 0; z <= Chunk::SIZE_Z; z++) {
             for (int y = 0; y < Chunk::SIZE_Y; y++)
                 for (int x = 0; x < Chunk::SIZE_X; x++) {
-                    bool a = isSolidWorld(world, chunk, x, y, z - 1);
-                    bool b = isSolidWorld(world, chunk, x, y, z);
+                    bool a = isSolidWorld(world, chunk, BlockPos(x, y, z - 1));
+                    bool b = isSolidWorld(world, chunk, BlockPos(x, y, z));
 
                     MaskCell &cell = mask[(size_t) x + (size_t) Chunk::SIZE_X * (size_t) y];
                     cell.filled    = false;
@@ -505,8 +505,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
         for (int y = 0; y <= Chunk::SIZE_Y; y++) {
             for (int z = 0; z < Chunk::SIZE_Z; z++)
                 for (int x = 0; x < Chunk::SIZE_X; x++) {
-                    bool a = isSolidWorld(world, chunk, x, y - 1, z);
-                    bool b = isSolidWorld(world, chunk, x, y, z);
+                    bool a = isSolidWorld(world, chunk, BlockPos(x, y - 1, z));
+                    bool b = isSolidWorld(world, chunk, BlockPos(x, y, z));
 
                     MaskCell &cell = mask[(size_t) x + (size_t) Chunk::SIZE_X * (size_t) z];
                     cell.filled    = false;
@@ -539,8 +539,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
         for (int y = 0; y <= Chunk::SIZE_Y; y++) {
             for (int z = 0; z < Chunk::SIZE_Z; z++)
                 for (int x = 0; x < Chunk::SIZE_X; x++) {
-                    bool a = isSolidWorld(world, chunk, x, y - 1, z);
-                    bool b = isSolidWorld(world, chunk, x, y, z);
+                    bool a = isSolidWorld(world, chunk, BlockPos(x, y - 1, z));
+                    bool b = isSolidWorld(world, chunk, BlockPos(x, y, z));
 
                     MaskCell &cell = mask[(size_t) x + (size_t) Chunk::SIZE_X * (size_t) z];
                     cell.filled    = false;
@@ -577,8 +577,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                 Block *block = Block::byId(chunk->getBlockId(x, y, z));
                 if (!block) continue;
 
-                Block::RenderType renderType = block->getRenderType();
-                if (renderType != Block::RenderType::CROSS && renderType != Block::RenderType::TORCH) continue;
+                Block::RenderShape renderType = block->getRenderShape();
+                if (renderType != Block::RenderShape::CROSS && renderType != Block::RenderShape::TORCH) continue;
 
                 Texture *texture = block->getTexture(Direction::UP);
                 if (!texture) continue;
@@ -590,7 +590,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                 uint16_t rawLight = sampleLightKey(world, chunk, (int) wx, (int) wy, (int) wz);
                 uint32_t tint     = 0xFFFFFF;
 
-                if (renderType == Block::RenderType::CROSS) {
+                if (renderType == Block::RenderShape::CROSS) {
                     emitFace4(Direction::NORTH, texture, rawLight, tint, wx, wy, wz, wx, wy + 1.0f, wz, wx + 1.0f, wy + 1.0f, wz + 1.0f, wx + 1.0f, wy, wz + 1.0f);
                     emitFace4(Direction::EAST, texture, rawLight, tint, wx + 1.0f, wy, wz, wx + 1.0f, wy + 1.0f, wz, wx, wy + 1.0f, wz + 1.0f, wx, wy, wz + 1.0f);
                 } else {
@@ -604,12 +604,12 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                     float y2 = wy + bb.getMax().y;
                     float z2 = wz + bb.getMax().z;
 
-                    Block::UVRect uvN = block->getUVRect(Direction::NORTH);
-                    Block::UVRect uvS = block->getUVRect(Direction::SOUTH);
-                    Block::UVRect uvW = block->getUVRect(Direction::WEST);
-                    Block::UVRect uvE = block->getUVRect(Direction::EAST);
-                    Block::UVRect uvD = block->getUVRect(Direction::DOWN);
-                    Block::UVRect uvU = block->getUVRect(Direction::UP);
+                    Block::UVRect uvNorth = block->getUVRect(Direction::NORTH);
+                    Block::UVRect uvSouth = block->getUVRect(Direction::SOUTH);
+                    Block::UVRect uvWest  = block->getUVRect(Direction::WEST);
+                    Block::UVRect uvEast  = block->getUVRect(Direction::EAST);
+                    Block::UVRect uvDown  = block->getUVRect(Direction::DOWN);
+                    Block::UVRect uvUp    = block->getUVRect(Direction::UP);
 
                     Texture *textureUp = texture;
 
@@ -628,17 +628,17 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                     Texture *textureDown = block->getTexture(Direction::DOWN);
                     if (!textureDown) textureDown = textureUp;
 
-                    if (uvN.u0 != uvN.u1 && uvN.v0 != uvN.v1) emitFixedUV(Direction::NORTH, textureNorth, rawLight, tint, x1, y1, z1, x2, y2, z1, uvN.u0, uvN.v0, uvN.u1, uvN.v1);
-                    if (uvS.u0 != uvS.u1 && uvS.v0 != uvS.v1) emitFixedUV(Direction::SOUTH, textureSouth, rawLight, tint, x1, y1, z2, x2, y2, z2, uvS.u0, uvS.v0, uvS.u1, uvS.v1);
-                    if (uvW.u0 != uvW.u1 && uvW.v0 != uvW.v1) emitFixedUV(Direction::WEST, textureWest, rawLight, tint, x1, y1, z1, x1, y2, z2, uvW.u0, uvW.v0, uvW.u1, uvW.v1);
-                    if (uvE.u0 != uvE.u1 && uvE.v0 != uvE.v1) emitFixedUV(Direction::EAST, textureEast, rawLight, tint, x2, y1, z1, x2, y2, z2, uvE.u0, uvE.v0, uvE.u1, uvE.v1);
-                    if (uvD.u0 != uvD.u1 && uvD.v0 != uvD.v1) emitFixedUV(Direction::DOWN, textureDown, rawLight, tint, x1, y1, z1, x2, y1, z2, uvD.u0, uvD.v0, uvD.u1, uvD.v1);
-                    if (uvU.u0 != uvU.u1 && uvU.v0 != uvU.v1) emitFixedUV(Direction::UP, textureUp, rawLight, tint, x1, y2, z1, x2, y2, z2, uvU.u0, uvU.v0, uvU.u1, uvU.v1);
+                    if (uvNorth.u0 != uvNorth.u1 && uvNorth.v0 != uvNorth.v1) emitFixedUV(Direction::NORTH, textureNorth, rawLight, tint, x1, y1, z1, x2, y2, z1, uvNorth.u0, uvNorth.v0, uvNorth.u1, uvNorth.v1);
+                    if (uvSouth.u0 != uvSouth.u1 && uvSouth.v0 != uvSouth.v1) emitFixedUV(Direction::SOUTH, textureSouth, rawLight, tint, x1, y1, z2, x2, y2, z2, uvSouth.u0, uvSouth.v0, uvSouth.u1, uvSouth.v1);
+                    if (uvWest.u0 != uvWest.u1 && uvWest.v0 != uvWest.v1) emitFixedUV(Direction::WEST, textureWest, rawLight, tint, x1, y1, z1, x1, y2, z2, uvWest.u0, uvWest.v0, uvWest.u1, uvWest.v1);
+                    if (uvEast.u0 != uvEast.u1 && uvEast.v0 != uvEast.v1) emitFixedUV(Direction::EAST, textureEast, rawLight, tint, x2, y1, z1, x2, y2, z2, uvEast.u0, uvEast.v0, uvEast.u1, uvEast.v1);
+                    if (uvDown.u0 != uvDown.u1 && uvDown.v0 != uvDown.v1) emitFixedUV(Direction::DOWN, textureDown, rawLight, tint, x1, y1, z1, x2, y1, z2, uvDown.u0, uvDown.v0, uvDown.u1, uvDown.v1);
+                    if (uvUp.u0 != uvUp.u1 && uvUp.v0 != uvUp.v1) emitFixedUV(Direction::UP, textureUp, rawLight, tint, x1, y2, z1, x2, y2, z2, uvUp.u0, uvUp.v0, uvUp.u1, uvUp.v1);
                 }
             }
 
-    outMeshes.clear();
-    outMeshes.reserve(buckets.size());
+    outMeshes->clear();
+    outMeshes->reserve(buckets.size());
 
     for (auto it = buckets.begin(); it != buckets.end(); ++it) {
         if (!it->first) continue;
@@ -650,6 +650,6 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
         result.rawLights = std::move(it->second.rawLights);
         result.shades    = std::move(it->second.shades);
         result.tints     = std::move(it->second.tints);
-        outMeshes.push_back(std::move(result));
+        outMeshes->push_back(std::move(result));
     }
 }

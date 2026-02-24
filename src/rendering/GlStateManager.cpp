@@ -246,10 +246,10 @@ void GlStateManager::setFogColor(float r, float g, float b) {
     s_fogB = b;
 }
 
-void GlStateManager::getFogColor(float &r, float &g, float &b) {
-    r = s_fogR;
-    g = s_fogG;
-    b = s_fogB;
+void GlStateManager::getFogColor(float *r, float *g, float *b) {
+    *r = s_fogR;
+    *g = s_fogG;
+    *b = s_fogB;
 }
 
 void GlStateManager::setFogRange(float start, float end) {
@@ -257,9 +257,9 @@ void GlStateManager::setFogRange(float start, float end) {
     s_fogEnd   = end;
 }
 
-void GlStateManager::getFogRange(float &start, float &end) {
-    start = s_fogStart;
-    end   = s_fogEnd;
+void GlStateManager::getFogRange(float *start, float *end) {
+    *start = s_fogStart;
+    *end   = s_fogEnd;
 }
 
 void GlStateManager::setColorMask(bool r, bool g, bool b, bool a) {

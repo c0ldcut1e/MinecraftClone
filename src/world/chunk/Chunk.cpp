@@ -29,15 +29,15 @@ void Chunk::setBiomeAt(int x, int z, Biome *biome) { m_columnBiomes[columnIndex(
 
 Biome *Chunk::getBiomeAt(int x, int z) const { return m_columnBiomes[columnIndex(x, z)]; }
 
-void Chunk::getLight(int x, int y, int z, uint8_t &r, uint8_t &g, uint8_t &b) const {
+void Chunk::getLight(int x, int y, int z, uint8_t *r, uint8_t *g, uint8_t *b) const {
     uint8_t br, bg, bb;
-    getBlockLight(x, y, z, br, bg, bb);
+    getBlockLight(x, y, z, &br, &bg, &bb);
 
     uint8_t sky = getSkyLight(x, y, z);
 
-    r = br > sky ? br : sky;
-    g = bg > sky ? bg : sky;
-    b = bb > sky ? bb : sky;
+    *r = br > sky ? br : sky;
+    *g = bg > sky ? bg : sky;
+    *b = bb > sky ? bb : sky;
 }
 
 void Chunk::setLight(int x, int y, int z, uint8_t r, uint8_t g, uint8_t b) {
@@ -47,11 +47,11 @@ void Chunk::setLight(int x, int y, int z, uint8_t r, uint8_t g, uint8_t b) {
     data.b          = b;
 }
 
-void Chunk::getBlockLight(int x, int y, int z, uint8_t &r, uint8_t &g, uint8_t &b) const {
+void Chunk::getBlockLight(int x, int y, int z, uint8_t *r, uint8_t *g, uint8_t *b) const {
     LightData data = m_blockLight[index(x, y, z)];
-    r              = data.r;
-    g              = data.g;
-    b              = data.b;
+    *r             = data.r;
+    *g             = data.g;
+    *b             = data.b;
 }
 
 void Chunk::setBlockLight(int x, int y, int z, uint8_t r, uint8_t g, uint8_t b) {

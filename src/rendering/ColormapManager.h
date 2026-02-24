@@ -14,7 +14,7 @@ public:
 
     void bind(const std::string &name, uint32_t slot) const;
 
-    void sampleFoliageColor(const std::string &name, float temperature, float humidity, float &r, float &g, float &b) const;
+    void sampleFoliageColor(const std::string &name, float temperature, float humidity, float *r, float *g, float *b) const;
 
     void clear();
 

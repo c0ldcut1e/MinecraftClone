@@ -26,12 +26,12 @@ void ColormapManager::bind(const std::string &name, uint32_t slot) const {
     if (texture) texture->bind(slot);
 }
 
-void ColormapManager::sampleFoliageColor(const std::string &name, float temperature, float humidity, float &r, float &g, float &b) const {
+void ColormapManager::sampleFoliageColor(const std::string &name, float temperature, float humidity, float *r, float *g, float *b) const {
     Texture *colormap = get(name);
     if (!colormap) {
-        r = 1.0f;
-        g = 1.0f;
-        b = 1.0f;
+        *r = 1.0f;
+        *g = 1.0f;
+        *b = 1.0f;
         return;
     }
 

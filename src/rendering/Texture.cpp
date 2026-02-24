@@ -44,11 +44,11 @@ void Texture::bind(uint32_t slot) const {
     RenderCommand::bindTexture2D(m_id);
 }
 
-void Texture::samplePixel(int pixelX, int pixelY, float &r, float &g, float &b) const {
+void Texture::samplePixel(int pixelX, int pixelY, float *r, float *g, float *b) const {
     if (m_pixels.empty()) {
-        r = 1.0f;
-        g = 1.0f;
-        b = 1.0f;
+        *r = 1.0f;
+        *g = 1.0f;
+        *b = 1.0f;
         return;
     }
 
@@ -58,9 +58,9 @@ void Texture::samplePixel(int pixelX, int pixelY, float &r, float &g, float &b) 
     if (pixelY >= m_pixelHeight) pixelY = m_pixelHeight - 1;
 
     size_t offset = ((size_t) pixelY * (size_t) m_pixelWidth + (size_t) pixelX) * 4;
-    r             = (float) m_pixels[offset + 0] / 255.0f;
-    g             = (float) m_pixels[offset + 1] / 255.0f;
-    b             = (float) m_pixels[offset + 2] / 255.0f;
+    *r            = (float) m_pixels[offset + 0] / 255.0f;
+    *g            = (float) m_pixels[offset + 1] / 255.0f;
+    *b            = (float) m_pixels[offset + 2] / 255.0f;
 }
 
 uint32_t Texture::getId() const { return m_id; }

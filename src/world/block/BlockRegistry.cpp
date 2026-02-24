@@ -32,7 +32,7 @@ void BlockRegistry::init() {
     s_glowstone.setLightColor(0xFF, 0xDC, 0x85);
 
     static Block s_torch("torch", false, "textures/block/torch.png");
-    s_torch.setRenderType(Block::RenderType::TORCH);
+    s_torch.setRenderShape(Block::RenderShape::TORCH);
     s_torch.setAABB(AABB(Vec3(0.4375f, 0.0f, 0.4375f), Vec3(0.5625f, 0.625f, 0.5625f)));
     s_torch.setLightEmission(14);
     s_torch.setLightColor(0xFF, 0xE0, 0xB0);
@@ -41,20 +41,11 @@ void BlockRegistry::init() {
     float sideU1 = 9.0f / 16.0f;
     float sideV0 = 6.0f / 16.0f;
     float sideV1 = 16.0f / 16.0f;
-
-    float topU0 = 7.0f / 16.0f;
-    float topU1 = 9.0f / 16.0f;
-    float topV0 = 6.0f / 16.0f;
-    float topV1 = 8.0f / 16.0f;
-
     s_torch.setUVRect(Direction::NORTH, sideU0, sideV0, sideU1, sideV1);
     s_torch.setUVRect(Direction::SOUTH, sideU0, sideV0, sideU1, sideV1);
     s_torch.setUVRect(Direction::EAST, sideU0, sideV0, sideU1, sideV1);
     s_torch.setUVRect(Direction::WEST, sideU0, sideV0, sideU1, sideV1);
-
-    s_torch.setUVRect(Direction::UP, topU0, topV0, topU1, topV1);
-
-    s_torch.setUVRect(Direction::DOWN, 0.0f, 0.0f, 0.0f, 0.0f);
+    s_torch.setUVRect(Direction::UP, 7.0f / 16.0f, 6.0f / 16.0f, 9.0f / 16.0f, 8.0f / 16.0f);
 
     registry->registerValue("air", &s_air);
     registry->registerValue("bedrock", &s_bedrock);

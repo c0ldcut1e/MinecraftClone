@@ -51,12 +51,12 @@ void ChunkMesh::upload(const float *vertices, uint32_t vertexCount, std::vector<
 
 uint64_t ChunkMesh::getId() const { return m_id; }
 
-void ChunkMesh::snapshotSky(std::vector<float> &vertices, std::vector<uint16_t> &rawLights, std::vector<float> &shades, std::vector<uint32_t> &tints) const {
+void ChunkMesh::snapshotSky(std::vector<float> *vertices, std::vector<uint16_t> *rawLights, std::vector<float> *shades, std::vector<uint32_t> *tints) const {
     std::lock_guard<std::mutex> lock(m_cpuMutex);
-    vertices  = m_vertices;
-    rawLights = m_rawLights;
-    shades    = m_shades;
-    tints     = m_tints;
+    *vertices  = m_vertices;
+    *rawLights = m_rawLights;
+    *shades    = m_shades;
+    *tints     = m_tints;
 }
 
 void ChunkMesh::applySky(std::vector<float> &&vertices) {

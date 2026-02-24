@@ -6,10 +6,10 @@
 #include "../biome/Biome.h"
 #include "../chunk/Chunk.h"
 
-Block::Block() : m_name(""), m_solid(false), m_aabb(Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0)), m_lightEmission(0), m_lightR(0), m_lightG(0), m_lightB(0), m_renderType(RenderType::CUBE) {}
+Block::Block() : m_name(""), m_solid(false), m_aabb(Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0)), m_lightEmission(0), m_lightR(0), m_lightG(0), m_lightB(0), m_renderShape(RenderShape::CUBE) {}
 
 Block::Block(const std::string &name, bool solid, const std::string &texturePath)
-    : m_name(name), m_solid(solid), m_aabb(Vec3(0.0, 0.0, 0.0), solid ? Vec3(1.0, 1.0, 1.0) : Vec3(0.0, 0.0, 0.0)), m_lightEmission(0), m_lightR(0), m_lightG(0), m_lightB(0), m_renderType(RenderType::CUBE) {
+    : m_name(name), m_solid(solid), m_aabb(Vec3(0.0, 0.0, 0.0), solid ? Vec3(1.0, 1.0, 1.0) : Vec3(0.0, 0.0, 0.0)), m_lightEmission(0), m_lightR(0), m_lightG(0), m_lightB(0), m_renderShape(RenderShape::CUBE) {
     if (!texturePath.empty()) {
         TextureRepository *textureRepo = BlockRegistry::getTextureRepository();
         setTexture(Direction::UP, textureRepo->get(texturePath).get());
@@ -120,7 +120,7 @@ uint32_t Block::resolveTint(Direction *direction, World *world, const Chunk *chu
     if (samples == 0) return 0xFFFFFF;
 
     float r, g, b;
-    ColormapManager::getInstance()->sampleFoliageColor(getTintColormap(direction), totalTemp / (float) samples, totalHumid / (float) samples, r, g, b);
+    ColormapManager::getInstance()->sampleFoliageColor(getTintColormap(direction), totalTemp / (float) samples, totalHumid / (float) samples, &r, &g, &b);
     return ((uint32_t) (r * 255.0f) << 16) | ((uint32_t) (g * 255.0f) << 8) | (uint32_t) (b * 255.0f);
 }
 
@@ -142,15 +142,15 @@ void Block::setLightColor(uint8_t r, uint8_t g, uint8_t b) {
     m_lightB = b;
 }
 
-void Block::getLightColor(uint8_t &r, uint8_t &g, uint8_t &b) const {
-    r = m_lightR;
-    g = m_lightG;
-    b = m_lightB;
+void Block::getLightColor(uint8_t *r, uint8_t *g, uint8_t *b) const {
+    *r = m_lightR;
+    *g = m_lightG;
+    *b = m_lightB;
 }
 
-void Block::setRenderType(RenderType type) { m_renderType = type; }
+void Block::setRenderShape(RenderShape type) { m_renderShape = type; }
 
-Block::RenderType Block::getRenderType() const { return m_renderType; }
+Block::RenderShape Block::getRenderShape() const { return m_renderShape; }
 
 void Block::setUVRect(Direction *direction, float u0, float v0, float u1, float v1) { m_uvRects[direction] = {u0, v0, u1, v1}; }
 

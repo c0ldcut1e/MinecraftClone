@@ -22,7 +22,7 @@ public:
     void stop();
     void update(const Vec3 &playerPosition);
 
-    void drainFinished(std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> &out, int max);
+    void drainFinished(std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> *out, int max);
 
 private:
     struct GenerationTask {

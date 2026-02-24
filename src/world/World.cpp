@@ -28,7 +28,7 @@ void World::update(float partialTicks) {
 void World::updateChunks() {
     if (ChunkManager *chunkManager = Minecraft::getInstance()->getChunkManager()) {
         std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> ready;
-        chunkManager->drainFinished(ready, 2);
+        chunkManager->drainFinished(&ready, 2);
 
         const int CHUNK_INTAKE_BUDGET = 2;
         int intook                    = 0;
@@ -331,9 +331,8 @@ HitResult *World::clip(const Vec3 &origin, const Vec3 &direction, float maxDista
                 tMin = std::max(tMin, t0);
                 tMax = std::min(tMax, t1);
                 if (tMax < tMin) valid = false;
-            } else {
-                if (o < bMin || o > bMax) valid = false;
-            }
+            } else if (o < bMin || o > bMax)
+                valid = false;
         }
 
         if (valid && tMin >= 0.0f && tMin < bestEntityT) {
@@ -372,7 +371,6 @@ HitResult *World::clip(const Vec3 &origin, const Vec3 &direction, float maxDista
     bool hasBlock            = false;
 
     float t = 0.0f;
-
     while (t <= maxDistance) {
         Direction *face = nullptr;
 
@@ -414,13 +412,57 @@ HitResult *World::clip(const Vec3 &origin, const Vec3 &direction, float maxDista
         if (pos.y < 0 || pos.y >= Chunk::SIZE_Y) continue;
 
         Block *block = Block::byId((int) chunk->getBlockId(lx, pos.y, lz));
-        if (block && block->isSolid()) {
-            bestBlockT    = t;
-            bestBlockPos  = pos;
-            bestBlockFace = face;
-            hasBlock      = true;
-            break;
+        if (!block) continue;
+
+        AABB blockBox   = block->getAABB().translated(Vec3(pos.x, pos.y, pos.z));
+        const Vec3 &min = blockBox.getMin();
+        const Vec3 &max = blockBox.getMax();
+
+        if (max.x <= min.x || max.y <= min.y || max.z <= min.z) continue;
+
+        float hitT         = 0.0f;
+        float hitTMax      = maxDistance;
+        bool valid         = true;
+        Direction *hitFace = nullptr;
+
+        for (int axis = 0; axis < 3 && valid; axis++) {
+            double axisOrigin    = axis == 0 ? origin.x : (axis == 1 ? origin.y : origin.z);
+            double axisDirection = axis == 0 ? _direction.x : (axis == 1 ? _direction.y : _direction.z);
+            double axisMin       = axis == 0 ? min.x : (axis == 1 ? min.y : min.z);
+            double axisMax       = axis == 0 ? max.x : (axis == 1 ? max.y : max.z);
+
+            Direction *axisNearFace = axis == 0 ? Direction::WEST : (axis == 1 ? Direction::DOWN : Direction::NORTH);
+            Direction *axisFarFace  = axis == 0 ? Direction::EAST : (axis == 1 ? Direction::UP : Direction::SOUTH);
+
+            if (axisDirection != 0.0) {
+                float inverseAxisDirection = (float) (1.0 / axisDirection);
+                float entryT               = (float) ((axisMin - axisOrigin) * inverseAxisDirection);
+                float exitT                = (float) ((axisMax - axisOrigin) * inverseAxisDirection);
+                if (entryT > exitT) {
+                    std::swap(entryT, exitT);
+                    std::swap(axisNearFace, axisFarFace);
+                }
+
+                if (entryT > hitT) {
+                    hitT    = entryT;
+                    hitFace = axisNearFace;
+                }
+
+                hitTMax = std::min(hitTMax, exitT);
+                if (hitTMax < hitT) valid = false;
+            } else if (axisOrigin < axisMin || axisOrigin > axisMax)
+                valid = false;
         }
+
+        float finalHitT = hitT >= 0.0f ? hitT : hitTMax;
+        if (!valid || finalHitT < 0.0f || finalHitT > maxDistance) continue;
+        if (finalHitT + 1e-4f < t) continue;
+
+        bestBlockT    = finalHitT;
+        bestBlockPos  = pos;
+        bestBlockFace = hitFace ? hitFace : face;
+        hasBlock      = true;
+        break;
     }
 
     if (hasEntity && (!hasBlock || bestEntityT <= bestBlockT)) {

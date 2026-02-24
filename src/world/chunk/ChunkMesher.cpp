@@ -81,6 +81,17 @@ static inline void addFace(std::vector<float> &vertices, std::vector<uint16_t> &
     push(vertices, rawLights, shades, tints, x1, y1, z1, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
 }
 
+static inline void addFaceUV(std::vector<float> &vertices, std::vector<uint16_t> &rawLights, std::vector<float> &shades, std::vector<uint32_t> &tints, float x1, float y1, float z1, float x2, float y2, float z2, float x3, float y3, float z3, float x4, float y4,
+                             float z4, float u0, float v0, float u1, float v1, float r, float g, float b, uint16_t rawLight, float shadeMul, uint32_t tint) {
+    push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, r, g, b, rawLight, shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x2, y2, z2, u1, v0, r, g, b, rawLight, shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, r, g, b, rawLight, shadeMul, tint);
+
+    push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, r, g, b, rawLight, shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, r, g, b, rawLight, shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, r, g, b, rawLight, shadeMul, tint);
+}
+
 static inline uint16_t sampleLightKey(World *world, const Chunk *chunk, int wx, int wy, int wz) {
     int cx = Math::floorDiv(wx, Chunk::SIZE_X);
     int cy = Math::floorDiv(wy, Chunk::SIZE_Y);
@@ -257,6 +268,88 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
             addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
         else if (direction == Direction::WEST)
             addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
+    };
+
+    auto emitFace4 = [&](Direction *direction, Texture *texture, uint16_t rawLight, uint32_t tint, float x1, float y1, float z1, float x2, float y2, float z2, float x3, float y3, float z3, float x4, float y4, float z4) {
+        if (!texture) return;
+
+        float shadeMul = 1.0f;
+        if (direction == Direction::NORTH || direction == Direction::SOUTH) shadeMul = 0.8f;
+        else if (direction == Direction::EAST || direction == Direction::WEST)
+            shadeMul = 0.6f;
+        else if (direction == Direction::DOWN)
+            shadeMul = 0.5f;
+
+        uint8_t br  = (uint8_t) (rawLight & 15);
+        uint8_t bg  = (uint8_t) ((rawLight >> 4) & 15);
+        uint8_t bb  = (uint8_t) ((rawLight >> 8) & 15);
+        uint8_t sky = (uint8_t) ((rawLight >> 12) & 15);
+
+        uint8_t clamp = world->getSkyLightClamp();
+        if (sky > clamp) sky = clamp;
+
+        uint8_t lr = br > sky ? br : sky;
+        uint8_t lg = bg > sky ? bg : sky;
+        uint8_t lb = bb > sky ? bb : sky;
+
+        float r;
+        float g;
+        float b;
+        shade(direction, lr, lg, lb, r, g, b);
+
+        r *= (float) ((tint >> 16) & 0xFF) / 255.0f;
+        g *= (float) ((tint >> 8) & 0xFF) / 255.0f;
+        b *= (float) (tint & 0xFF) / 255.0f;
+
+        Bucket &bucket = buckets[texture];
+        addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4, 1.0f, 1.0f, r, g, b, rawLight, shadeMul, tint);
+        addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x4, y4, z4, x3, y3, z3, x2, y2, z2, x1, y1, z1, 1.0f, 1.0f, r, g, b, rawLight, shadeMul, tint);
+    };
+
+    auto emitFixedUV = [&](Direction *direction, Texture *texture, uint16_t rawLight, uint32_t tint, float x1, float y1, float z1, float x2, float y2, float z2, float u0, float v0, float u1, float v1) {
+        if (!texture) return;
+
+        float shadeMul = 1.0f;
+        if (direction == Direction::NORTH || direction == Direction::SOUTH) shadeMul = 0.8f;
+        else if (direction == Direction::EAST || direction == Direction::WEST)
+            shadeMul = 0.6f;
+        else if (direction == Direction::DOWN)
+            shadeMul = 0.5f;
+
+        uint8_t br  = (uint8_t) (rawLight & 15);
+        uint8_t bg  = (uint8_t) ((rawLight >> 4) & 15);
+        uint8_t bb  = (uint8_t) ((rawLight >> 8) & 15);
+        uint8_t sky = (uint8_t) ((rawLight >> 12) & 15);
+
+        uint8_t clamp = world->getSkyLightClamp();
+        if (sky > clamp) sky = clamp;
+
+        uint8_t lr = br > sky ? br : sky;
+        uint8_t lg = bg > sky ? bg : sky;
+        uint8_t lb = bb > sky ? bb : sky;
+
+        float r;
+        float g;
+        float b;
+        shade(direction, lr, lg, lb, r, g, b);
+
+        r *= (float) ((tint >> 16) & 0xFF) / 255.0f;
+        g *= (float) ((tint >> 8) & 0xFF) / 255.0f;
+        b *= (float) (tint & 0xFF) / 255.0f;
+
+        Bucket &bucket = buckets[texture];
+
+        if (direction == Direction::NORTH) addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, u0, v0, u1, v1, r, g, b, rawLight, shadeMul, tint);
+        else if (direction == Direction::SOUTH)
+            addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1, z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, u0, v0, u1, v1, r, g, b, rawLight, shadeMul, tint);
+        else if (direction == Direction::UP)
+            addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, u0, v0, u1, v1, r, g, b, rawLight, shadeMul, tint);
+        else if (direction == Direction::DOWN)
+            addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z2, x1, y1, z1, x2, y1, z1, x2, y1, z2, u0, v0, u1, v1, r, g, b, rawLight, shadeMul, tint);
+        else if (direction == Direction::EAST)
+            addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, u0, v0, u1, v1, r, g, b, rawLight, shadeMul, tint);
+        else if (direction == Direction::WEST)
+            addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, u0, v0, u1, v1, r, g, b, rawLight, shadeMul, tint);
     };
 
     {
@@ -477,6 +570,72 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
             });
         }
     }
+
+    for (int x = 0; x < Chunk::SIZE_X; x++)
+        for (int y = 0; y < Chunk::SIZE_Y; y++)
+            for (int z = 0; z < Chunk::SIZE_Z; z++) {
+                Block *block = Block::byId(chunk->getBlockId(x, y, z));
+                if (!block) continue;
+
+                Block::RenderType renderType = block->getRenderType();
+                if (renderType != Block::RenderType::CROSS && renderType != Block::RenderType::TORCH) continue;
+
+                Texture *texture = block->getTexture(Direction::UP);
+                if (!texture) continue;
+
+                float wx = (float) (baseX + x);
+                float wy = (float) (baseY + y);
+                float wz = (float) (baseZ + z);
+
+                uint16_t rawLight = sampleLightKey(world, chunk, (int) wx, (int) wy, (int) wz);
+                uint32_t tint     = 0xFFFFFF;
+
+                if (renderType == Block::RenderType::CROSS) {
+                    emitFace4(Direction::NORTH, texture, rawLight, tint, wx, wy, wz, wx, wy + 1.0f, wz, wx + 1.0f, wy + 1.0f, wz + 1.0f, wx + 1.0f, wy, wz + 1.0f);
+                    emitFace4(Direction::EAST, texture, rawLight, tint, wx + 1.0f, wy, wz, wx + 1.0f, wy + 1.0f, wz, wx, wy + 1.0f, wz + 1.0f, wx, wy, wz + 1.0f);
+                } else {
+                    const AABB &bb = block->getAABB();
+
+                    float x1 = wx + bb.getMin().x;
+                    float y1 = wy + bb.getMin().y;
+                    float z1 = wz + bb.getMin().z;
+
+                    float x2 = wx + bb.getMax().x;
+                    float y2 = wy + bb.getMax().y;
+                    float z2 = wz + bb.getMax().z;
+
+                    Block::UVRect uvN = block->getUVRect(Direction::NORTH);
+                    Block::UVRect uvS = block->getUVRect(Direction::SOUTH);
+                    Block::UVRect uvW = block->getUVRect(Direction::WEST);
+                    Block::UVRect uvE = block->getUVRect(Direction::EAST);
+                    Block::UVRect uvD = block->getUVRect(Direction::DOWN);
+                    Block::UVRect uvU = block->getUVRect(Direction::UP);
+
+                    Texture *textureUp = texture;
+
+                    Texture *textureNorth = block->getTexture(Direction::NORTH);
+                    if (!textureNorth) textureNorth = textureUp;
+
+                    Texture *textureSouth = block->getTexture(Direction::SOUTH);
+                    if (!textureSouth) textureSouth = textureUp;
+
+                    Texture *textureWest = block->getTexture(Direction::WEST);
+                    if (!textureWest) textureWest = textureUp;
+
+                    Texture *textureEast = block->getTexture(Direction::EAST);
+                    if (!textureEast) textureEast = textureUp;
+
+                    Texture *textureDown = block->getTexture(Direction::DOWN);
+                    if (!textureDown) textureDown = textureUp;
+
+                    if (uvN.u0 != uvN.u1 && uvN.v0 != uvN.v1) emitFixedUV(Direction::NORTH, textureNorth, rawLight, tint, x1, y1, z1, x2, y2, z1, uvN.u0, uvN.v0, uvN.u1, uvN.v1);
+                    if (uvS.u0 != uvS.u1 && uvS.v0 != uvS.v1) emitFixedUV(Direction::SOUTH, textureSouth, rawLight, tint, x1, y1, z2, x2, y2, z2, uvS.u0, uvS.v0, uvS.u1, uvS.v1);
+                    if (uvW.u0 != uvW.u1 && uvW.v0 != uvW.v1) emitFixedUV(Direction::WEST, textureWest, rawLight, tint, x1, y1, z1, x1, y2, z2, uvW.u0, uvW.v0, uvW.u1, uvW.v1);
+                    if (uvE.u0 != uvE.u1 && uvE.v0 != uvE.v1) emitFixedUV(Direction::EAST, textureEast, rawLight, tint, x2, y1, z1, x2, y2, z2, uvE.u0, uvE.v0, uvE.u1, uvE.v1);
+                    if (uvD.u0 != uvD.u1 && uvD.v0 != uvD.v1) emitFixedUV(Direction::DOWN, textureDown, rawLight, tint, x1, y1, z1, x2, y1, z2, uvD.u0, uvD.v0, uvD.u1, uvD.v1);
+                    if (uvU.u0 != uvU.u1 && uvU.v0 != uvU.v1) emitFixedUV(Direction::UP, textureUp, rawLight, tint, x1, y2, z1, x2, y2, z2, uvU.u0, uvU.v0, uvU.u1, uvU.v1);
+                }
+            }
 
     outMeshes.clear();
     outMeshes.reserve(buckets.size());

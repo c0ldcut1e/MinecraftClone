@@ -792,6 +792,9 @@ void WorldRenderer::renderChunks(const Mat4 &viewMatrix, const Mat4 &projection)
     Mat4 viewProjection = projection.multiply(viewMatrix).multiply(GlStateManager::getMatrix());
     m_frustum.extractPlanes(viewProjection);
 
+    GlStateManager::enableBlend();
+    GlStateManager::setBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     for (const auto &[pos, meshes] : m_chunks) {
         int dx = pos.x - playerChunkX;
         int dz = pos.z - playerChunkZ;
@@ -806,6 +809,8 @@ void WorldRenderer::renderChunks(const Mat4 &viewMatrix, const Mat4 &projection)
 
         for (const std::unique_ptr<ChunkMesh> &mesh : meshes) mesh->render();
     }
+
+    GlStateManager::disableBlend();
 }
 
 void WorldRenderer::renderChunkGrid() const {

@@ -14,6 +14,19 @@ class World;
 
 class Block {
 public:
+    enum class RenderType : uint8_t {
+        CUBE  = 0,
+        CROSS = 1,
+        TORCH = 2,
+    };
+
+    struct UVRect {
+        float u0;
+        float v0;
+        float u1;
+        float v1;
+    };
+
     Block();
     Block(const std::string &name, bool solid, const std::string &texturePath);
     virtual ~Block() = default;
@@ -38,6 +51,7 @@ public:
     const std::string &getName() const;
     bool isSolid() const;
 
+    void setAABB(const AABB &aabb);
     const AABB &getAABB() const;
 
     void setLightEmission(uint8_t value);
@@ -45,6 +59,12 @@ public:
 
     void setLightColor(uint8_t r, uint8_t g, uint8_t b);
     void getLightColor(uint8_t &r, uint8_t &g, uint8_t &b) const;
+
+    void setRenderType(RenderType type);
+    RenderType getRenderType() const;
+
+    void setUVRect(Direction *direction, float u0, float v0, float u1, float v1);
+    UVRect getUVRect(Direction *direction) const;
 
 protected:
     std::unordered_map<Direction *, Texture *> m_textures;
@@ -56,4 +76,6 @@ protected:
     uint8_t m_lightR;
     uint8_t m_lightG;
     uint8_t m_lightB;
+    RenderType m_renderType;
+    std::unordered_map<Direction *, UVRect> m_uvRects;
 };

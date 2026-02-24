@@ -6,9 +6,10 @@
 #include "../biome/Biome.h"
 #include "../chunk/Chunk.h"
 
-Block::Block() : m_name(""), m_solid(false), m_aabb(Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0)), m_lightEmission(0), m_lightR(0), m_lightG(0), m_lightB(0) {}
+Block::Block() : m_name(""), m_solid(false), m_aabb(Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0)), m_lightEmission(0), m_lightR(0), m_lightG(0), m_lightB(0), m_renderType(RenderType::CUBE) {}
 
-Block::Block(const std::string &name, bool solid, const std::string &texturePath) : m_name(name), m_solid(solid), m_aabb(Vec3(0.0, 0.0, 0.0), solid ? Vec3(1.0, 1.0, 1.0) : Vec3(0.0, 0.0, 0.0)), m_lightEmission(0), m_lightR(0), m_lightG(0), m_lightB(0) {
+Block::Block(const std::string &name, bool solid, const std::string &texturePath)
+    : m_name(name), m_solid(solid), m_aabb(Vec3(0.0, 0.0, 0.0), solid ? Vec3(1.0, 1.0, 1.0) : Vec3(0.0, 0.0, 0.0)), m_lightEmission(0), m_lightR(0), m_lightG(0), m_lightB(0), m_renderType(RenderType::CUBE) {
     if (!texturePath.empty()) {
         TextureRepository *textureRepo = BlockRegistry::getTextureRepository();
         setTexture(Direction::UP, textureRepo->get(texturePath).get());
@@ -24,11 +25,20 @@ Block *Block::byId(uint32_t id) { return BlockRegistry::get()->byId(id); }
 
 Block *Block::byName(const std::string &name) { return byId(BlockRegistry::get()->getId(name)); }
 
-void Block::onPlace(World *world, const BlockPos &pos) {}
+void Block::onPlace(World *world, const BlockPos &pos) {
+    (void) world;
+    (void) pos;
+}
 
-void Block::onBreak(World *world, const BlockPos &pos) {}
+void Block::onBreak(World *world, const BlockPos &pos) {
+    (void) world;
+    (void) pos;
+}
 
-void Block::tick(World *world, const BlockPos &pos) {}
+void Block::tick(World *world, const BlockPos &pos) {
+    (void) world;
+    (void) pos;
+}
 
 void Block::setTexture(Direction *direction, Texture *texture) { m_textures[direction] = texture; }
 
@@ -118,6 +128,8 @@ const std::string &Block::getName() const { return m_name; }
 
 bool Block::isSolid() const { return m_solid; }
 
+void Block::setAABB(const AABB &aabb) { m_aabb = aabb; }
+
 const AABB &Block::getAABB() const { return m_aabb; }
 
 void Block::setLightEmission(uint8_t value) { m_lightEmission = value; }
@@ -134,4 +146,16 @@ void Block::getLightColor(uint8_t &r, uint8_t &g, uint8_t &b) const {
     r = m_lightR;
     g = m_lightG;
     b = m_lightB;
+}
+
+void Block::setRenderType(RenderType type) { m_renderType = type; }
+
+Block::RenderType Block::getRenderType() const { return m_renderType; }
+
+void Block::setUVRect(Direction *direction, float u0, float v0, float u1, float v1) { m_uvRects[direction] = {u0, v0, u1, v1}; }
+
+Block::UVRect Block::getUVRect(Direction *direction) const {
+    auto it = m_uvRects.find(direction);
+    if (it == m_uvRects.end()) return {0.0f, 0.0f, 1.0f, 1.0f};
+    return it->second;
 }

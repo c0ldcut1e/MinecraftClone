@@ -10,5 +10,6 @@ out vec4 FragColor;
 
 void main() {
     vec4 tex = texture(u_texture, v_uv);
+    if (tex.a < 0.1) discard;
     FragColor = vec4(tex.rgb * v_light, tex.a);
 }

@@ -203,6 +203,8 @@ ChunkManager *Minecraft::getChunkManager() const { return m_chunkManager; }
 Font *Minecraft::getDefaultFont() const { return m_defaultFont; }
 
 void Minecraft::renderFrame() {
+    RenderCommand::clearColor();
+
     m_worldRenderer->render(m_fixedStepper->getPartialTicks());
 
     m_uiController->render();

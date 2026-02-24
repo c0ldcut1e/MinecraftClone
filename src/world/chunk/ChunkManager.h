@@ -27,11 +27,16 @@ public:
 private:
     struct GenerationTask {
         ChunkPos pos;
-        int priority;
+        int dist2;
+        uint32_t epoch;
     };
 
     struct TaskCompare {
-        bool operator()(const GenerationTask &a, const GenerationTask &b) const { return a.priority < b.priority; }
+        bool operator()(const GenerationTask &a, const GenerationTask &b) const {
+            if (a.dist2 != b.dist2) return a.dist2 > b.dist2;
+            if (a.pos.x != b.pos.x) return a.pos.x > b.pos.x;
+            return a.pos.z > b.pos.z;
+        }
     };
 
     void generateChunk(const ChunkPos &pos);
@@ -39,24 +44,35 @@ private:
     bool isChunkInRenderDistance(const ChunkPos &pos, const ChunkPos &center) const;
     int calculatePriority(const ChunkPos &pos, const ChunkPos &center) const;
 
+    void rebuildPending(const ChunkPos &center, const std::unordered_set<ChunkPos, ChunkPosHash> &known);
     void dispatchPending();
+
+    bool shouldStartTask(const ChunkPos &pos, uint32_t taskEpoch) const;
+    bool shouldKeepResult(const ChunkPos &pos) const;
 
     World *m_world;
 
     std::unique_ptr<BS::thread_pool<>> m_pool;
     std::atomic<bool> m_running;
 
-    std::unordered_set<ChunkPos, ChunkPosHash> m_generatingChunks;
-    std::mutex m_generatingMutex;
-
     std::priority_queue<GenerationTask, std::vector<GenerationTask>, TaskCompare> m_pending;
+    std::unordered_set<ChunkPos, ChunkPosHash> m_pendingSet;
     std::mutex m_pendingMutex;
 
-    std::atomic<int> m_inFlight;
-    int m_maxInFlight;
+    std::unordered_set<ChunkPos, ChunkPosHash> m_activeSet;
+    std::mutex m_activeMutex;
+
+    std::atomic<int> m_active;
+    int m_maxActive;
 
     std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> m_finished;
     std::mutex m_finishedMutex;
 
     ChunkPos m_lastPlayerChunk;
+
+    std::atomic<int> m_centerX;
+    std::atomic<int> m_centerZ;
+    std::atomic<uint32_t> m_epoch;
+
+    std::atomic<int> m_renderDistance;
 };

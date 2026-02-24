@@ -93,7 +93,7 @@ Minecraft::Minecraft()
 
     int spawnX    = 0;
     int spawnZ    = 0;
-    int spawnY    = 100;
+    int spawnY    = 135;
     m_localPlayer = new LocalPlayer(m_world, L"", m_camera);
     m_localPlayer->setPosition(Vec3(spawnX + 0.5, spawnY, spawnZ + 0.5));
     m_world->addEntity(std::unique_ptr<Entity>(m_localPlayer));
@@ -158,9 +158,9 @@ void Minecraft::shutdown() {
         m_worldRenderer = nullptr;
     }
 
-    if (m_camera) {
-        delete m_camera;
-        m_camera = nullptr;
+    if (m_uiController) {
+        delete m_uiController;
+        m_uiController = nullptr;
     }
 
     if (m_world) {
@@ -168,9 +168,19 @@ void Minecraft::shutdown() {
         m_world = nullptr;
     }
 
-    if (m_uiController) {
-        delete m_uiController;
-        m_uiController = nullptr;
+    if (m_camera) {
+        delete m_camera;
+        m_camera = nullptr;
+    }
+
+    if (m_defaultFont) {
+        delete m_defaultFont;
+        m_defaultFont = nullptr;
+    }
+
+    if (m_fixedStepper) {
+        delete m_fixedStepper;
+        m_fixedStepper = nullptr;
     }
 }
 

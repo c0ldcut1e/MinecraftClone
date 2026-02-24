@@ -4,7 +4,7 @@
 #include "../../utils/MappedRegistry.h"
 #include "Block.h"
 
-class BlockRegistry : public MappedRegistry<Block> {
+class BlockRegistry : public MappedRegistry<Block *> {
 public:
     static BlockRegistry *get();
     static void init();

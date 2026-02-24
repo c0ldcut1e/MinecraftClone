@@ -27,11 +27,17 @@ private:
     Biome *getBiomeAt(int worldX, int worldZ) const;
     void buildDensityGrid(float *grid, int chunkX, int chunkZ);
 
+    void carveCavesFromSourceChunk(Chunk &chunk, const ChunkPos &targetChunkPos, int sourceChunkX, int sourceChunkZ);
+    void carveCaveTunnel(Chunk &chunk, Random &caveRandom, const ChunkPos &chunkPos, double startX, double startY, double startZ, float radius, float yaw, float pitch, int stepCount);
+    void carveEllipsoid(Chunk &chunk, const ChunkPos &chunkPos, double centerX, double centerY, double centerZ, double radiusHorizontal, double radiusVertical);
+
     static constexpr float BASE_SIZE    = 17.0;
     static constexpr float STRETCH_Y    = 12.0;
     static constexpr float COORD_SCALE  = 684.412;
     static constexpr float HEIGHT_SCALE = 684.412;
     static constexpr float DEPTH_SCALE  = 200.0;
+
+    uint32_t m_seed;
 
     Random m_random;
 

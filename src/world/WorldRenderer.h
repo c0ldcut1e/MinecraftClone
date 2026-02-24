@@ -66,6 +66,9 @@ private:
 
     void scheduleMesher();
 
+    void beginSkyLightClampUpdate(const WorldTime &worldTime);
+    void pumpSkyLightClampUpdate(int scheduleBudget, int applyBudget);
+
     Shader *m_worldShader;
     Shader *m_skyShader;
     Shader *m_cloudShader;
@@ -97,6 +100,9 @@ private:
 
     std::mutex m_skyMutex;
     std::deque<SkyUpdateResult> m_skyResults;
+    std::deque<ChunkPos> m_skyQueue;
+    std::unordered_set<ChunkPos, ChunkPosHash> m_skyQueued;
+    uint8_t m_skyClampTarget{15};
 
     std::unordered_map<ChunkPos, std::vector<std::unique_ptr<ChunkMesh>>, ChunkPosHash> m_chunks;
     std::mutex m_meshQueueMutex;

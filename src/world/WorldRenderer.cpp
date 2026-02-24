@@ -124,111 +124,10 @@ void WorldRenderer::render(float partialTicks) {
 
     bindWorldShader(cameraPos, viewMatrix, projection);
 
-    {
-        uint8_t clamp = worldTime.getSkyLightClamp();
-        if (clamp != m_lastSkyLightClamp) {
-            m_lastSkyLightClamp = clamp;
-
-            for (auto &kv : m_chunks) {
-                const ChunkPos pos = kv.first;
-                auto &meshes       = kv.second;
-
-                for (size_t i = 0; i < meshes.size(); i++) {
-                    ChunkMesh *mesh = meshes[i].get();
-                    if (!mesh) continue;
-
-                    uint64_t id = mesh->getId();
-
-                    std::vector<float> vertices;
-                    std::vector<uint16_t> rawLights;
-                    std::vector<float> shades;
-                    std::vector<uint32_t> tints;
-                    mesh->snapshotSky(vertices, rawLights, shades, tints);
-
-                    if (vertices.empty()) continue;
-                    if (rawLights.size() * 8 != vertices.size()) continue;
-                    if (shades.size() != rawLights.size()) continue;
-                    if (tints.size() != rawLights.size()) continue;
-
-                    m_mesherPool->detach_task([this, pos, i, id, clamp, vertices = std::move(vertices), rawLights = std::move(rawLights), shades = std::move(shades), tints = std::move(tints)]() mutable {
-                        size_t vc = rawLights.size();
-                        for (size_t v = 0; v < vc; v++) {
-                            uint16_t raw  = rawLights[v];
-                            float shade   = shades[v];
-                            uint32_t tint = tints[v];
-
-                            uint8_t br  = (uint8_t) (raw & 15);
-                            uint8_t bg  = (uint8_t) ((raw >> 4) & 15);
-                            uint8_t bb  = (uint8_t) ((raw >> 8) & 15);
-                            uint8_t sky = (uint8_t) ((raw >> 12) & 15);
-
-                            if (sky > clamp) sky = clamp;
-
-                            uint8_t lr = br > sky ? br : sky;
-                            uint8_t lg = bg > sky ? bg : sky;
-                            uint8_t lb = bb > sky ? bb : sky;
-
-                            float minLight = 0.03f;
-
-                            float baseR = (float) lr / 15.0f;
-                            float baseG = (float) lg / 15.0f;
-                            float baseB = (float) lb / 15.0f;
-
-                            if (baseR < minLight) baseR = minLight;
-                            if (baseG < minLight) baseG = minLight;
-                            if (baseB < minLight) baseB = minLight;
-
-                            float tr = (float) ((tint >> 16) & 0xFF) / 255.0f;
-                            float tg = (float) ((tint >> 8) & 0xFF) / 255.0f;
-                            float tb = (float) (tint & 0xFF) / 255.0f;
-
-                            float r = baseR * shade * tr;
-                            float g = baseG * shade * tg;
-                            float b = baseB * shade * tb;
-
-                            size_t base        = v * 8 + 5;
-                            vertices[base + 0] = r;
-                            vertices[base + 1] = g;
-                            vertices[base + 2] = b;
-                        }
-
-                        SkyUpdateResult res;
-                        res.pos      = pos;
-                        res.index    = i;
-                        res.meshId   = id;
-                        res.vertices = std::move(vertices);
-
-                        std::lock_guard<std::mutex> lock(m_skyMutex);
-                        m_skyResults.push_back(std::move(res));
-                    });
-                }
-            }
-        }
-
-        int budget = 32;
-        while (budget-- > 0) {
-            SkyUpdateResult res;
-            {
-                std::lock_guard<std::mutex> lock(m_skyMutex);
-                if (m_skyResults.empty()) break;
-                res = std::move(m_skyResults.front());
-                m_skyResults.pop_front();
-            }
-
-            auto it = m_chunks.find(res.pos);
-            if (it == m_chunks.end()) continue;
-            auto &meshes = it->second;
-            if (res.index >= meshes.size()) continue;
-
-            ChunkMesh *mesh = meshes[res.index].get();
-            if (!mesh) continue;
-            if (mesh->getId() != res.meshId) continue;
-
-            mesh->applySky(std::move(res.vertices));
-        }
-    }
-
     uploadPendingMeshes();
+    beginSkyLightClampUpdate(worldTime);
+    pumpSkyLightClampUpdate(64, 64);
+
     renderChunks(viewMatrix, projection);
 
     renderBlockOutline();
@@ -802,9 +701,8 @@ void WorldRenderer::renderStars(const Mat4 &viewMatrix, const Mat4 &projection) 
     const WorldTime &worldTime = m_world->getWorldTime();
 
     float alpha = 1.0f - worldTime.getDaylightFactor();
-    alpha       = alpha * alpha;
-
-    if (alpha <= 0.001f) return;
+    alpha       = powf(alpha, 12.0f);
+    if (alpha < 0.02f) return;
 
     Mat4 viewRotOnly     = viewMatrix;
     viewRotOnly.data[12] = 0.0f;
@@ -820,7 +718,7 @@ void WorldRenderer::renderStars(const Mat4 &viewMatrix, const Mat4 &projection) 
     m_starShader->setMat4("u_viewRot", viewRotOnly.data);
     m_starShader->setMat4("u_projection", projection.data);
 
-    const float starSpeed = 0.05f;
+    const float starSpeed = 0.08f;
     m_starShader->setFloat("u_starAngle", worldTime.getCelestialAngle() * 6.28318530718f * starSpeed);
     m_starShader->setFloat("u_starAlpha", alpha);
 
@@ -876,6 +774,10 @@ void WorldRenderer::uploadPendingMeshes() {
         }
 
         m_chunks[pos] = std::move(meshes);
+
+        if (m_lastSkyLightClamp != 15 && m_lastSkyLightClamp != 255) {
+            if (m_skyQueued.insert(pos).second) m_skyQueue.push_back(pos);
+        }
     }
 }
 
@@ -1122,7 +1024,7 @@ void WorldRenderer::scheduleMesher() {
         m_rebuildQueued.clear();
     }
 
-    for (ChunkPos pos : urgent) {
+    for (ChunkPos pos : urgent)
         m_mesherPool->detach_task([this, pos] {
             if (!m_mesherRunning) return;
             auto it = m_world->getChunks().find(pos);
@@ -1131,16 +1033,160 @@ void WorldRenderer::scheduleMesher() {
             ChunkMesher::buildMeshes(m_world, it->second.get(), results);
             submitMesh(pos, std::move(results));
         });
+
+    for (ChunkPos pos : normal)
+        m_mesherPool->detach_task([this, pos] {
+            if (!m_mesherRunning) return;
+            auto it = m_world->getChunks().find(pos);
+            if (it == m_world->getChunks().end()) return;
+            std::vector<ChunkMesher::MeshBuildResult> results;
+            ChunkMesher::buildMeshes(m_world, it->second.get(), results);
+            submitMesh(pos, std::move(results));
+        });
+}
+
+void WorldRenderer::beginSkyLightClampUpdate(const WorldTime &worldTime) {
+    uint8_t clamp = worldTime.getSkyLightClamp();
+    if (clamp == m_lastSkyLightClamp) return;
+
+    m_lastSkyLightClamp = clamp;
+    m_skyClampTarget    = clamp;
+
+    m_skyQueue.clear();
+    m_skyQueued.clear();
+
+    Minecraft *minecraft = Minecraft::getInstance();
+    Vec3 playerPos       = minecraft->getLocalPlayer()->getPosition();
+
+    int pcx = Math::floorDiv((int) playerPos.x, Chunk::SIZE_X);
+    int pcz = Math::floorDiv((int) playerPos.z, Chunk::SIZE_Z);
+
+    std::vector<ChunkPos> order;
+    order.reserve(m_chunks.size());
+
+    for (auto &kv : m_chunks) order.push_back(kv.first);
+
+    std::sort(order.begin(), order.end(), [&](const ChunkPos &a, const ChunkPos &b) {
+        int adx = a.x - pcx;
+        int adz = a.z - pcz;
+        int bdx = b.x - pcx;
+        int bdz = b.z - pcz;
+        int da  = adx * adx + adz * adz;
+        int db  = bdx * bdx + bdz * bdz;
+        if (da != db) return da < db;
+        if (a.x != b.x) return a.x < b.x;
+        return a.z < b.z;
+    });
+
+    for (const ChunkPos &pos : order) {
+        if (m_skyQueued.insert(pos).second) m_skyQueue.push_back(pos);
+    }
+}
+
+void WorldRenderer::pumpSkyLightClampUpdate(int scheduleBudget, int applyBudget) {
+    uint8_t clamp = m_skyClampTarget;
+
+    while (scheduleBudget-- > 0) {
+        if (m_skyQueue.empty()) break;
+
+        ChunkPos pos = m_skyQueue.front();
+        m_skyQueue.pop_front();
+
+        auto it = m_chunks.find(pos);
+        if (it == m_chunks.end()) continue;
+
+        auto &meshes = it->second;
+
+        for (size_t i = 0; i < meshes.size(); i++) {
+            ChunkMesh *mesh = meshes[i].get();
+            if (!mesh) continue;
+
+            uint64_t id = mesh->getId();
+
+            std::vector<float> vertices;
+            std::vector<uint16_t> rawLights;
+            std::vector<float> shades;
+            std::vector<uint32_t> tints;
+            mesh->snapshotSky(vertices, rawLights, shades, tints);
+
+            if (vertices.empty()) continue;
+            if (rawLights.size() * 8 != vertices.size()) continue;
+            if (shades.size() != rawLights.size()) continue;
+            if (tints.size() != rawLights.size()) continue;
+
+            m_mesherPool->detach_task([this, pos, i, id, clamp, vertices = std::move(vertices), rawLights = std::move(rawLights), shades = std::move(shades), tints = std::move(tints)]() mutable {
+                size_t vc = rawLights.size();
+                for (size_t v = 0; v < vc; v++) {
+                    uint16_t raw  = rawLights[v];
+                    float shade   = shades[v];
+                    uint32_t tint = tints[v];
+
+                    uint8_t br  = (uint8_t) (raw & 15);
+                    uint8_t bg  = (uint8_t) ((raw >> 4) & 15);
+                    uint8_t bb  = (uint8_t) ((raw >> 8) & 15);
+                    uint8_t sky = (uint8_t) ((raw >> 12) & 15);
+
+                    if (sky > clamp) sky = clamp;
+
+                    uint8_t lr = br > sky ? br : sky;
+                    uint8_t lg = bg > sky ? bg : sky;
+                    uint8_t lb = bb > sky ? bb : sky;
+
+                    float minLight = 0.03f;
+
+                    float baseR = (float) lr / 15.0f;
+                    float baseG = (float) lg / 15.0f;
+                    float baseB = (float) lb / 15.0f;
+
+                    if (baseR < minLight) baseR = minLight;
+                    if (baseG < minLight) baseG = minLight;
+                    if (baseB < minLight) baseB = minLight;
+
+                    float tr = (float) ((tint >> 16) & 0xFF) / 255.0f;
+                    float tg = (float) ((tint >> 8) & 0xFF) / 255.0f;
+                    float tb = (float) (tint & 0xFF) / 255.0f;
+
+                    float r = baseR * shade * tr;
+                    float g = baseG * shade * tg;
+                    float b = baseB * shade * tb;
+
+                    size_t base        = v * 8 + 5;
+                    vertices[base + 0] = r;
+                    vertices[base + 1] = g;
+                    vertices[base + 2] = b;
+                }
+
+                SkyUpdateResult result;
+                result.pos      = pos;
+                result.index    = i;
+                result.meshId   = id;
+                result.vertices = std::move(vertices);
+
+                std::lock_guard<std::mutex> lock(m_skyMutex);
+                m_skyResults.push_back(std::move(result));
+            });
+        }
     }
 
-    for (ChunkPos pos : normal) {
-        m_mesherPool->detach_task([this, pos] {
-            if (!m_mesherRunning) return;
-            auto it = m_world->getChunks().find(pos);
-            if (it == m_world->getChunks().end()) return;
-            std::vector<ChunkMesher::MeshBuildResult> results;
-            ChunkMesher::buildMeshes(m_world, it->second.get(), results);
-            submitMesh(pos, std::move(results));
-        });
+    while (applyBudget-- > 0) {
+        SkyUpdateResult result;
+        {
+            std::lock_guard<std::mutex> lock(m_skyMutex);
+
+            if (m_skyResults.empty()) break;
+            result = std::move(m_skyResults.front());
+            m_skyResults.pop_front();
+        }
+
+        auto it = m_chunks.find(result.pos);
+        if (it == m_chunks.end()) continue;
+        auto &meshes = it->second;
+        if (result.index >= meshes.size()) continue;
+
+        ChunkMesh *mesh = meshes[result.index].get();
+        if (!mesh) continue;
+        if (mesh->getId() != result.meshId) continue;
+
+        mesh->applySky(std::move(result.vertices));
     }
 }

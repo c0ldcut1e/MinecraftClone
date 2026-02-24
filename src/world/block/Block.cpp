@@ -24,6 +24,12 @@ Block *Block::byId(uint32_t id) { return BlockRegistry::get()->byId(id); }
 
 Block *Block::byName(const std::string &name) { return byId(BlockRegistry::get()->getId(name)); }
 
+void Block::onPlace(World *world, const BlockPos &pos) {}
+
+void Block::onBreak(World *world, const BlockPos &pos) {}
+
+void Block::tick(World *world, const BlockPos &pos) {}
+
 void Block::setTexture(Direction *direction, Texture *texture) { m_textures[direction] = texture; }
 
 Texture *Block::getTexture(Direction *direction) const {

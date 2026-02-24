@@ -7,6 +7,7 @@
 #include "../../rendering/Texture.h"
 #include "../../utils/Direction.h"
 #include "../../utils/math/AABB.h"
+#include "BlockPos.h"
 
 class Chunk;
 class World;
@@ -15,9 +16,14 @@ class Block {
 public:
     Block();
     Block(const std::string &name, bool solid, const std::string &texturePath);
+    virtual ~Block() = default;
 
     static Block *byId(uint32_t id);
     static Block *byName(const std::string &name);
+
+    virtual void onPlace(World *world, const BlockPos &pos);
+    virtual void onBreak(World *world, const BlockPos &pos);
+    virtual void tick(World *world, const BlockPos &pos);
 
     void setTexture(Direction *direction, Texture *texture);
     Texture *getTexture(Direction *direction) const;
@@ -40,7 +46,7 @@ public:
     void setLightColor(uint8_t r, uint8_t g, uint8_t b);
     void getLightColor(uint8_t &r, uint8_t &g, uint8_t &b) const;
 
-private:
+protected:
     std::unordered_map<Direction *, Texture *> m_textures;
     std::unordered_map<Direction *, std::string> m_tintColormaps;
     std::string m_name;

@@ -111,7 +111,10 @@ void World::updateMeshes() {
 }
 
 void World::tick() {
+    processScheduledBlockTicks(m_worldTime.getTicks());
+
     tickEntities();
+
     m_worldTime.advance();
 }
 
@@ -215,17 +218,21 @@ void World::setBlock(const BlockPos &pos, Block *block) {
     int lz = Math::floorMod(pos.z, Chunk::SIZE_Z);
 
     ChunkPos chunkPos{cx, cy, cz};
+    Chunk *chunk = getChunk(chunkPos);
+    if (!chunk) return;
 
-    {
-        Chunk *chunk = getChunk(chunkPos);
-        if (!chunk) return;
+    Block *oldBlock = Block::byId(chunk->getBlockId(lx, ly, lz));
+    if (oldBlock && oldBlock != block) oldBlock->onBreak(this, pos);
 
-        chunk->setBlock(lx, ly, lz, block);
-    }
+    chunk->setBlock(lx, ly, lz, block);
+
+    if (block && oldBlock != block) block->onPlace(this, pos);
 
     markChunkDirty(BlockPos(pos.x, pos.y, pos.z));
     m_lightUpdates.push_back(pos);
 }
+
+void World::scheduleBlockForTick(const BlockPos &pos, uint32_t delayTicks, int priority) { m_scheduledBlockTicks.push(ScheduledBlockTick{m_worldTime.getTicks() + (uint64_t) delayTicks, priority, pos, Block::byId(getBlockId(pos))}); }
 
 int World::getSurfaceHeight(int worldX, int worldZ) const {
     int chunkX = worldX / Chunk::SIZE_X;
@@ -435,6 +442,12 @@ void World::setRenderDistance(int distance) { m_renderDistance = distance; }
 
 int World::getRenderDistance() const { return m_renderDistance; }
 
+uint8_t World::getLightLevel(const BlockPos &pos) const {
+    uint8_t sky   = getSkyLightLevel(pos);
+    uint8_t block = getBlockLightLevel(pos);
+    return std::max(sky, block);
+}
+
 uint8_t World::getSkyLightLevel(const BlockPos &pos) const { return LightEngine::getSkyLight((World *) this, pos); }
 
 uint8_t World::getBlockLightLevel(const BlockPos &pos) const {
@@ -445,11 +458,7 @@ uint8_t World::getBlockLightLevel(const BlockPos &pos) const {
     return std::max(r, std::max(g, b));
 }
 
-uint8_t World::getLightLevel(const BlockPos &pos) const {
-    uint8_t sky   = getSkyLightLevel(pos);
-    uint8_t block = getBlockLightLevel(pos);
-    return std::max(sky, block);
-}
+void World::queueLightUpdate(const BlockPos &pos) { m_lightUpdates.push_back(pos); }
 
 Fog &World::getFog() { return m_fog; }
 
@@ -472,3 +481,18 @@ void World::setDaylightCurveTicks(int darkStartTick, int darkPeakTick) { m_world
 int World::getDarkStartTick() const { return m_worldTime.getDarkStartTick(); }
 
 int World::getDarkPeakTick() const { return m_worldTime.getDarkPeakTick(); }
+
+void World::processScheduledBlockTicks(uint64_t nowTick) {
+    static constexpr int MAX_PER_TICK = 4096;
+    int processed                     = 0;
+    while (!m_scheduledBlockTicks.empty() && processed < MAX_PER_TICK) {
+        const ScheduledBlockTick top = m_scheduledBlockTicks.top();
+        if (top.dueTick > nowTick) break;
+
+        m_scheduledBlockTicks.pop();
+        processed++;
+
+        if (Block::byId(getBlockId(top.pos)) != top.block) continue;
+        top.block->tick(this, top.pos);
+    }
+}

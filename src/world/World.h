@@ -3,6 +3,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <queue>
 #include <shared_mutex>
 #include <unordered_map>
 #include <unordered_set>
@@ -45,6 +46,7 @@ public:
 
     uint32_t getBlockId(const BlockPos &pos) const;
     void setBlock(const BlockPos &pos, Block *block);
+    void scheduleBlockForTick(const BlockPos &pos, uint32_t delayTicks, int priority);
 
     int getSurfaceHeight(int worldX, int worldZ) const;
     bool intersectsBlock(const AABB &aabb) const;
@@ -56,6 +58,7 @@ public:
     uint8_t getLightLevel(const BlockPos &pos) const;
     uint8_t getSkyLightLevel(const BlockPos &pos) const;
     uint8_t getBlockLightLevel(const BlockPos &pos) const;
+    void queueLightUpdate(const BlockPos &pos);
 
     Fog &getFog();
     const Fog &getFog() const;
@@ -73,6 +76,20 @@ public:
     int getDarkPeakTick() const;
 
 private:
+    struct ScheduledBlockTick {
+        bool operator<(const ScheduledBlockTick &other) const {
+            if (dueTick != other.dueTick) return dueTick > other.dueTick;
+            return priority > other.priority;
+        }
+
+        uint64_t dueTick;
+        int priority;
+        BlockPos pos;
+        Block *block;
+    };
+
+    void processScheduledBlockTicks(uint64_t nowTick);
+
     std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> m_chunks;
     std::deque<ChunkPos> m_dirtyChunks;
     std::deque<ChunkPos> m_urgentDirtyChunks;
@@ -83,6 +100,8 @@ private:
     bool m_emptyChunksSolid;
 
     std::vector<std::unique_ptr<Entity>> m_entities;
+
+    std::priority_queue<ScheduledBlockTick> m_scheduledBlockTicks;
 
     int m_renderDistance;
 

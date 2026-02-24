@@ -18,7 +18,7 @@
 #include "../generation/TerrainGenerator.h"
 #include "../lighting/LightEngine.h"
 
-ChunkManager::ChunkManager(World *world) : m_world(world), m_running(false), m_inFlight(0), m_maxInFlight(0), m_lastPlayerChunk{INT32_MAX, INT32_MAX, INT32_MAX} {}
+ChunkManager::ChunkManager(World *world) : m_world(world), m_running(false), m_active(0), m_maxActive(0), m_lastPlayerChunk{INT32_MAX, INT32_MAX, INT32_MAX}, m_centerX(0), m_centerZ(0), m_epoch(0), m_renderDistance(0) {}
 
 ChunkManager::~ChunkManager() { stop(); }
 
@@ -29,8 +29,10 @@ void ChunkManager::start() {
     int threadCount = std::max(1u, std::thread::hardware_concurrency() - 2);
     Logger::logInfo("Starting chunk generation with %d threads", threadCount);
 
-    m_pool        = std::make_unique<BS::thread_pool<>>((size_t) threadCount);
-    m_maxInFlight = std::max(1, threadCount * 4);
+    m_pool      = std::make_unique<BS::thread_pool<>>((size_t) threadCount);
+    m_maxActive = std::max(1, threadCount * 4);
+
+    if (m_world) m_renderDistance.store(m_world->getRenderDistance());
 }
 
 void ChunkManager::stop() {
@@ -40,7 +42,9 @@ void ChunkManager::stop() {
 
     {
         std::lock_guard<std::mutex> lock(m_pendingMutex);
+
         while (!m_pending.empty()) m_pending.pop();
+        m_pendingSet.clear();
     }
 
     if (m_pool) {
@@ -49,13 +53,72 @@ void ChunkManager::stop() {
     }
 
     {
-        std::lock_guard<std::mutex> genLock(m_generatingMutex);
-        m_generatingChunks.clear();
+        std::lock_guard<std::mutex> lock(m_activeMutex);
+
+        m_activeSet.clear();
     }
 
-    m_inFlight.store(0);
+    m_active.store(0);
 
     Logger::logInfo("Chunk generation stopped");
+}
+
+bool ChunkManager::shouldStartTask(const ChunkPos &pos, uint32_t taskEpoch) const {
+    if (!m_running.load()) return false;
+    if (taskEpoch != m_epoch.load()) return false;
+
+    ChunkPos center{m_centerX.load(), 0, m_centerZ.load()};
+    if (!isChunkInRenderDistance(pos, center)) return false;
+
+    return true;
+}
+
+bool ChunkManager::shouldKeepResult(const ChunkPos &pos) const {
+    if (!m_running.load()) return false;
+
+    ChunkPos center{m_centerX.load(), 0, m_centerZ.load()};
+    if (!isChunkInRenderDistance(pos, center)) return false;
+
+    return true;
+}
+
+void ChunkManager::rebuildPending(const ChunkPos &center, const std::unordered_set<ChunkPos, ChunkPosHash> &known) {
+    uint32_t epoch     = m_epoch.load();
+    int renderDistance = m_renderDistance.load();
+    int maxD2          = renderDistance * renderDistance;
+
+    std::vector<GenerationTask> tasks;
+    tasks.reserve((size_t) ((renderDistance * 2 + 1) * (renderDistance * 2 + 1)));
+
+    for (int dz = -renderDistance; dz <= renderDistance; dz++)
+        for (int dx = -renderDistance; dx <= renderDistance; dx++) {
+            int d2 = dx * dx + dz * dz;
+            if (d2 > maxD2) continue;
+
+            ChunkPos pos{center.x + dx, 0, center.z + dz};
+            if (known.count(pos)) continue;
+
+            {
+                std::lock_guard<std::mutex> lock(m_activeMutex);
+
+                if (m_activeSet.find(pos) != m_activeSet.end()) continue;
+            }
+
+            tasks.push_back({pos, d2, epoch});
+        }
+
+    std::sort(tasks.begin(), tasks.end(), [](const GenerationTask &a, const GenerationTask &b) {
+        if (a.dist2 != b.dist2) return a.dist2 < b.dist2;
+        if (a.pos.x != b.pos.x) return a.pos.x < b.pos.x;
+        return a.pos.z < b.pos.z;
+    });
+
+    std::lock_guard<std::mutex> lock(m_pendingMutex);
+    while (!m_pending.empty()) m_pending.pop();
+    m_pendingSet.clear();
+
+    for (const GenerationTask &task : tasks)
+        if (m_pendingSet.insert(task.pos).second) m_pending.push(task);
 }
 
 void ChunkManager::update(const Vec3 &playerPosition) {
@@ -63,83 +126,71 @@ void ChunkManager::update(const Vec3 &playerPosition) {
     int cz = Math::floorDiv((int) playerPosition.z, Chunk::SIZE_Z);
     ChunkPos playerChunk{cx, 0, cz};
 
-    if (playerChunk == m_lastPlayerChunk) {
-        if (m_running.load() && m_pool) dispatchPending();
+    if (m_world) m_renderDistance.store(m_world->getRenderDistance());
+
+    if (!m_pool || !m_running.load()) {
+        m_lastPlayerChunk = playerChunk;
         return;
     }
-    m_lastPlayerChunk = playerChunk;
 
-    if (!m_pool || !m_running.load()) return;
+    if (playerChunk != m_lastPlayerChunk) {
+        m_lastPlayerChunk = playerChunk;
 
-    std::unordered_set<ChunkPos, ChunkPosHash> known;
-    const auto &chunks = m_world->getChunks();
-    known.reserve(chunks.size());
-    for (const auto &[pos, _] : chunks) known.insert(pos);
+        m_centerX.store(playerChunk.x);
+        m_centerZ.store(playerChunk.z);
+        m_epoch.fetch_add(1);
 
-    int renderDistance = m_world->getRenderDistance();
+        std::unordered_set<ChunkPos, ChunkPosHash> known;
+        const std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> &chunks = m_world->getChunks();
+        known.reserve(chunks.size());
+        for (const auto &[pos, _] : chunks) known.insert(pos);
 
-    m_pool->detach_task([this, playerChunk, known = std::move(known), renderDistance] {
-        if (!m_running.load()) return;
+        rebuildPending(playerChunk, known);
+    }
 
-        std::vector<GenerationTask> tasks;
-        for (int dz = -renderDistance; dz <= renderDistance; dz++)
-            for (int dx = -renderDistance; dx <= renderDistance; dx++) {
-                ChunkPos pos{playerChunk.x + dx, 0, playerChunk.z + dz};
-                if (!isChunkInRenderDistance(pos, playerChunk)) continue;
-                if (known.count(pos)) continue;
-                tasks.push_back({pos, calculatePriority(pos, playerChunk)});
-            }
-
-        std::sort(tasks.begin(), tasks.end(), [](const GenerationTask &a, const GenerationTask &b) { return a.priority > b.priority; });
-
-        {
-            std::lock_guard<std::mutex> genLock(m_generatingMutex);
-            std::lock_guard<std::mutex> pendLock(m_pendingMutex);
-            for (const GenerationTask &t : tasks) {
-                if (m_generatingChunks.find(t.pos) != m_generatingChunks.end()) continue;
-                m_generatingChunks.insert(t.pos);
-                m_pending.push(t);
-            }
-        }
-
-        dispatchPending();
-    });
+    dispatchPending();
 }
 
 void ChunkManager::dispatchPending() {
     if (!m_pool) return;
     if (!m_running.load()) return;
 
-    while (m_inFlight.load() < m_maxInFlight) {
+    int startBudget = 8;
+
+    while (startBudget-- > 0 && m_active.load() < m_maxActive) {
         GenerationTask task;
 
         {
-            std::lock_guard<std::mutex> pendLock(m_pendingMutex);
+            std::lock_guard<std::mutex> lock(m_pendingMutex);
+
             if (m_pending.empty()) break;
+
             task = m_pending.top();
             m_pending.pop();
+            m_pendingSet.erase(task.pos);
         }
 
-        m_inFlight.fetch_add(1);
+        if (!shouldStartTask(task.pos, task.epoch)) continue;
 
-        m_pool->detach_task([this, pos = task.pos] {
-            if (!m_running.load()) {
-                std::lock_guard<std::mutex> genLock(m_generatingMutex);
-                m_generatingChunks.erase(pos);
-                m_inFlight.fetch_sub(1);
-                return;
-            }
+        {
+            std::lock_guard<std::mutex> lock(m_activeMutex);
 
-            generateChunk(pos);
+            if (m_activeSet.find(task.pos) != m_activeSet.end()) continue;
+            m_activeSet.insert(task.pos);
+        }
+
+        m_active.fetch_add(1);
+
+        m_pool->detach_task([this, pos = task.pos, epoch = task.epoch] {
+            if (shouldStartTask(pos, epoch)) generateChunk(pos);
 
             {
-                std::lock_guard<std::mutex> genLock(m_generatingMutex);
-                m_generatingChunks.erase(pos);
+                std::lock_guard<std::mutex> lock(m_activeMutex);
+
+                m_activeSet.erase(pos);
             }
 
-            m_inFlight.fetch_sub(1);
-
-            if (m_running.load()) dispatchPending();
+            m_active.fetch_sub(1);
         });
     }
 }
@@ -155,11 +206,7 @@ void ChunkManager::drainFinished(std::deque<std::pair<ChunkPos, std::unique_ptr<
 }
 
 void ChunkManager::generateChunk(const ChunkPos &pos) {
-#ifndef _WIN32
-    setpriority(PRIO_PROCESS, 0, 10);
-#endif
-
-    thread_local TerrainGenerator generator(0xDEADCAFE);
+    thread_local TerrainGenerator generator(0);
 
     std::unique_ptr<Chunk> chunk = std::make_unique<Chunk>(pos);
 
@@ -203,7 +250,6 @@ void ChunkManager::generateChunk(const ChunkPos &pos) {
             int nx = node.x + DIRECTIONS[i][0];
             int ny = node.y + DIRECTIONS[i][1];
             int nz = node.z + DIRECTIONS[i][2];
-
             if (nx < 0 || nx >= Chunk::SIZE_X || ny < 0 || ny >= Chunk::SIZE_Y || nz < 0 || nz >= Chunk::SIZE_Z) continue;
             if (Block::byId(chunk->getBlockId(nx, ny, nz))->isSolid()) continue;
 
@@ -221,8 +267,11 @@ void ChunkManager::generateChunk(const ChunkPos &pos) {
         }
     }
 
+    if (!shouldKeepResult(pos)) return;
+
     {
         std::lock_guard<std::mutex> lock(m_finishedMutex);
+
         m_finished.emplace_back(pos, std::move(chunk));
     }
 }
@@ -231,13 +280,26 @@ void ChunkManager::queueChunkGeneration(const ChunkPos &pos) {
     if (!m_pool) return;
     if (!m_running.load()) return;
 
-    {
-        std::lock_guard<std::mutex> genLock(m_generatingMutex);
-        if (m_generatingChunks.find(pos) != m_generatingChunks.end()) return;
-        m_generatingChunks.insert(pos);
+    ChunkPos center{m_centerX.load(), 0, m_centerZ.load()};
+    if (!isChunkInRenderDistance(pos, center)) return;
 
-        std::lock_guard<std::mutex> pendLock(m_pendingMutex);
-        m_pending.push({pos, 0});
+    {
+        std::lock_guard<std::mutex> lock(m_activeMutex);
+
+        if (m_activeSet.find(pos) != m_activeSet.end()) return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(m_pendingMutex);
+
+        if (m_pendingSet.find(pos) != m_pendingSet.end()) return;
+        m_pendingSet.insert(pos);
+
+        int dx = pos.x - center.x;
+        int dz = pos.z - center.z;
+        int d2 = dx * dx + dz * dz;
+
+        m_pending.push({pos, d2, m_epoch.load()});
     }
 
     dispatchPending();
@@ -246,7 +308,7 @@ void ChunkManager::queueChunkGeneration(const ChunkPos &pos) {
 bool ChunkManager::isChunkInRenderDistance(const ChunkPos &pos, const ChunkPos &center) const {
     int dx             = pos.x - center.x;
     int dz             = pos.z - center.z;
-    int renderDistance = m_world->getRenderDistance();
+    int renderDistance = m_renderDistance.load();
     return (dx * dx + dz * dz) <= (renderDistance * renderDistance);
 }
 

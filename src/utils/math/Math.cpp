@@ -27,3 +27,7 @@ float Math::clampf(float value, float min, float max) {
     if (value > max) return max;
     return value;
 }
+
+double Math::lerp(double a, double b, double t) { return a + (b - a) * t; }
+
+float Math::lerpf(float a, float b, float t) { return a + (b - a) * t; }

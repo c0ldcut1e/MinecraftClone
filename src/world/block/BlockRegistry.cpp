@@ -47,6 +47,21 @@ void BlockRegistry::init() {
     s_torch.setUVRect(Direction::WEST, sideU0, sideV0, sideU1, sideV1);
     s_torch.setUVRect(Direction::UP, 7.0f / 16.0f, 6.0f / 16.0f, 9.0f / 16.0f, 8.0f / 16.0f);
 
+    static Block s_torchWall("torch_wall", false, "textures/block/torch.png");
+    s_torchWall.setRenderShape(Block::RenderShape::TORCH);
+    s_torchWall.setAABB(AABB(Vec3(0.4375f, 0.2f, 0.4375f), Vec3(0.5625f, 0.825f, 0.5625f)));
+    s_torchWall.setInteractionAABB(AABB(Vec3(0.4f, 0.2f, 0.4f), Vec3(0.6f, 0.8f, 0.6f)));
+    s_torchWall.setInteractionAttachmentOffset(-0.12f);
+    s_torchWall.setLightEmission(14);
+    s_torchWall.setLightColor(0xFF, 0xE0, 0xB0);
+    s_torchWall.setUVRect(Direction::NORTH, sideU0, sideV0, sideU1, sideV1);
+    s_torchWall.setUVRect(Direction::SOUTH, sideU0, sideV0, sideU1, sideV1);
+    s_torchWall.setUVRect(Direction::EAST, sideU0, sideV0, sideU1, sideV1);
+    s_torchWall.setUVRect(Direction::WEST, sideU0, sideV0, sideU1, sideV1);
+    s_torchWall.setUVRect(Direction::UP, 7.0f / 16.0f, 6.0f / 16.0f, 9.0f / 16.0f, 8.0f / 16.0f);
+    s_torchWall.setUVRect(Direction::DOWN, 0.0f, 0.0f, 0.0f, 0.0f);
+    s_torchWall.setWallMountedTransform(22.5f, 0.475f);
+
     registry->registerValue("air", &s_air);
     registry->registerValue("bedrock", &s_bedrock);
     registry->registerValue("stone", &s_stone);
@@ -58,6 +73,7 @@ void BlockRegistry::init() {
     registry->registerValue("gravel", &s_gravel);
     registry->registerValue("glowstone", &s_glowstone);
     registry->registerValue("torch", &s_torch);
+    registry->registerValue("torch_wall", &s_torchWall);
 }
 
 TextureRepository *BlockRegistry::getTextureRepository() { return &s_textures; }

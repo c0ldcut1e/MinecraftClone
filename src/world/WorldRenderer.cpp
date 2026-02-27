@@ -18,6 +18,16 @@
 #include "models/ModelDefinition.h"
 #include "models/ModelPartsSkinned.h"
 
+static Direction *decodeDirection(uint8_t face) {
+    if (face == 1) return Direction::NORTH;
+    if (face == 2) return Direction::SOUTH;
+    if (face == 3) return Direction::WEST;
+    if (face == 4) return Direction::EAST;
+    if (face == 5) return Direction::DOWN;
+    if (face == 6) return Direction::UP;
+    return nullptr;
+}
+
 WorldRenderer::WorldRenderer(World *world, int width, int height)
     : m_worldShader(nullptr), m_skyShader(nullptr), m_cloudShader(nullptr), m_fogShader(nullptr), m_starShader(nullptr), m_starVao(0), m_starVbo(0), m_starVertexCount(0), m_sceneFramebuffer(nullptr), m_world(world), m_renderChunkGrid(false),
       m_cloudOffset(0.0f), m_cloudLastCamCellX(INT_MIN), m_cloudLastCamCellZ(INT_MIN), m_cloudLastBuiltOffset(-99999.0f), m_cloudLightSmooth(1.0f), m_lastSkyLightClamp(255) {
@@ -891,7 +901,13 @@ void WorldRenderer::renderBlockOutline() {
     Block *block = Block::byId(m_world->getBlockId(blockPos));
     if (!block) return;
 
-    AABB blockBox        = block->getAABB().translated(Vec3(blockPos.x, blockPos.y, blockPos.z));
+    const Chunk *chunk   = m_world->getChunk(ChunkPos(Math::floorDiv(blockPos.x, Chunk::SIZE_X), Math::floorDiv(blockPos.y, Chunk::SIZE_Y), Math::floorDiv(blockPos.z, Chunk::SIZE_Z)));
+    if (!chunk) return;
+
+    int lx              = Math::floorMod(blockPos.x, Chunk::SIZE_X);
+    int ly              = Math::floorMod(blockPos.y, Chunk::SIZE_Y);
+    int lz              = Math::floorMod(blockPos.z, Chunk::SIZE_Z);
+    AABB blockBox       = block->getPlacedAABB(blockPos, decodeDirection(chunk->getBlockAttachmentFace(lx, ly, lz)));
     const Vec3 &blockMin = blockBox.getMin();
     const Vec3 &blockMax = blockBox.getMax();
 

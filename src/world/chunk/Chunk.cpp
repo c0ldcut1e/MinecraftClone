@@ -5,6 +5,7 @@
 Chunk::Chunk(const ChunkPos &pos) : m_pos(pos), m_needsRelight(true) {
     for (int i = 0; i < SIZE_X * SIZE_Y * SIZE_Z; i++) {
         m_blocks[i]       = 0;
+        m_blockAttachmentFaces[i] = 0;
         m_blockLight[i].r = 0;
         m_blockLight[i].g = 0;
         m_blockLight[i].b = 0;
@@ -17,9 +18,15 @@ Chunk::Chunk(const ChunkPos &pos) : m_pos(pos), m_needsRelight(true) {
 uint32_t Chunk::getBlockId(int x, int y, int z) const { return m_blocks[index(x, y, z)]; }
 
 void Chunk::setBlock(int x, int y, int z, Block *block) {
-    uint32_t id              = BlockRegistry::get()->idOf(block);
-    m_blocks[index(x, y, z)] = id;
+    int i      = index(x, y, z);
+    uint32_t id = BlockRegistry::get()->idOf(block);
+    m_blocks[i] = id;
+    m_blockAttachmentFaces[i] = 0;
 }
+
+uint8_t Chunk::getBlockAttachmentFace(int x, int y, int z) const { return m_blockAttachmentFaces[index(x, y, z)]; }
+
+void Chunk::setBlockAttachmentFace(int x, int y, int z, uint8_t face) { m_blockAttachmentFaces[index(x, y, z)] = face; }
 
 const ChunkPos &Chunk::getPos() const { return m_pos; }
 

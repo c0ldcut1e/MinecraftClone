@@ -16,6 +16,8 @@ public:
 
     uint32_t getBlockId(int x, int y, int z) const;
     void setBlock(int x, int y, int z, Block *block);
+    uint8_t getBlockAttachmentFace(int x, int y, int z) const;
+    void setBlockAttachmentFace(int x, int y, int z, uint8_t face);
 
     const ChunkPos &getPos() const;
 
@@ -37,6 +39,7 @@ private:
 
     ChunkPos m_pos;
     uint32_t m_blocks[SIZE_X * SIZE_Y * SIZE_Z];
+    uint8_t m_blockAttachmentFaces[SIZE_X * SIZE_Y * SIZE_Z];
 
     struct LightData {
         uint8_t r;

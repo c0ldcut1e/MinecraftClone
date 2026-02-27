@@ -15,6 +15,36 @@
 #include "lighting/LightEngine.h"
 #include "models/ModelRegistry.h"
 
+static uint8_t encodeDirection(Direction *direction) {
+    if (direction == Direction::NORTH) return 1;
+    if (direction == Direction::SOUTH) return 2;
+    if (direction == Direction::WEST) return 3;
+    if (direction == Direction::EAST) return 4;
+    if (direction == Direction::DOWN) return 5;
+    if (direction == Direction::UP) return 6;
+    return 0;
+}
+
+static Direction *oppositeDirection(Direction *direction) {
+    if (direction == Direction::NORTH) return Direction::SOUTH;
+    if (direction == Direction::SOUTH) return Direction::NORTH;
+    if (direction == Direction::WEST) return Direction::EAST;
+    if (direction == Direction::EAST) return Direction::WEST;
+    if (direction == Direction::DOWN) return Direction::UP;
+    if (direction == Direction::UP) return Direction::DOWN;
+    return nullptr;
+}
+
+static Direction *decodeDirection(uint8_t face) {
+    if (face == 1) return Direction::NORTH;
+    if (face == 2) return Direction::SOUTH;
+    if (face == 3) return Direction::WEST;
+    if (face == 4) return Direction::EAST;
+    if (face == 5) return Direction::DOWN;
+    if (face == 6) return Direction::UP;
+    return nullptr;
+}
+
 World::World() : m_emptyChunksSolid(true), m_renderDistance(12) {}
 
 void World::update(float partialTicks) {
@@ -208,7 +238,9 @@ uint32_t World::getBlockId(const BlockPos &pos) const {
     return chunk->getBlockId(lx, ly, lz);
 }
 
-void World::setBlock(const BlockPos &pos, Block *block) {
+void World::setBlock(const BlockPos &pos, Block *block) { setBlock(pos, block, nullptr); }
+
+void World::setBlock(const BlockPos &pos, Block *block, Direction *placedAgainst) {
     int cx = Math::floorDiv(pos.x, Chunk::SIZE_X);
     int cy = Math::floorDiv(pos.y, Chunk::SIZE_Y);
     int cz = Math::floorDiv(pos.z, Chunk::SIZE_Z);
@@ -225,6 +257,9 @@ void World::setBlock(const BlockPos &pos, Block *block) {
     if (oldBlock && oldBlock != block) oldBlock->onBreak(this, pos);
 
     chunk->setBlock(lx, ly, lz, block);
+
+    Direction *supportFace = oppositeDirection(placedAgainst);
+    chunk->setBlockAttachmentFace(lx, ly, lz, encodeDirection(supportFace));
 
     if (block && oldBlock != block) block->onPlace(this, pos);
 
@@ -414,7 +449,7 @@ HitResult *World::clip(const Vec3 &origin, const Vec3 &direction, float maxDista
         Block *block = Block::byId((int) chunk->getBlockId(lx, pos.y, lz));
         if (!block) continue;
 
-        AABB blockBox   = block->getAABB().translated(Vec3(pos.x, pos.y, pos.z));
+        AABB blockBox   = block->getPlacedAABB(pos, decodeDirection(chunk->getBlockAttachmentFace(lx, pos.y, lz)));
         const Vec3 &min = blockBox.getMin();
         const Vec3 &max = blockBox.getMax();
 

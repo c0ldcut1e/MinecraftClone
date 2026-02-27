@@ -46,6 +46,7 @@ public:
 
     uint32_t getBlockId(const BlockPos &pos) const;
     void setBlock(const BlockPos &pos, Block *block);
+    void setBlock(const BlockPos &pos, Block *block, Direction *placedAgainst);
     void scheduleBlockForTick(const BlockPos &pos, uint32_t delayTicks, int priority);
 
     int getSurfaceHeight(int worldX, int worldZ) const;

@@ -92,6 +92,27 @@ static inline void addFaceUV(std::vector<float> &vertices, std::vector<uint16_t>
     push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, r, g, b, rawLight, shadeMul, tint);
 }
 
+static inline void addFace4UV(std::vector<float> &vertices, std::vector<uint16_t> &rawLights, std::vector<float> &shades, std::vector<uint32_t> &tints, float x1, float y1, float z1, float x2, float y2, float z2, float x3, float y3, float z3, float x4,
+                              float y4, float z4, float u0, float v0, float u1, float v1, float r, float g, float b, uint16_t rawLight, float shadeMul, uint32_t tint) {
+    push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, r, g, b, rawLight, shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x2, y2, z2, u1, v0, r, g, b, rawLight, shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, r, g, b, rawLight, shadeMul, tint);
+
+    push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, r, g, b, rawLight, shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, r, g, b, rawLight, shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, r, g, b, rawLight, shadeMul, tint);
+}
+
+static inline Direction *decodeDirection(uint8_t id) {
+    if (id == 1) return Direction::NORTH;
+    if (id == 2) return Direction::SOUTH;
+    if (id == 3) return Direction::WEST;
+    if (id == 4) return Direction::EAST;
+    if (id == 5) return Direction::DOWN;
+    if (id == 6) return Direction::UP;
+    return nullptr;
+}
+
 static inline uint16_t sampleLightKey(World *world, const Chunk *chunk, int wx, int wy, int wz) {
     int cx = Math::floorDiv(wx, Chunk::SIZE_X);
     int cy = Math::floorDiv(wy, Chunk::SIZE_Y);
@@ -124,8 +145,8 @@ static inline Block *getBlockWorld(World *world, const Chunk *chunk, const Block
     if (pos.x >= 0 && pos.x < Chunk::SIZE_X && pos.z >= 0 && pos.z < Chunk::SIZE_Z) return Block::byId(chunk->getBlockId(pos.x, pos.y, pos.z));
 
     ChunkPos chunkPos = chunk->getPos();
-    int lx           = pos.x;
-    int lz           = pos.z;
+    int lx            = pos.x;
+    int lz            = pos.z;
 
     if (lx < 0) {
         chunkPos.x -= 1;
@@ -350,6 +371,42 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
             addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, u0, v0, u1, v1, r, g, b, rawLight, shadeMul, tint);
         else if (direction == Direction::WEST)
             addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, u0, v0, u1, v1, r, g, b, rawLight, shadeMul, tint);
+    };
+
+    auto emitFace4FixedUV = [&](Direction *direction, Texture *texture, uint16_t rawLight, uint32_t tint, float x1, float y1, float z1, float x2, float y2, float z2, float x3, float y3, float z3, float x4, float y4, float z4, float u0, float v0, float u1,
+                                float v1) {
+        if (!texture) return;
+
+        float shadeMul = 1.0f;
+        if (direction == Direction::NORTH || direction == Direction::SOUTH) shadeMul = 0.8f;
+        else if (direction == Direction::EAST || direction == Direction::WEST)
+            shadeMul = 0.6f;
+        else if (direction == Direction::DOWN)
+            shadeMul = 0.5f;
+
+        uint8_t br  = (uint8_t) (rawLight & 15);
+        uint8_t bg  = (uint8_t) ((rawLight >> 4) & 15);
+        uint8_t bb  = (uint8_t) ((rawLight >> 8) & 15);
+        uint8_t sky = (uint8_t) ((rawLight >> 12) & 15);
+
+        uint8_t clamp = world->getSkyLightClamp();
+        if (sky > clamp) sky = clamp;
+
+        uint8_t lr = br > sky ? br : sky;
+        uint8_t lg = bg > sky ? bg : sky;
+        uint8_t lb = bb > sky ? bb : sky;
+
+        float r;
+        float g;
+        float b;
+        shade(direction, lr, lg, lb, &r, &g, &b);
+
+        r *= (float) ((tint >> 16) & 0xFF) / 255.0f;
+        g *= (float) ((tint >> 8) & 0xFF) / 255.0f;
+        b *= (float) (tint & 0xFF) / 255.0f;
+
+        Bucket &bucket = buckets[texture];
+        addFace4UV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4, u0, v0, u1, v1, r, g, b, rawLight, shadeMul, tint);
     };
 
     {
@@ -628,12 +685,84 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, std::vector<Mesh
                     Texture *textureDown = block->getTexture(Direction::DOWN);
                     if (!textureDown) textureDown = textureUp;
 
-                    if (uvNorth.u0 != uvNorth.u1 && uvNorth.v0 != uvNorth.v1) emitFixedUV(Direction::NORTH, textureNorth, rawLight, tint, x1, y1, z1, x2, y2, z1, uvNorth.u0, uvNorth.v0, uvNorth.u1, uvNorth.v1);
-                    if (uvSouth.u0 != uvSouth.u1 && uvSouth.v0 != uvSouth.v1) emitFixedUV(Direction::SOUTH, textureSouth, rawLight, tint, x1, y1, z2, x2, y2, z2, uvSouth.u0, uvSouth.v0, uvSouth.u1, uvSouth.v1);
-                    if (uvWest.u0 != uvWest.u1 && uvWest.v0 != uvWest.v1) emitFixedUV(Direction::WEST, textureWest, rawLight, tint, x1, y1, z1, x1, y2, z2, uvWest.u0, uvWest.v0, uvWest.u1, uvWest.v1);
-                    if (uvEast.u0 != uvEast.u1 && uvEast.v0 != uvEast.v1) emitFixedUV(Direction::EAST, textureEast, rawLight, tint, x2, y1, z1, x2, y2, z2, uvEast.u0, uvEast.v0, uvEast.u1, uvEast.v1);
-                    if (uvDown.u0 != uvDown.u1 && uvDown.v0 != uvDown.v1) emitFixedUV(Direction::DOWN, textureDown, rawLight, tint, x1, y1, z1, x2, y1, z2, uvDown.u0, uvDown.v0, uvDown.u1, uvDown.v1);
-                    if (uvUp.u0 != uvUp.u1 && uvUp.v0 != uvUp.v1) emitFixedUV(Direction::UP, textureUp, rawLight, tint, x1, y2, z1, x2, y2, z2, uvUp.u0, uvUp.v0, uvUp.u1, uvUp.v1);
+                    Direction *attachmentFace = decodeDirection(chunk->getBlockAttachmentFace(x, y, z));
+                    bool wallMounted          = block->hasWallMountedTransform() && (attachmentFace == Direction::NORTH || attachmentFace == Direction::SOUTH || attachmentFace == Direction::WEST || attachmentFace == Direction::EAST);
+
+                    if (!wallMounted) {
+                        if (uvNorth.u0 != uvNorth.u1 && uvNorth.v0 != uvNorth.v1) emitFixedUV(Direction::NORTH, textureNorth, rawLight, tint, x1, y1, z1, x2, y2, z1, uvNorth.u0, uvNorth.v0, uvNorth.u1, uvNorth.v1);
+                        if (uvSouth.u0 != uvSouth.u1 && uvSouth.v0 != uvSouth.v1) emitFixedUV(Direction::SOUTH, textureSouth, rawLight, tint, x1, y1, z2, x2, y2, z2, uvSouth.u0, uvSouth.v0, uvSouth.u1, uvSouth.v1);
+                        if (uvWest.u0 != uvWest.u1 && uvWest.v0 != uvWest.v1) emitFixedUV(Direction::WEST, textureWest, rawLight, tint, x1, y1, z1, x1, y2, z2, uvWest.u0, uvWest.v0, uvWest.u1, uvWest.v1);
+                        if (uvEast.u0 != uvEast.u1 && uvEast.v0 != uvEast.v1) emitFixedUV(Direction::EAST, textureEast, rawLight, tint, x2, y1, z1, x2, y2, z2, uvEast.u0, uvEast.v0, uvEast.u1, uvEast.v1);
+                        if (uvDown.u0 != uvDown.u1 && uvDown.v0 != uvDown.v1) emitFixedUV(Direction::DOWN, textureDown, rawLight, tint, x1, y1, z1, x2, y1, z2, uvDown.u0, uvDown.v0, uvDown.u1, uvDown.v1);
+                        if (uvUp.u0 != uvUp.u1 && uvUp.v0 != uvUp.v1) emitFixedUV(Direction::UP, textureUp, rawLight, tint, x1, y2, z1, x2, y2, z2, uvUp.u0, uvUp.v0, uvUp.u1, uvUp.v1);
+                    } else {
+                        struct Vertex {
+                            float x;
+                            float y;
+                            float z;
+                        };
+
+                        Vertex v0{x1, y1, z1};
+                        Vertex v1{x2, y1, z1};
+                        Vertex v2{x2, y2, z1};
+                        Vertex v3{x1, y2, z1};
+                        Vertex v4{x1, y1, z2};
+                        Vertex v5{x2, y1, z2};
+                        Vertex v6{x2, y2, z2};
+                        Vertex v7{x1, y2, z2};
+
+                        Vertex *vertices[8] = {&v0, &v1, &v2, &v3, &v4, &v5, &v6, &v7};
+
+                        float angle = block->getWallMountedTiltDegrees() * (float) M_PI / 180.0f;
+                        if (attachmentFace == Direction::SOUTH || attachmentFace == Direction::WEST) angle = -angle;
+
+                        float pivotX = wx + 0.5f;
+                        float pivotY = y1;
+                        float pivotZ = wz + 0.5f;
+
+                        float c = cosf(angle);
+                        float s = sinf(angle);
+
+                        if (attachmentFace == Direction::NORTH || attachmentFace == Direction::SOUTH) {
+                            for (int i = 0; i < 8; i++) {
+                                float dy = vertices[i]->y - pivotY;
+                                float dz = vertices[i]->z - pivotZ;
+                                float ny = dy * c - dz * s;
+                                float nz = dy * s + dz * c;
+
+                                vertices[i]->y = pivotY + ny;
+                                vertices[i]->z = pivotZ + nz;
+                            }
+                        } else {
+                            for (int i = 0; i < 8; i++) {
+                                float dx = vertices[i]->x - pivotX;
+                                float dy = vertices[i]->y - pivotY;
+                                float nx = dx * c - dy * s;
+                                float ny = dx * s + dy * c;
+
+                                vertices[i]->x = pivotX + nx;
+                                vertices[i]->y = pivotY + ny;
+                            }
+                        }
+
+                        if (attachmentFace == Direction::NORTH)
+                            for (int i = 0; i < 8; i++) vertices[i]->z -= block->getWallMountedInset();
+                        else if (attachmentFace == Direction::SOUTH)
+                            for (int i = 0; i < 8; i++) vertices[i]->z += block->getWallMountedInset();
+                        else if (attachmentFace == Direction::WEST)
+                            for (int i = 0; i < 8; i++) vertices[i]->x -= block->getWallMountedInset();
+                        else if (attachmentFace == Direction::EAST)
+                            for (int i = 0; i < 8; i++) vertices[i]->x += block->getWallMountedInset();
+
+                        if (uvNorth.u0 != uvNorth.u1 && uvNorth.v0 != uvNorth.v1)
+                            emitFace4FixedUV(Direction::NORTH, textureNorth, rawLight, tint, v0.x, v0.y, v0.z, v3.x, v3.y, v3.z, v2.x, v2.y, v2.z, v1.x, v1.y, v1.z, uvNorth.u0, uvNorth.v0, uvNorth.u1, uvNorth.v1);
+                        if (uvSouth.u0 != uvSouth.u1 && uvSouth.v0 != uvSouth.v1)
+                            emitFace4FixedUV(Direction::SOUTH, textureSouth, rawLight, tint, v5.x, v5.y, v5.z, v6.x, v6.y, v6.z, v7.x, v7.y, v7.z, v4.x, v4.y, v4.z, uvSouth.u0, uvSouth.v0, uvSouth.u1, uvSouth.v1);
+                        if (uvWest.u0 != uvWest.u1 && uvWest.v0 != uvWest.v1) emitFace4FixedUV(Direction::WEST, textureWest, rawLight, tint, v4.x, v4.y, v4.z, v7.x, v7.y, v7.z, v3.x, v3.y, v3.z, v0.x, v0.y, v0.z, uvWest.u0, uvWest.v0, uvWest.u1, uvWest.v1);
+                        if (uvEast.u0 != uvEast.u1 && uvEast.v0 != uvEast.v1) emitFace4FixedUV(Direction::EAST, textureEast, rawLight, tint, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, v6.x, v6.y, v6.z, v5.x, v5.y, v5.z, uvEast.u0, uvEast.v0, uvEast.u1, uvEast.v1);
+                        if (uvDown.u0 != uvDown.u1 && uvDown.v0 != uvDown.v1) emitFace4FixedUV(Direction::DOWN, textureDown, rawLight, tint, v4.x, v4.y, v4.z, v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, v5.x, v5.y, v5.z, uvDown.u0, uvDown.v0, uvDown.u1, uvDown.v1);
+                        if (uvUp.u0 != uvUp.u1 && uvUp.v0 != uvUp.v1) emitFace4FixedUV(Direction::UP, textureUp, rawLight, tint, v3.x, v3.y, v3.z, v7.x, v7.y, v7.z, v6.x, v6.y, v6.z, v2.x, v2.y, v2.z, uvUp.u0, uvUp.v0, uvUp.u1, uvUp.v1);
+                    }
                 }
             }
 

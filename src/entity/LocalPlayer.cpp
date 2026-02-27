@@ -71,7 +71,7 @@ void LocalPlayer::handleRMB() {
     Vec3 origin    = m_position.add(Vec3(0.0, 1.62, 0.0));
     Vec3 direction = m_front.normalize();
     HitResult *hit = m_world->clip(origin, direction, 6.0f);
-    if (hit->isBlock()) placeBlock(hit->getBlockPos(), hit->getBlockFace(), Block::byName("torch"));
+    if (hit->isBlock()) placeBlock(hit->getBlockPos(), hit->getBlockFace(), Block::byName("torch_wall"));
 
     delete hit;
 }
@@ -88,7 +88,7 @@ void LocalPlayer::placeBlock(const BlockPos &pos, Direction *face, Block *block)
     if (face == Direction::SOUTH) placePos.z++;
 
     AABB blockBox(Vec3(placePos.x, placePos.y, placePos.z), Vec3(placePos.x + 1.0f, placePos.y + 1.0f, placePos.z + 1.0f));
-    if (!blockBox.intersects(getAABB())) m_world->setBlock(placePos, block);
+    if (!blockBox.intersects(getAABB())) m_world->setBlock(placePos, block, face);
 }
 
 void LocalPlayer::updateCamera(float partialTicks) {

@@ -54,6 +54,11 @@ public:
 
     void setAABB(const AABB &aabb);
     const AABB &getAABB() const;
+    void setInteractionAABB(const AABB &aabb);
+    const AABB &getInteractionAABB() const;
+    void setInteractionAttachmentOffset(float offset);
+    float getInteractionAttachmentOffset() const;
+    AABB getPlacedAABB(const BlockPos &pos, Direction *attachmentFace) const;
 
     void setLightEmission(uint8_t value);
     uint8_t getLightEmission() const;
@@ -67,16 +72,27 @@ public:
     void setUVRect(Direction *direction, float u0, float v0, float u1, float v1);
     UVRect getUVRect(Direction *direction) const;
 
+    void setWallMountedTransform(float tiltDegrees, float wallInset);
+    bool hasWallMountedTransform() const;
+    float getWallMountedTiltDegrees() const;
+    float getWallMountedInset() const;
+
 protected:
     std::unordered_map<Direction *, Texture *> m_textures;
     std::unordered_map<Direction *, std::string> m_tintColormaps;
     std::string m_name;
     bool m_solid;
     AABB m_aabb;
+    AABB m_interactionAabb;
+    bool m_hasInteractionAabb;
+    float m_interactionAttachmentOffset;
     uint8_t m_lightEmission;
     uint8_t m_lightR;
     uint8_t m_lightG;
     uint8_t m_lightB;
     RenderShape m_renderShape;
     std::unordered_map<Direction *, UVRect> m_uvRects;
+    bool m_hasWallMountedTransform;
+    float m_wallMountedTiltDegrees;
+    float m_wallMountedInset;
 };

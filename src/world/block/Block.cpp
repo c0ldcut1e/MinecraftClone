@@ -6,10 +6,17 @@
 #include "../biome/Biome.h"
 #include "../chunk/Chunk.h"
 
-Block::Block() : m_name(""), m_solid(false), m_aabb(Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0)), m_lightEmission(0), m_lightR(0), m_lightG(0), m_lightB(0), m_renderShape(RenderShape::CUBE) {}
+Block::Block()
+    : m_name(""), m_solid(false), m_aabb(Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0)), m_interactionAabb(Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0)), m_hasInteractionAabb(false), m_interactionAttachmentOffset(0.0f), m_lightEmission(0), m_lightR(0), m_lightG(0),
+      m_lightB(0), m_renderShape(RenderShape::CUBE), m_hasWallMountedTransform(false),
+      m_wallMountedTiltDegrees(0.0f), m_wallMountedInset(0.0f) {}
 
 Block::Block(const std::string &name, bool solid, const std::string &texturePath)
-    : m_name(name), m_solid(solid), m_aabb(Vec3(0.0, 0.0, 0.0), solid ? Vec3(1.0, 1.0, 1.0) : Vec3(0.0, 0.0, 0.0)), m_lightEmission(0), m_lightR(0), m_lightG(0), m_lightB(0), m_renderShape(RenderShape::CUBE) {
+    : m_name(name), m_solid(solid), m_aabb(Vec3(0.0, 0.0, 0.0), solid ? Vec3(1.0, 1.0, 1.0) : Vec3(0.0, 0.0, 0.0)), m_lightEmission(0), m_lightR(0), m_lightG(0), m_lightB(0), m_renderShape(RenderShape::CUBE),
+      m_hasWallMountedTransform(false), m_wallMountedTiltDegrees(0.0f), m_wallMountedInset(0.0f) {
+    m_interactionAabb  = m_aabb;
+    m_hasInteractionAabb = false;
+    m_interactionAttachmentOffset = 0.0f;
     if (!texturePath.empty()) {
         TextureRepository *textureRepo = BlockRegistry::getTextureRepository();
         setTexture(Direction::UP, textureRepo->get(texturePath).get());
@@ -132,6 +139,32 @@ void Block::setAABB(const AABB &aabb) { m_aabb = aabb; }
 
 const AABB &Block::getAABB() const { return m_aabb; }
 
+void Block::setInteractionAABB(const AABB &aabb) {
+    m_interactionAabb  = aabb;
+    m_hasInteractionAabb = true;
+}
+
+const AABB &Block::getInteractionAABB() const {
+    if (m_hasInteractionAabb) return m_interactionAabb;
+    return m_aabb;
+}
+
+void Block::setInteractionAttachmentOffset(float offset) { m_interactionAttachmentOffset = offset; }
+
+float Block::getInteractionAttachmentOffset() const { return m_interactionAttachmentOffset; }
+
+AABB Block::getPlacedAABB(const BlockPos &pos, Direction *attachmentFace) const {
+    AABB box = getInteractionAABB().translated(Vec3(pos.x, pos.y, pos.z));
+    if (!m_hasWallMountedTransform) return box;
+
+    if (attachmentFace == Direction::NORTH) return box.translated(Vec3(0.0, 0.0, -(m_wallMountedInset + m_interactionAttachmentOffset)));
+    if (attachmentFace == Direction::SOUTH) return box.translated(Vec3(0.0, 0.0, m_wallMountedInset + m_interactionAttachmentOffset));
+    if (attachmentFace == Direction::WEST) return box.translated(Vec3(-(m_wallMountedInset + m_interactionAttachmentOffset), 0.0, 0.0));
+    if (attachmentFace == Direction::EAST) return box.translated(Vec3(m_wallMountedInset + m_interactionAttachmentOffset, 0.0, 0.0));
+
+    return box;
+}
+
 void Block::setLightEmission(uint8_t value) { m_lightEmission = value; }
 
 uint8_t Block::getLightEmission() const { return m_lightEmission; }
@@ -159,3 +192,15 @@ Block::UVRect Block::getUVRect(Direction *direction) const {
     if (it == m_uvRects.end()) return {0.0f, 0.0f, 1.0f, 1.0f};
     return it->second;
 }
+
+void Block::setWallMountedTransform(float tiltDegrees, float wallInset) {
+    m_hasWallMountedTransform = true;
+    m_wallMountedTiltDegrees  = tiltDegrees;
+    m_wallMountedInset        = wallInset;
+}
+
+bool Block::hasWallMountedTransform() const { return m_hasWallMountedTransform; }
+
+float Block::getWallMountedTiltDegrees() const { return m_wallMountedTiltDegrees; }
+
+float Block::getWallMountedInset() const { return m_wallMountedInset; }

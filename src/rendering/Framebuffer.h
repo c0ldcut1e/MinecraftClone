@@ -2,7 +2,8 @@
 
 #include <cstdint>
 
-class Framebuffer {
+class Framebuffer
+{
 public:
     Framebuffer(int width, int height);
     ~Framebuffer();

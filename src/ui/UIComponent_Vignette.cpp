@@ -7,16 +7,20 @@
 #include "../core/Minecraft.h"
 #include "../rendering/GlStateManager.h"
 #include "../rendering/RenderCommand.h"
-#include "../utils/math/Math.h"
+#include "../utils/math/Mth.h"
 
-UIComponent_Vignette::UIComponent_Vignette() : UIComponent("ComponentVignette"), m_shader("shaders/vignette.vert", "shaders/vignette.frag"), m_texture("textures/misc/vignette.png"), m_vao(0), m_vbo(0) {
+UIComponent_Vignette::UIComponent_Vignette()
+    : UIComponent("ComponentVignette"), m_shader("shaders/vignette.vert", "shaders/vignette.frag"),
+      m_texture("textures/misc/vignette.png"), m_vao(0), m_vbo(0)
+{
     m_vao = RenderCommand::createVertexArray();
     m_vbo = RenderCommand::createBuffer();
 
     RenderCommand::bindVertexArray(m_vao);
     RenderCommand::bindArrayBuffer(m_vbo);
 
-    float verts[6][2] = {{-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, 1.0f}};
+    float verts[6][2] = {{-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f},
+                         {-1.0f, -1.0f}, {1.0f, 1.0f},  {-1.0f, 1.0f}};
 
     RenderCommand::uploadArrayBuffer(verts, sizeof(verts), GL_STATIC_DRAW);
 
@@ -28,12 +32,14 @@ UIComponent_Vignette::UIComponent_Vignette() : UIComponent("ComponentVignette"),
     m_shader.setFloat("u_strength", 1.0f);
 }
 
-UIComponent_Vignette::~UIComponent_Vignette() {
+UIComponent_Vignette::~UIComponent_Vignette()
+{
     RenderCommand::deleteBuffer(m_vbo);
     RenderCommand::deleteVertexArray(m_vao);
 }
 
-void UIComponent_Vignette::render() {
+void UIComponent_Vignette::render()
+{
     Minecraft *mc       = Minecraft::getInstance();
     LocalPlayer *player = mc ? mc->getLocalPlayer() : nullptr;
     World *world        = player ? player->getWorld() : nullptr;
@@ -49,7 +55,7 @@ void UIComponent_Vignette::render() {
     float brightness = light01 * light01;
 
     strength = 1.0f - brightness;
-    strength = Math::clampf(strength, 0.0f, 1.0f);
+    strength = Mth::clampf(strength, 0.0f, 1.0f);
     strength = powf(strength, 1.4f);
 
     GlStateManager::disableDepthTest();

@@ -4,12 +4,13 @@
 
 #include "../core/Logger.h"
 #include "../core/Minecraft.h"
-#include "../rendering/ImmediateRenderer.h"
+#include "../rendering/Tesselator.h"
 #include "Entity.h"
 
 EntityRenderer::EntityRenderer() : m_renderBoundingBox(false) {}
 
-void EntityRenderer::render(const Entity *entity, float partialTicks) const {
+void EntityRenderer::render(const Entity *entity, float partialTicks) const
+{
     AABB box        = entity->getBoundingBox().translated(entity->getRenderPosition(partialTicks));
     const Vec3 &min = box.getMin();
     const Vec3 &max = box.getMax();
@@ -21,7 +22,7 @@ void EntityRenderer::render(const Entity *entity, float partialTicks) const {
     float z  = min.z;
     float z2 = max.z;
 
-    ImmediateRenderer *renderer = ImmediateRenderer::getForWorld();
+    BufferBuilder *renderer = Tesselator::getInstance()->getBuilderForWorld();
     renderer->begin(GL_TRIANGLES);
     renderer->color(0xFF777777);
 
@@ -35,17 +36,21 @@ void EntityRenderer::render(const Entity *entity, float partialTicks) const {
 
     renderer->end();
 
-    if (m_renderBoundingBox) renderBoundingBox(entity, partialTicks);
+    if (m_renderBoundingBox)
+    {
+        renderBoundingBox(entity, partialTicks);
+    }
 }
 
 void EntityRenderer::setRenderBoundingBox(bool value) { m_renderBoundingBox = value; }
 
-void EntityRenderer::renderBoundingBox(const Entity *entity, float partialTicks) const {
+void EntityRenderer::renderBoundingBox(const Entity *entity, float partialTicks) const
+{
     AABB box        = entity->getBoundingBox().translated(entity->getRenderPosition(partialTicks));
     const Vec3 &min = box.getMin();
     const Vec3 &max = box.getMax();
 
-    ImmediateRenderer *renderer = ImmediateRenderer::getForWorld();
+    BufferBuilder *renderer = Tesselator::getInstance()->getBuilderForWorld();
     renderer->begin(GL_LINES);
     renderer->color(0xFFFFFFFF);
 

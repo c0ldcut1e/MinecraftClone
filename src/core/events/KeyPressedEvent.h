@@ -2,7 +2,8 @@
 
 #include "Event.h"
 
-class KeyPressedEvent : public Event {
+class KeyPressedEvent : public Event
+{
 public:
     explicit KeyPressedEvent(int key);
 

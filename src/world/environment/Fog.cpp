@@ -1,6 +1,9 @@
 #include "Fog.h"
 
-Fog::Fog() : m_enabled(true), m_disableInCaves(true), m_startFactor(0.6f), m_endFactor(0.8f), m_color(0.435294118, 0.709803922, 0.97254902), m_lutX(0.5f), m_lutY(0.5f) {}
+Fog::Fog()
+    : m_enabled(true), m_disableInCaves(true), m_startFactor(0.6f), m_endFactor(0.8f),
+      m_color(0.435294118, 0.709803922, 0.97254902), m_lutX(0.5f), m_lutY(0.5f)
+{}
 
 bool Fog::isEnabled() const { return m_enabled; }
 
@@ -14,7 +17,8 @@ float Fog::getStartFactor() const { return m_startFactor; }
 
 float Fog::getEndFactor() const { return m_endFactor; }
 
-void Fog::setRangeFactors(float startFactor, float endFactor) {
+void Fog::setRangeFactors(float startFactor, float endFactor)
+{
     m_startFactor = startFactor;
     m_endFactor   = endFactor;
 }
@@ -29,7 +33,8 @@ float Fog::getLutX() const { return m_lutX; }
 
 float Fog::getLutY() const { return m_lutY; }
 
-void Fog::setLut(float x, float y) {
+void Fog::setLut(float x, float y)
+{
     m_lutX = x;
     m_lutY = y;
 }

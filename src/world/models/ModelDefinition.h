@@ -6,7 +6,8 @@
 #include "ModelPartDefinition.h"
 #include "ModelPartSkin.h"
 
-class ModelDefinition {
+class ModelDefinition
+{
 public:
     ModelDefinition();
     ModelDefinition(const std::string &id, const ModelPartSkin &skin);

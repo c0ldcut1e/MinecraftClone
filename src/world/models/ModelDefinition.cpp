@@ -1,8 +1,12 @@
 #include "ModelDefinition.h"
 
-ModelDefinition::ModelDefinition() : m_id(""), m_skin(), m_root(std::make_unique<ModelPartDefinition>("root")) {}
+ModelDefinition::ModelDefinition()
+    : m_id(""), m_skin(), m_root(std::make_unique<ModelPartDefinition>("root"))
+{}
 
-ModelDefinition::ModelDefinition(const std::string &id, const ModelPartSkin &skin) : m_id(id), m_skin(skin), m_root(std::make_unique<ModelPartDefinition>("root")) {}
+ModelDefinition::ModelDefinition(const std::string &id, const ModelPartSkin &skin)
+    : m_id(id), m_skin(skin), m_root(std::make_unique<ModelPartDefinition>("root"))
+{}
 
 const std::string &ModelDefinition::getId() const { return m_id; }
 

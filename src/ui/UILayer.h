@@ -5,7 +5,8 @@
 
 #include "UIComponent.h"
 
-class UILayer {
+class UILayer
+{
 public:
     explicit UILayer(const std::string &name);
     ~UILayer();

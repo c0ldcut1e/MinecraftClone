@@ -1,6 +1,7 @@
 #pragma once
 
-class Math {
+class Mth
+{
 public:
     static int floorDiv(int a, int b);
     static int floorMod(int a, int b);

@@ -2,7 +2,8 @@
 
 #include "Event.h"
 
-class WindowResizedEvent : public Event {
+class WindowResizedEvent : public Event
+{
 public:
     WindowResizedEvent(int width, int height);
 

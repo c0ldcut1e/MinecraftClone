@@ -8,7 +8,8 @@
 
 class Model;
 
-class ModelRegistry {
+class ModelRegistry
+{
 public:
     static ModelRegistry *get();
     static void init();

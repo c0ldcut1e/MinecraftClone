@@ -2,7 +2,8 @@
 
 #include "Event.h"
 
-class KeyReleasedEvent : public Event {
+class KeyReleasedEvent : public Event
+{
 public:
     explicit KeyReleasedEvent(int key);
 

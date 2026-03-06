@@ -2,7 +2,8 @@
 
 #include "EntityRenderer.h"
 
-class TestEntityRenderer : public EntityRenderer {
+class TestEntityRenderer : public EntityRenderer
+{
 public:
     TestEntityRenderer()           = default;
     ~TestEntityRenderer() override = default;

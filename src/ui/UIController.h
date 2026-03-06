@@ -4,7 +4,8 @@
 
 #include "UIScene.h"
 
-class UIController {
+class UIController
+{
 public:
     UIController();
     ~UIController();

@@ -2,7 +2,8 @@
 
 #include "math/Vec3.h"
 
-class AABB {
+class AABB
+{
 public:
     AABB();
     AABB(const Vec3 &min, const Vec3 &max);

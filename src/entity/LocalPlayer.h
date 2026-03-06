@@ -4,7 +4,8 @@
 #include "../world/block/BlockPos.h"
 #include "Player.h"
 
-class LocalPlayer : public Player {
+class LocalPlayer : public Player
+{
 public:
     LocalPlayer(World *world, const std::wstring &name, Camera *camera);
 

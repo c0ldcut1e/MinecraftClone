@@ -10,19 +10,19 @@
 #include <unordered_set>
 #include <vector>
 
-#include <BS_thread_pool.hpp>
-
 #include "../entity/EntityRenderer.h"
 #include "../rendering/Framebuffer.h"
 #include "../rendering/Shader.h"
-#include "../scene/Frustum.h"
+#include "../scene/culling/FrustumCuller.h"
+#include "../threading/ThreadPool.h"
 #include "World.h"
 #include "chunk/ChunkMesh.h"
 #include "chunk/ChunkMesher.h"
 #include "chunk/ChunkPos.h"
 #include "environment/CloudMesh.h"
 
-class WorldRenderer {
+class WorldRenderer
+{
 public:
     explicit WorldRenderer(World *world, int width, int height);
     ~WorldRenderer();
@@ -35,7 +35,8 @@ public:
     void rebuildChunkUrgent(const ChunkPos &pos);
 
 private:
-    struct SkyUpdateResult {
+    struct SkyUpdateResult
+    {
         ChunkPos pos;
         size_t index;
         uint64_t meshId;
@@ -83,7 +84,7 @@ private:
 
     World *m_world;
 
-    Frustum m_frustum;
+    FrustumCuller m_frustum;
 
     EntityRenderer m_entityRenderer;
 
@@ -108,7 +109,7 @@ private:
     std::mutex m_meshQueueMutex;
     std::deque<std::pair<ChunkPos, std::vector<ChunkMesher::MeshBuildResult>>> m_pendingMeshes;
 
-    std::unique_ptr<BS::thread_pool<>> m_mesherPool;
+    std::unique_ptr<ThreadPool> m_mesherPool;
     std::atomic<bool> m_mesherRunning{false};
     std::atomic<bool> m_mesherScheduled{false};
 

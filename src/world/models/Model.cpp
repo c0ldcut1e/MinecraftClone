@@ -4,22 +4,31 @@
 
 #include "../../core/Logger.h"
 #include "../../rendering/GlStateManager.h"
-#include "../../rendering/ImmediateRenderer.h"
+#include "../../rendering/Tesselator.h"
 
 Model::Model() : m_skin(), m_root(std::make_unique<ModelPart>("root")) {}
 
-Model::Model(const ModelDefinition &definition) : m_skin(), m_root(std::make_unique<ModelPart>("root")) { rebuild(definition); }
+Model::Model(const ModelDefinition &definition)
+    : m_skin(), m_root(std::make_unique<ModelPart>("root"))
+{
+    rebuild(definition);
+}
 
-Model *Model::copy() const {
+Model *Model::copy() const
+{
     Model *model  = new Model();
     model->m_skin = m_skin;
 
-    if (m_root) model->m_root = clonePartTree(m_root.get());
+    if (m_root)
+    {
+        model->m_root = clonePartTree(m_root.get());
+    }
 
     return model;
 }
 
-void Model::rebuild(const ModelDefinition &definition) {
+void Model::rebuild(const ModelDefinition &definition)
+{
     m_skin = definition.getSkin();
     m_root = buildPartTree(*definition.getRoot());
 }
@@ -28,18 +37,30 @@ const ModelPartSkin &Model::getSkin() const { return m_skin; }
 
 ModelPart *Model::getRoot() { return m_root.get(); }
 
-ModelPart *Model::findPart(const std::string &name) {
-    if (!m_root) return nullptr;
-    if (m_root->getName() == name) return m_root.get();
+ModelPart *Model::findPart(const std::string &name)
+{
+    if (!m_root)
+    {
+        return nullptr;
+    }
+
+    if (m_root->getName() == name)
+    {
+        return m_root.get();
+    }
 
     std::vector<ModelPart *> stack;
     stack.push_back(m_root.get());
 
-    while (!stack.empty()) {
+    while (!stack.empty())
+    {
         ModelPart *part = stack.back();
         stack.pop_back();
 
-        if (part->getName() == name) return part;
+        if (part->getName() == name)
+        {
+            return part;
+        }
 
         for (const auto &kv : part->getChildren()) stack.push_back(kv.second.get());
     }
@@ -47,41 +68,49 @@ ModelPart *Model::findPart(const std::string &name) {
     return nullptr;
 }
 
-void Model::render(TextureRepository &textures) const {
+void Model::render(TextureRepository &textures) const
+{
     std::shared_ptr<Texture> texture = textures.get(m_skin.getTexturePath());
-    if (!texture.get()) {
+    if (!texture.get())
+    {
         Logger::logError("Model render texture missing");
         return;
     }
 
-    ImmediateRenderer::getForWorld()->bindTexture(texture.get());
+    Tesselator::getInstance()->getBuilderForWorld()->bindTexture(texture.get());
 
     int textureWidth  = m_skin.getTextureWidth();
     int textureHeight = m_skin.getTextureHeight();
 
-    if (!m_root) {
+    if (!m_root)
+    {
         Logger::logError("Model render root missing");
-        ImmediateRenderer::getForWorld()->unbindTexture();
+        Tesselator::getInstance()->getBuilderForWorld()->unbindTexture();
         return;
     }
 
     renderPart(m_root.get(), textureWidth, textureHeight);
 
-    ImmediateRenderer::getForWorld()->unbindTexture();
+    Tesselator::getInstance()->getBuilderForWorld()->unbindTexture();
 }
 
-void Model::renderPart(const ModelPart *part, int textureWidth, int textureHeight) const {
+void Model::renderPart(const ModelPart *part, int textureWidth, int textureHeight) const
+{
     GlStateManager::pushMatrix();
 
-    GlStateManager::translatef((float) part->getPosition().x, (float) part->getPosition().y, (float) part->getPosition().z);
-    GlStateManager::translatef((float) part->getPivot().x, (float) part->getPivot().y, (float) part->getPivot().z);
+    GlStateManager::translatef((float) part->getPosition().x, (float) part->getPosition().y,
+                               (float) part->getPosition().z);
+    GlStateManager::translatef((float) part->getPivot().x, (float) part->getPivot().y,
+                               (float) part->getPivot().z);
     GlStateManager::rotatef((float) part->getRotation().z, 0.0f, 0.0f, 1.0f);
     GlStateManager::rotatef((float) part->getRotation().y, 0.0f, 1.0f, 0.0f);
     GlStateManager::rotatef((float) part->getRotation().x, 1.0f, 0.0f, 0.0f);
-    GlStateManager::translatef((float) -part->getPivot().x, (float) -part->getPivot().y, (float) -part->getPivot().z);
+    GlStateManager::translatef((float) -part->getPivot().x, (float) -part->getPivot().y,
+                               (float) -part->getPivot().z);
 
-    for (const ModelPart::Cube &cube : part->getCubes()) {
-        ImmediateRenderer *renderer = ImmediateRenderer::getForWorld();
+    for (const ModelPart::Cube &cube : part->getCubes())
+    {
+        BufferBuilder *renderer = Tesselator::getInstance()->getBuilderForWorld();
         renderer->begin(GL_TRIANGLES);
         renderer->color(0xFFFFFFFF);
 
@@ -167,18 +196,23 @@ void Model::renderPart(const ModelPart *part, int textureWidth, int textureHeigh
         renderer->end();
     }
 
-    for (const auto &kv : part->getChildren()) renderPart(kv.second.get(), textureWidth, textureHeight);
+    for (const auto &kv : part->getChildren())
+    {
+        renderPart(kv.second.get(), textureWidth, textureHeight);
+    }
 
     GlStateManager::popMatrix();
 }
 
-std::unique_ptr<ModelPart> Model::buildPartTree(const ModelPartDefinition &definition) {
+std::unique_ptr<ModelPart> Model::buildPartTree(const ModelPartDefinition &definition)
+{
     std::unique_ptr<ModelPart> part = std::make_unique<ModelPart>(definition.getName());
     part->setPivot(definition.getPivot());
     part->setRotation(definition.getRotation());
     part->setPosition(definition.getPosition());
 
-    for (const ModelPartCubeDefinition &cubeDefinition : definition.getCubes()) {
+    for (const ModelPartCubeDefinition &cubeDefinition : definition.getCubes())
+    {
         Vec3 min      = cubeDefinition.getMin();
         Vec3 max      = cubeDefinition.getMax();
         float inflate = cubeDefinition.getInflate();
@@ -196,7 +230,8 @@ std::unique_ptr<ModelPart> Model::buildPartTree(const ModelPartDefinition &defin
     return part;
 }
 
-std::unique_ptr<ModelPart> Model::clonePartTree(const ModelPart *part) {
+std::unique_ptr<ModelPart> Model::clonePartTree(const ModelPart *part)
+{
     std::unique_ptr<ModelPart> copy = std::make_unique<ModelPart>(part->getName());
 
     copy->setPivot(part->getPivot());

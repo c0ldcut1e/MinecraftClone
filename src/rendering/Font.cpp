@@ -11,24 +11,32 @@
 #include "GlStateManager.h"
 #include "RenderCommand.h"
 
-static inline uint32_t mulColor(uint32_t argb, float mul) {
+static inline uint32_t mulColor(uint32_t argb, float mul)
+{
     uint32_t a = (argb >> 24) & 0xFF;
     uint32_t r = (argb >> 16) & 0xFF;
     uint32_t g = (argb >> 8) & 0xFF;
     uint32_t b = argb & 0xFF;
-
-    r = (uint32_t) (r * mul);
-    g = (uint32_t) (g * mul);
-    b = (uint32_t) (b * mul);
-
-    if (r > 255) r = 255;
-    if (g > 255) g = 255;
-    if (b > 255) b = 255;
-
+    r          = (uint32_t) (r * mul);
+    g          = (uint32_t) (g * mul);
+    b          = (uint32_t) (b * mul);
+    if (r > 255)
+    {
+        r = 255;
+    }
+    if (g > 255)
+    {
+        g = 255;
+    }
+    if (b > 255)
+    {
+        b = 255;
+    }
     return (a << 24) | (r << 16) | (g << 8) | b;
 }
 
-static inline void colorToFloats(uint32_t argb, float *r, float *g, float *b, float *a) {
+static inline void colorToFloats(uint32_t argb, float *r, float *g, float *b, float *a)
+{
     *a = ((argb >> 24) & 0xFF) / 255.0f;
     *r = ((argb >> 16) & 0xFF) / 255.0f;
     *g = ((argb >> 8) & 0xFF) / 255.0f;
@@ -36,10 +44,17 @@ static inline void colorToFloats(uint32_t argb, float *r, float *g, float *b, fl
 }
 
 Font::Font(const char *ttfPath, int pixelHeight)
-    : m_shader("shaders/font.vert", "shaders/font.frag"), m_ft(nullptr), m_face(nullptr), m_screenProjection(Mat4::orthographic(0.0, 1920.0, 1080.0, 0.0, -1.0, 1.0)), m_worldView(Mat4::identity()), m_worldProjection(Mat4::identity()), m_vao(0), m_vbo(0),
-      m_nearest(false), m_shadowOffsetX(1.0f), m_shadowOffsetY(1.0f), m_shadowOffsetZ(0.001f) {
-    if (FT_Init_FreeType(&m_ft) != 0) throw std::runtime_error("FT_Init_FreeType failed");
-    if (FT_New_Face(m_ft, ttfPath, 0, &m_face) != 0) {
+    : m_shader("shaders/font.vert", "shaders/font.frag"), m_ft(nullptr), m_face(nullptr),
+      m_screenProjection(Mat4::orthographic(0.0, 1920.0, 1080.0, 0.0, -1.0, 1.0)),
+      m_worldView(Mat4::identity()), m_worldProjection(Mat4::identity()), m_vao(0), m_vbo(0),
+      m_nearest(false), m_shadowOffsetX(1.0f), m_shadowOffsetY(1.0f), m_shadowOffsetZ(0.001f)
+{
+    if (FT_Init_FreeType(&m_ft) != 0)
+    {
+        throw std::runtime_error("FT_Init_FreeType failed");
+    }
+    if (FT_New_Face(m_ft, ttfPath, 0, &m_face) != 0)
+    {
         FT_Done_FreeType(m_ft);
         throw std::runtime_error("FT_New_Face failed (bad path/font?)");
     }
@@ -58,37 +73,58 @@ Font::Font(const char *ttfPath, int pixelHeight)
     RenderCommand::setVertexAttribPointer(0, 3, GL_FLOAT, false, 5 * sizeof(float), 0);
 
     RenderCommand::enableVertexAttrib(1);
-    RenderCommand::setVertexAttribPointer(1, 2, GL_FLOAT, false, 5 * sizeof(float), 3 * sizeof(float));
+    RenderCommand::setVertexAttribPointer(1, 2, GL_FLOAT, false, 5 * sizeof(float),
+                                          3 * sizeof(float));
 
     m_shader.bind();
     m_shader.setInt("u_font", 0);
 }
 
-Font::~Font() {
+Font::~Font()
+{
     for (auto &kv : m_glyphs)
-        if (kv.second.texture) RenderCommand::deleteTexture(kv.second.texture);
+    {
+        if (kv.second.texture)
+        {
+            RenderCommand::deleteTexture(kv.second.texture);
+        }
+    }
 
     m_glyphs.clear();
 
     RenderCommand::deleteBuffer(m_vbo);
     RenderCommand::deleteVertexArray(m_vao);
 
-    if (m_face) FT_Done_Face(m_face);
-    if (m_ft) FT_Done_FreeType(m_ft);
+    if (m_face)
+    {
+        FT_Done_Face(m_face);
+    }
+    if (m_ft)
+    {
+        FT_Done_FreeType(m_ft);
+    }
 }
 
 void Font::setScreenProjection(const Mat4 &projection) { m_screenProjection = projection; }
 
-void Font::setWorldViewProjection(const Mat4 &view, const Mat4 &projection) {
+void Font::setWorldViewProjection(const Mat4 &view, const Mat4 &projection)
+{
     m_worldView       = view;
     m_worldProjection = projection;
 }
 
-void Font::setNearest(bool nearest) {
+void Font::setNearest(bool nearest)
+{
     m_nearest = nearest;
 
-    for (auto &kv : m_glyphs) {
-        if (!kv.second.texture) continue;
+    for (auto &kv : m_glyphs)
+    {
+        {
+            if (!kv.second.texture)
+            {
+                continue;
+            }
+        }
 
         RenderCommand::bindTexture2D(kv.second.texture);
 
@@ -100,37 +136,60 @@ void Font::setNearest(bool nearest) {
     }
 }
 
-void Font::setShadowOffset(float x, float y, float z) {
+void Font::setShadowOffset(float x, float y, float z)
+{
     m_shadowOffsetX = x;
     m_shadowOffsetY = y;
     m_shadowOffsetZ = z;
 }
 
-float Font::getWidth(std::wstring_view text, float scale) const {
-    if (text.empty()) return 0.0f;
+float Font::getWidth(std::wstring_view text, float scale) const
+{
+    if (text.empty())
+    {
+        return 0.0f;
+    }
 
     float width = 0.0f;
 
-    for (wchar_t wc : text) {
-        if (wc == L'\n') break;
+    for (wchar_t wc : text)
+    {
+        if (wc == L'\n')
+        {
+            break;
+        }
+
         uint32_t cp = (uint32_t) wc;
 
         auto it            = m_glyphs.find(cp);
         const Glyph *glyph = nullptr;
 
-        if (it != m_glyphs.end()) glyph = &it->second;
+        if (it != m_glyphs.end())
+        {
+            glyph = &it->second;
+        }
         else
+        {
             glyph = &const_cast<Font *>(this)->getOrCreateGlyph(cp);
+        }
 
-        if (!glyph->texture) continue;
+        if (!glyph->texture)
+        {
+            continue;
+        }
+
         width += (float) (glyph->advance >> 6) * scale;
     }
 
     return width;
 }
 
-void Font::render(std::wstring_view text, float x, float y, float scale, uint32_t argb) {
-    if (text.empty()) return;
+void Font::render(std::wstring_view text, float x, float y, float scale, uint32_t argb)
+{
+    if (text.empty())
+    {
+        return;
+    }
 
     m_shader.setMat4("u_model", GlStateManager::getMatrix().data);
 
@@ -160,16 +219,21 @@ void Font::render(std::wstring_view text, float x, float y, float scale, uint32_
     float penX = x;
     float penY = y;
 
-    for (wchar_t wc : text) {
+    for (wchar_t wc : text)
+    {
         uint32_t cp = (uint32_t) wc;
-        if (cp == (uint32_t) L'\n') {
+        if (cp == (uint32_t) L'\n')
+        {
             penX = x;
             penY += 32.0f * scale;
             continue;
         }
 
         const Glyph &ch = getOrCreateGlyph(cp);
-        if (!ch.texture) continue;
+        if (!ch.texture)
+        {
+            continue;
+        }
 
         float xPos = penX + (float) ch.bearingX * scale;
         float yPos = penY - (float) ch.bearingY * scale;
@@ -178,7 +242,12 @@ void Font::render(std::wstring_view text, float x, float y, float scale, uint32_
         float height = (float) ch.height * scale;
 
         float vertices[6][5] = {
-                {xPos, yPos, 0.0f, 0.0f, 0.0f}, {xPos + width, yPos, 0.0f, 1.0f, 0.0f}, {xPos + width, yPos + height, 0.0f, 1.0f, 1.0f}, {xPos, yPos, 0.0f, 0.0f, 0.0f}, {xPos + width, yPos + height, 0.0f, 1.0f, 1.0f}, {xPos, yPos + height, 0.0f, 0.0f, 1.0f},
+                {xPos, yPos, 0.0f, 0.0f, 0.0f},
+                {xPos + width, yPos, 0.0f, 1.0f, 0.0f},
+                {xPos + width, yPos + height, 0.0f, 1.0f, 1.0f},
+                {xPos, yPos, 0.0f, 0.0f, 0.0f},
+                {xPos + width, yPos + height, 0.0f, 1.0f, 1.0f},
+                {xPos, yPos + height, 0.0f, 0.0f, 1.0f},
         };
 
         RenderCommand::activeTexture(0);
@@ -194,14 +263,19 @@ void Font::render(std::wstring_view text, float x, float y, float scale, uint32_
     GlStateManager::enableDepthTest();
 }
 
-void Font::renderShadow(std::wstring_view text, float x, float y, float scale, uint32_t argb) {
+void Font::renderShadow(std::wstring_view text, float x, float y, float scale, uint32_t argb)
+{
     uint32_t shadow = mulColor(argb, 0.25f);
     render(text, x + m_shadowOffsetX * scale, y + m_shadowOffsetY * scale, scale, shadow);
     render(text, x, y, scale, argb);
 }
 
-void Font::worldRender(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb) {
-    if (text.empty()) return;
+void Font::worldRender(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb)
+{
+    if (text.empty())
+    {
+        return;
+    }
 
     m_shader.setMat4("u_model", GlStateManager::getMatrix().data);
 
@@ -230,16 +304,21 @@ void Font::worldRender(std::wstring_view text, const Vec3 &pos, float scale, uin
     float penX = 0.0f;
     float penY = 0.0f;
 
-    for (wchar_t wc : text) {
+    for (wchar_t wc : text)
+    {
         uint32_t cp = (uint32_t) wc;
-        if (cp == (uint32_t) L'\n') {
+        if (cp == (uint32_t) L'\n')
+        {
             penX = 0.0f;
             penY -= 32.0f * scale;
             continue;
         }
 
         const Glyph &ch = getOrCreateGlyph(cp);
-        if (!ch.texture) continue;
+        if (!ch.texture)
+        {
+            continue;
+        }
 
         float xPos = penX + (float) ch.bearingX * scale;
         float yTop = penY + (float) ch.bearingY * scale;
@@ -252,7 +331,12 @@ void Font::worldRender(std::wstring_view text, const Vec3 &pos, float scale, uin
         float z0 = pos.z;
 
         float vertices[6][5] = {
-                {x0, y0, z0, 0.0f, 0.0f}, {x0 + width, y0, z0, 1.0f, 0.0f}, {x0 + width, y0 - height, z0, 1.0f, 1.0f}, {x0, y0, z0, 0.0f, 0.0f}, {x0 + width, y0 - height, z0, 1.0f, 1.0f}, {x0, y0 - height, z0, 0.0f, 1.0f},
+                {x0, y0, z0, 0.0f, 0.0f},
+                {x0 + width, y0, z0, 1.0f, 0.0f},
+                {x0 + width, y0 - height, z0, 1.0f, 1.0f},
+                {x0, y0, z0, 0.0f, 0.0f},
+                {x0 + width, y0 - height, z0, 1.0f, 1.0f},
+                {x0, y0 - height, z0, 0.0f, 1.0f},
         };
 
         RenderCommand::activeTexture(0);
@@ -267,26 +351,38 @@ void Font::worldRender(std::wstring_view text, const Vec3 &pos, float scale, uin
     GlStateManager::setDepthMask(true);
 }
 
-void Font::worldRenderShadow(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb) {
+void Font::worldRenderShadow(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb)
+{
     uint32_t shadow = mulColor(argb, 0.25f);
 
     float ox = m_shadowOffsetX * scale;
     float oy = m_shadowOffsetY * scale;
-
     float oz = m_shadowOffsetZ;
-    if (oz == 0.0f) oz = 0.01f;
+    if (oz == 0.0f)
+    {
+        oz = 0.01f;
+    }
     oz *= scale;
 
     worldRender(text, Vec3(pos.x + ox, pos.y - oy, pos.z - oz), scale, shadow);
     worldRender(text, pos, scale, argb);
 }
 
-const Font::Glyph &Font::getOrCreateGlyph(uint32_t codepoint) {
+const Font::Glyph &Font::getOrCreateGlyph(uint32_t codepoint)
+{
     auto it = m_glyphs.find(codepoint);
-    if (it != m_glyphs.end()) return it->second;
+    if (it != m_glyphs.end())
+    {
+        return it->second;
+    }
 
-    if (FT_Load_Char(m_face, codepoint, FT_LOAD_RENDER) != 0) {
-        if (codepoint != (uint32_t) '?' && FT_Load_Char(m_face, (uint32_t) '?', FT_LOAD_RENDER) == 0) { return getOrCreateGlyph((uint32_t) '?'); }
+    if (FT_Load_Char(m_face, codepoint, FT_LOAD_RENDER) != 0)
+    {
+        if (codepoint != (uint32_t) '?' &&
+            FT_Load_Char(m_face, (uint32_t) '?', FT_LOAD_RENDER) == 0)
+        {
+            return getOrCreateGlyph((uint32_t) '?');
+        }
         Glyph empty{};
         auto [insIt, _] = m_glyphs.emplace(codepoint, empty);
         return insIt->second;
@@ -306,7 +402,8 @@ const Font::Glyph &Font::getOrCreateGlyph(uint32_t codepoint) {
     RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    RenderCommand::uploadTexture2D((int) glyphSlot->bitmap.width, (int) glyphSlot->bitmap.rows, GL_RED, GL_RED, GL_UNSIGNED_BYTE, glyphSlot->bitmap.buffer);
+    RenderCommand::uploadTexture2D((int) glyphSlot->bitmap.width, (int) glyphSlot->bitmap.rows,
+                                   GL_RED, GL_RED, GL_UNSIGNED_BYTE, glyphSlot->bitmap.buffer);
 
     Glyph glyph;
     glyph.texture  = texture;

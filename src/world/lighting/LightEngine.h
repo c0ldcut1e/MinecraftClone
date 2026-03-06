@@ -5,9 +5,11 @@
 #include "../World.h"
 #include "../chunk/ChunkPos.h"
 
-class LightEngine {
+class LightEngine
+{
 public:
-    struct LightNode {
+    struct LightNode
+    {
         int x;
         int y;
         int z;
@@ -16,7 +18,8 @@ public:
         uint8_t b;
     };
 
-    struct SkyLightNode {
+    struct SkyLightNode
+    {
         int x;
         int y;
         int z;
@@ -27,13 +30,16 @@ public:
     static void rebuildChunk(World *world, const ChunkPos &pos);
     static void updateFrom(World *world, const BlockPos &worldPos);
 
-    static void setBlockLight(World *world, const BlockPos &worldPos, uint8_t r, uint8_t g, uint8_t b);
-    static void getBlockLight(World *world, const BlockPos &worldPos, uint8_t *r, uint8_t *g, uint8_t *b);
+    static void setBlockLight(World *world, const BlockPos &worldPos, uint8_t r, uint8_t g,
+                              uint8_t b);
+    static void getBlockLight(World *world, const BlockPos &worldPos, uint8_t *r, uint8_t *g,
+                              uint8_t *b);
 
     static void setSkyLight(World *world, const BlockPos &worldPos, uint8_t level);
     static uint8_t getSkyLight(World *world, const BlockPos &worldPos);
 
-    static void getLightLevel(World *world, const BlockPos &worldPos, uint8_t *r, uint8_t *g, uint8_t *b);
+    static void getLightLevel(World *world, const BlockPos &worldPos, uint8_t *r, uint8_t *g,
+                              uint8_t *b);
 
 private:
     static void propagateSkyLight(World *world, const ChunkPos &pos);

@@ -4,16 +4,16 @@
 #include <deque>
 #include <memory>
 #include <mutex>
-#include <queue>
 #include <unordered_set>
 #include <vector>
 
-#include <BS_thread_pool.hpp>
-
+#include "../../threading/ThreadPool.h"
+#include "../../utils/heap/BinaryHeap.h"
 #include "../World.h"
 #include "ChunkPos.h"
 
-class ChunkManager {
+class ChunkManager
+{
 public:
     explicit ChunkManager(World *world);
     ~ChunkManager();
@@ -25,16 +25,21 @@ public:
     void drainFinished(std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> *out, int max);
 
 private:
-    struct GenerationTask {
+    struct GenerationTask
+    {
         ChunkPos pos;
         int dist2;
         uint32_t epoch;
     };
 
-    struct TaskCompare {
-        bool operator()(const GenerationTask &a, const GenerationTask &b) const {
-            if (a.dist2 != b.dist2) return a.dist2 > b.dist2;
-            if (a.pos.x != b.pos.x) return a.pos.x > b.pos.x;
+    struct TaskCompare
+    {
+        bool operator()(const GenerationTask &a, const GenerationTask &b) const
+        {
+            if (a.dist2 != b.dist2)
+                return a.dist2 > b.dist2;
+            if (a.pos.x != b.pos.x)
+                return a.pos.x > b.pos.x;
             return a.pos.z > b.pos.z;
         }
     };
@@ -44,7 +49,8 @@ private:
     bool isChunkInRenderDistance(const ChunkPos &pos, const ChunkPos &center) const;
     int calculatePriority(const ChunkPos &pos, const ChunkPos &center) const;
 
-    void rebuildPending(const ChunkPos &center, const std::unordered_set<ChunkPos, ChunkPosHash> &known);
+    void rebuildPending(const ChunkPos &center,
+                        const std::unordered_set<ChunkPos, ChunkPosHash> &known);
     void dispatchPending();
 
     bool shouldStartTask(const ChunkPos &pos, uint32_t taskEpoch) const;
@@ -52,10 +58,10 @@ private:
 
     World *m_world;
 
-    std::unique_ptr<BS::thread_pool<>> m_pool;
+    std::unique_ptr<ThreadPool> m_pool;
     std::atomic<bool> m_running;
 
-    std::priority_queue<GenerationTask, std::vector<GenerationTask>, TaskCompare> m_pending;
+    BinaryHeap<GenerationTask, TaskCompare> m_pending;
     std::unordered_set<ChunkPos, ChunkPosHash> m_pendingSet;
     std::mutex m_pendingMutex;
 

@@ -8,7 +8,8 @@
 #include "../../utils/math/Vec3.h"
 #include "ModelPartCubeDefinition.h"
 
-class ModelPartDefinition {
+class ModelPartDefinition
+{
 public:
     ModelPartDefinition();
     explicit ModelPartDefinition(const std::string &name);
@@ -28,7 +29,8 @@ public:
 
     ModelPartDefinition *addChild(std::unique_ptr<ModelPartDefinition> child);
     ModelPartDefinition *getChild(const std::string &name);
-    const std::unordered_map<std::string, std::unique_ptr<ModelPartDefinition>> &getChildren() const;
+    const std::unordered_map<std::string, std::unique_ptr<ModelPartDefinition>> &
+    getChildren() const;
 
 private:
     std::string m_name;

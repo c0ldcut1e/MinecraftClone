@@ -6,7 +6,8 @@ double Time::s_delta     = 0.0;
 double Time::s_last      = 0.0;
 double Time::s_tickDelta = 0.05;
 
-void Time::update() {
+void Time::update()
+{
     double now = glfwGetTime();
     s_delta    = now - s_last;
     s_last     = now;

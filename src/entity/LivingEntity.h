@@ -2,7 +2,8 @@
 
 #include "Entity.h"
 
-class LivingEntity : public Entity {
+class LivingEntity : public Entity
+{
 public:
     explicit LivingEntity(World *world);
     ~LivingEntity() override;

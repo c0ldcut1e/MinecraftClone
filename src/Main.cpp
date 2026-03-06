@@ -4,13 +4,17 @@
 #include "core/Logger.h"
 #include "core/Minecraft.h"
 
-int main() {
+int main()
+{
     Logger::init();
     Logger::logInfo("Logger initialized");
 
-    try {
+    try
+    {
         Minecraft::getInstance()->start();
-    } catch (const std::exception &exception) {
+    }
+    catch (const std::exception &exception)
+    {
         Logger::logError("Caught an unexpected exception: %s", exception.what());
         return -1;
     }

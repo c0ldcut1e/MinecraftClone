@@ -6,7 +6,8 @@
 #include "../block/Block.h"
 #include "ChunkPos.h"
 
-class Chunk {
+class Chunk
+{
 public:
     static constexpr int SIZE_X = 16;
     static constexpr int SIZE_Y = 256;
@@ -41,7 +42,8 @@ private:
     uint32_t m_blocks[SIZE_X * SIZE_Y * SIZE_Z];
     uint8_t m_blockAttachmentFaces[SIZE_X * SIZE_Y * SIZE_Z];
 
-    struct LightData {
+    struct LightData
+    {
         uint8_t r;
         uint8_t g;
         uint8_t b;

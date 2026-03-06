@@ -2,7 +2,8 @@
 
 #include <cstdint>
 
-class Random {
+class Random
+{
 public:
     Random();
     explicit Random(uint64_t seed);

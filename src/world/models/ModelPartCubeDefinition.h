@@ -5,16 +5,19 @@
 
 #include "../../utils/math/Vec3.h"
 
-class ModelPartCubeDefinition {
+class ModelPartCubeDefinition
+{
 public:
-    struct UVRect {
+    struct UVRect
+    {
         int x;
         int y;
         int width;
         int height;
     };
 
-    struct FaceUV {
+    struct FaceUV
+    {
         UVRect left;
         UVRect right;
         UVRect front;
@@ -24,7 +27,8 @@ public:
     };
 
     ModelPartCubeDefinition();
-    ModelPartCubeDefinition(const std::string &name, const Vec3 &min, const Vec3 &max, const FaceUV &uv, float inflate);
+    ModelPartCubeDefinition(const std::string &name, const Vec3 &min, const Vec3 &max,
+                            const FaceUV &uv, float inflate);
 
     const std::string &getName() const;
     const Vec3 &getMin() const;

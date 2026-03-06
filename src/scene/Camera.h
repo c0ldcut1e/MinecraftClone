@@ -3,7 +3,8 @@
 #include "../utils/math/Mat4.h"
 #include "../utils/math/Vec3.h"
 
-class Camera {
+class Camera
+{
 public:
     Camera();
 

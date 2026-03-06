@@ -3,7 +3,8 @@
 #include "../rendering/Shader.h"
 #include "../ui/UIComponent.h"
 
-class UIComponent_Crosshair : public UIComponent {
+class UIComponent_Crosshair : public UIComponent
+{
 public:
     UIComponent_Crosshair();
     ~UIComponent_Crosshair() override;

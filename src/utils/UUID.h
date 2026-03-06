@@ -4,7 +4,8 @@
 #include <functional>
 #include <string>
 
-class UUID {
+class UUID
+{
 public:
     UUID();
     UUID(uint32_t a, uint32_t b, uint32_t c, uint32_t d);
@@ -21,10 +22,13 @@ private:
     uint32_t m_data[4];
 };
 
-namespace std {
+namespace std
+{
     template<>
-    struct hash<UUID> {
-        size_t operator()(const UUID &uuid) const noexcept {
+    struct hash<UUID>
+    {
+        size_t operator()(const UUID &uuid) const noexcept
+        {
             const uint32_t *d = uuid.getData();
             size_t h          = d[0];
             h ^= (size_t) d[1] << 1;

@@ -2,7 +2,8 @@
 
 #include "LivingEntity.h"
 
-class Player : public LivingEntity {
+class Player : public LivingEntity
+{
 public:
     explicit Player(World *world, const std::wstring &name);
 

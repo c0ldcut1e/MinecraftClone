@@ -13,7 +13,8 @@
 
 class WorldRenderer;
 
-class Minecraft {
+class Minecraft
+{
 public:
     static Minecraft *getInstance();
 

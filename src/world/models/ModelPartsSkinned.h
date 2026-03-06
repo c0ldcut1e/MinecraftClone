@@ -4,7 +4,9 @@
 
 #include "ModelDefinition.h"
 
-class ModelPartsSkinned {
+class ModelPartsSkinned
+{
 public:
-    static ModelDefinition createSteveClassic(const std::string &id, const std::string &texturePath);
+    static ModelDefinition createSteveClassic(const std::string &id,
+                                              const std::string &texturePath);
 };

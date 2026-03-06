@@ -5,7 +5,8 @@
 
 #include "Event.h"
 
-class EventManager {
+class EventManager
+{
 public:
     using Listener = std::function<void(Event &)>;
 

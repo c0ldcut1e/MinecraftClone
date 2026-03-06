@@ -12,12 +12,14 @@
 #include "WorldTime.h"
 #include "block/BlockPos.h"
 #include "chunk/Chunk.h"
+#include "chunk/storage/ChunkCache.h"
 #include "chunk/ChunkPos.h"
 #include "environment/Fog.h"
 
 class Entity;
 
-class World {
+class World
+{
 public:
     World();
     ~World() = default;
@@ -77,9 +79,12 @@ public:
     int getDarkPeakTick() const;
 
 private:
-    struct ScheduledBlockTick {
-        bool operator<(const ScheduledBlockTick &other) const {
-            if (dueTick != other.dueTick) return dueTick > other.dueTick;
+    struct ScheduledBlockTick
+    {
+        bool operator<(const ScheduledBlockTick &other) const
+        {
+            if (dueTick != other.dueTick)
+                return dueTick > other.dueTick;
             return priority > other.priority;
         }
 
@@ -92,6 +97,7 @@ private:
     void processScheduledBlockTicks(uint64_t nowTick);
 
     std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> m_chunks;
+    mutable ChunkCache m_chunkCache;
     std::deque<ChunkPos> m_dirtyChunks;
     std::deque<ChunkPos> m_urgentDirtyChunks;
     std::unordered_set<ChunkPos, ChunkPosHash> m_dirtyChunksSet;

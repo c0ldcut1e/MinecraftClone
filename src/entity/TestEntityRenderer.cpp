@@ -5,11 +5,12 @@
 #include "../core/Logger.h"
 #include "../core/Minecraft.h"
 #include "../rendering/GlStateManager.h"
-#include "../utils/math/Math.h"
+#include "../utils/math/Mth.h"
 #include "../world/models/ModelRegistry.h"
 #include "TestEntity.h"
 
-void TestEntityRenderer::render(const Entity *entity, float partialTicks) const {
+void TestEntityRenderer::render(const Entity *entity, float partialTicks) const
+{
     const TestEntity *_entity = (const TestEntity *) entity;
 
     Vec3 pos = entity->getRenderPosition(partialTicks);
@@ -32,46 +33,49 @@ void TestEntityRenderer::render(const Entity *entity, float partialTicks) const 
     GlStateManager::translatef(0.0f, -STEVE_MIN_Y_PX, 0.0f);
 
     Model *model = _entity->getModel();
-    if (model) {
-        float limbSwing  = _entity->getLimbSwingOld() + (_entity->getLimbSwing() - _entity->getLimbSwingOld()) * partialTicks;
-        float limbAmount = _entity->getLimbSwingAmountOld() + (_entity->getLimbSwingAmount() - _entity->getLimbSwingAmountOld()) * partialTicks;
+    if (model)
+    {
+        float limbSwing = _entity->getLimbSwingOld() +
+                          (_entity->getLimbSwing() - _entity->getLimbSwingOld()) * partialTicks;
+        float limbAmount =
+                _entity->getLimbSwingAmountOld() +
+                (_entity->getLimbSwingAmount() - _entity->getLimbSwingAmountOld()) * partialTicks;
 
         constexpr float ARM_SCALE = 2.0f;
         constexpr float LEG_SCALE = 1.4f;
 
         float phase = limbSwing * 0.6662f;
 
-        float rightArmX = cosf(phase + (float) M_PI) * ARM_SCALE * limbAmount * 0.5f;
-        float leftArmX  = cosf(phase) * ARM_SCALE * limbAmount * 0.5f;
-        float rightLegX = cosf(phase) * LEG_SCALE * limbAmount;
-        float leftLegX  = cosf(phase + (float) M_PI) * LEG_SCALE * limbAmount;
-
+        float rightArmX     = cosf(phase + (float) M_PI) * ARM_SCALE * limbAmount * 0.5f;
+        float leftArmX      = cosf(phase) * ARM_SCALE * limbAmount * 0.5f;
+        float rightLegX     = cosf(phase) * LEG_SCALE * limbAmount;
+        float leftLegX      = cosf(phase + (float) M_PI) * LEG_SCALE * limbAmount;
         ModelPart *rightArm = model->findPart("rightArm");
         ModelPart *leftArm  = model->findPart("leftArm");
         ModelPart *rightLeg = model->findPart("rightLeg");
         ModelPart *leftLeg  = model->findPart("leftLeg");
-
-        if (rightArm) {
+        if (rightArm)
+        {
             Vec3 rot = rightArm->getRotation();
-            rot.x    = Math::radiansToDegrees(rightArmX);
+            rot.x    = Mth::radiansToDegrees(rightArmX);
             rightArm->setRotation(rot);
         }
-
-        if (leftArm) {
+        if (leftArm)
+        {
             Vec3 rot = leftArm->getRotation();
-            rot.x    = Math::radiansToDegrees(leftArmX);
+            rot.x    = Mth::radiansToDegrees(leftArmX);
             leftArm->setRotation(rot);
         }
-
-        if (rightLeg) {
+        if (rightLeg)
+        {
             Vec3 rot = rightLeg->getRotation();
-            rot.x    = Math::radiansToDegrees(rightLegX);
+            rot.x    = Mth::radiansToDegrees(rightLegX);
             rightLeg->setRotation(rot);
         }
-
-        if (leftLeg) {
+        if (leftLeg)
+        {
             Vec3 rot = leftLeg->getRotation();
-            rot.x    = Math::radiansToDegrees(leftLegX);
+            rot.x    = Mth::radiansToDegrees(leftLegX);
             leftLeg->setRotation(rot);
         }
 
@@ -80,5 +84,8 @@ void TestEntityRenderer::render(const Entity *entity, float partialTicks) const 
 
     GlStateManager::popMatrix();
 
-    if (m_renderBoundingBox) renderBoundingBox(entity, partialTicks);
+    if (m_renderBoundingBox)
+    {
+        renderBoundingBox(entity, partialTicks);
+    }
 }

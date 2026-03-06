@@ -3,7 +3,8 @@
 #include <cstdint>
 #include <vector>
 
-class Texture {
+class Texture
+{
 public:
     explicit Texture(const char *path);
     ~Texture();

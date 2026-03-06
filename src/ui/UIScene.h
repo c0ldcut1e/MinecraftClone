@@ -5,7 +5,8 @@
 
 #include "UILayer.h"
 
-class UIScene {
+class UIScene
+{
 public:
     explicit UIScene(const std::string &name);
     virtual ~UIScene();

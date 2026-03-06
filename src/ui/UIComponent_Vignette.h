@@ -4,7 +4,8 @@
 #include "../rendering/Texture.h"
 #include "UIComponent.h"
 
-class UIComponent_Vignette : public UIComponent {
+class UIComponent_Vignette : public UIComponent
+{
 public:
     UIComponent_Vignette();
     ~UIComponent_Vignette() override;

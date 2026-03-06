@@ -2,11 +2,13 @@
 
 #include <cmath>
 
-Mat4::Mat4() {
+Mat4::Mat4()
+{
     for (int i = 0; i < 16; i++) data[i] = 0.0;
 }
 
-Mat4 Mat4::identity() {
+Mat4 Mat4::identity()
+{
     Mat4 result;
     result.data[0]  = 1.0;
     result.data[5]  = 1.0;
@@ -15,7 +17,8 @@ Mat4 Mat4::identity() {
     return result;
 }
 
-Mat4 Mat4::lookAt(const Vec3 &eye, const Vec3 &center, const Vec3 &up) {
+Mat4 Mat4::lookAt(const Vec3 &eye, const Vec3 &center, const Vec3 &up)
+{
     Vec3 forward  = center.sub(eye).normalize();
     Vec3 right    = forward.cross(up).normalize();
     Vec3 _up      = right.cross(forward);
@@ -35,7 +38,8 @@ Mat4 Mat4::lookAt(const Vec3 &eye, const Vec3 &center, const Vec3 &up) {
     return view;
 }
 
-Mat4 Mat4::perspective(double fovRadians, double aspect, double nearPlane, double farPlane) {
+Mat4 Mat4::perspective(double fovRadians, double aspect, double nearPlane, double farPlane)
+{
     Mat4 result;
     double tanHalfFov = tan(fovRadians / 2.0);
     result.data[0]    = 1.0 / (aspect * tanHalfFov);
@@ -46,7 +50,9 @@ Mat4 Mat4::perspective(double fovRadians, double aspect, double nearPlane, doubl
     return result;
 }
 
-Mat4 Mat4::orthographic(double left, double right, double bottom, double top, double nearPlane, double farPlane) {
+Mat4 Mat4::orthographic(double left, double right, double bottom, double top, double nearPlane,
+                        double farPlane)
+{
     Mat4 result;
     result.data[0]  = 2.0 / (right - left);
     result.data[5]  = 2.0 / (top - bottom);
@@ -58,7 +64,8 @@ Mat4 Mat4::orthographic(double left, double right, double bottom, double top, do
     return result;
 }
 
-Mat4 Mat4::translation(double x, double y, double z) {
+Mat4 Mat4::translation(double x, double y, double z)
+{
     Mat4 result     = identity();
     result.data[12] = x;
     result.data[13] = y;
@@ -66,7 +73,8 @@ Mat4 Mat4::translation(double x, double y, double z) {
     return result;
 }
 
-Mat4 Mat4::scale(double x, double y, double z) {
+Mat4 Mat4::scale(double x, double y, double z)
+{
     Mat4 result;
     result.data[0]  = x;
     result.data[5]  = y;
@@ -75,9 +83,11 @@ Mat4 Mat4::scale(double x, double y, double z) {
     return result;
 }
 
-Mat4 Mat4::rotation(double angleRadians, double x, double y, double z) {
+Mat4 Mat4::rotation(double angleRadians, double x, double y, double z)
+{
     double len = sqrt(x * x + y * y + z * z);
-    if (len == 0.0) return identity();
+    if (len == 0.0)
+        return identity();
 
     x /= len;
     y /= len;
@@ -104,46 +114,71 @@ Mat4 Mat4::rotation(double angleRadians, double x, double y, double z) {
     return result;
 }
 
-Mat4 Mat4::multiply(const Mat4 &other) const {
+Mat4 Mat4::multiply(const Mat4 &other) const
+{
     Mat4 result;
-
     for (int col = 0; col < 4; col++)
-        for (int row = 0; row < 4; row++) result.data[col * 4 + row] = data[0 * 4 + row] * other.data[col * 4 + 0] + data[1 * 4 + row] * other.data[col * 4 + 1] + data[2 * 4 + row] * other.data[col * 4 + 2] + data[3 * 4 + row] * other.data[col * 4 + 3];
-
+    {
+        for (int row = 0; row < 4; row++)
+        {
+            result.data[col * 4 + row] = data[0 * 4 + row] * other.data[col * 4 + 0] +
+                                         data[1 * 4 + row] * other.data[col * 4 + 1] +
+                                         data[2 * 4 + row] * other.data[col * 4 + 2] +
+                                         data[3 * 4 + row] * other.data[col * 4 + 3];
+        }
+    }
     return result;
 }
 
-Mat4 Mat4::inverse() const {
+Mat4 Mat4::inverse() const
+{
     const double *m = data;
     double inv[16];
+    inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
+             m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+    inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] -
+             m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+    inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] +
+             m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+    inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] -
+              m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
 
-    inv[0]  = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] + m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
-    inv[4]  = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] - m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
-    inv[8]  = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] + m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
-    inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] - m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+    inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] -
+             m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+    inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] +
+             m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+    inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] -
+             m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+    inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] +
+              m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
 
-    inv[1]  = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] - m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
-    inv[5]  = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] + m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
-    inv[9]  = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] - m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
-    inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] + m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] +
+             m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+    inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] -
+             m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+    inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] +
+              m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+    inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] -
+              m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
 
-    inv[2]  = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
-    inv[6]  = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] - m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
-    inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] + m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
-    inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] - m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
-
-    inv[3]  = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] - m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
-    inv[7]  = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
-    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
-    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
-
+    inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] -
+             m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] +
+             m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] -
+              m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] +
+              m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
     double det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
-
-    if (det == 0.0) return Mat4::identity();
-
+    if (det == 0.0)
+    {
+        return Mat4::identity();
+    }
     det = 1.0 / det;
-
     Mat4 out;
-    for (int i = 0; i < 16; i++) out.data[i] = inv[i] * det;
+    for (int i = 0; i < 16; i++)
+    {
+        out.data[i] = inv[i] * det;
+    }
     return out;
 }

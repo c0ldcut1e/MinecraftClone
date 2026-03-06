@@ -3,7 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 
-class RenderCommand {
+class RenderCommand
+{
 public:
     static bool initialize();
     static void enableExperimentalFeatures();
@@ -33,7 +34,8 @@ public:
     static void enableBlend();
     static void disableBlend();
     static void setBlendFunc(uint32_t src, uint32_t dst);
-    static void setBlendFuncSeparate(uint32_t srcRGB, uint32_t dstRGB, uint32_t srcA, uint32_t dstA);
+    static void setBlendFuncSeparate(uint32_t srcRGB, uint32_t dstRGB, uint32_t srcA,
+                                     uint32_t dstA);
     static void setBlendEquation(uint32_t mode);
     static void setBlendEquationSeparate(uint32_t modeRGB, uint32_t modeA);
 
@@ -42,7 +44,8 @@ public:
     static void setStencilMask(uint32_t mask);
     static void setStencilFunc(uint32_t func, int ref, uint32_t mask);
     static void setStencilOp(uint32_t sfail, uint32_t dpfail, uint32_t dppass);
-    static void setStencilOpSeparate(uint32_t face, uint32_t sfail, uint32_t dpfail, uint32_t dppass);
+    static void setStencilOpSeparate(uint32_t face, uint32_t sfail, uint32_t dpfail,
+                                     uint32_t dppass);
     static void setStencilFuncSeparate(uint32_t face, uint32_t func, int ref, uint32_t mask);
     static void setStencilMaskSeparate(uint32_t face, uint32_t mask);
 
@@ -79,8 +82,10 @@ public:
 
     static void enableVertexAttrib(uint32_t index);
     static void disableVertexAttrib(uint32_t index);
-    static void setVertexAttribPointer(uint32_t index, int count, uint32_t type, bool normalized, uint32_t stride, uint32_t offset);
-    static void setVertexAttribIPointer(uint32_t index, int count, uint32_t type, uint32_t stride, uint32_t offset);
+    static void setVertexAttribPointer(uint32_t index, int count, uint32_t type, bool normalized,
+                                       uint32_t stride, uint32_t offset);
+    static void setVertexAttribIPointer(uint32_t index, int count, uint32_t type, uint32_t stride,
+                                        uint32_t offset);
     static void setVertexAttribDivisor(uint32_t index, uint32_t divisor);
 
     static uint32_t createVertexArray();
@@ -105,7 +110,8 @@ public:
     static void renderElements(uint32_t mode, int count, uint32_t type, uint32_t offset);
 
     static void renderArraysInstanced(uint32_t mode, int first, int count, int instanceCount);
-    static void renderElementsInstanced(uint32_t mode, int count, uint32_t type, uint32_t offset, int instanceCount);
+    static void renderElementsInstanced(uint32_t mode, int count, uint32_t type, uint32_t offset,
+                                        int instanceCount);
 
     static uint32_t createTexture();
     static void deleteTexture(uint32_t id);
@@ -115,8 +121,10 @@ public:
     static void setTextureParameteri(uint32_t pname, int value);
     static void setTextureParameterf(uint32_t pname, float value);
 
-    static void uploadTexture2D(int width, int height, uint32_t internalFormat, uint32_t format, uint32_t type, const void *data);
-    static void uploadTexture2DSub(int x, int y, int width, int height, uint32_t format, uint32_t type, const void *data);
+    static void uploadTexture2D(int width, int height, uint32_t internalFormat, uint32_t format,
+                                uint32_t type, const void *data);
+    static void uploadTexture2DSub(int x, int y, int width, int height, uint32_t format,
+                                   uint32_t type, const void *data);
     static void copyTexSubImage2D(int x, int y, int width, int height);
     static void generateMipmap2D();
 
@@ -184,12 +192,14 @@ public:
     static uint32_t createFramebuffer();
     static void deleteFramebuffer(uint32_t id);
     static void bindFramebuffer(uint32_t target, uint32_t id);
-    static void framebufferTexture2D(uint32_t target, uint32_t attachment, uint32_t textarget, uint32_t texture, int level);
+    static void framebufferTexture2D(uint32_t target, uint32_t attachment, uint32_t textarget,
+                                     uint32_t texture, int level);
     static uint32_t checkFramebufferStatus(uint32_t target);
 
     static uint32_t createRenderbuffer();
     static void deleteRenderbuffer(uint32_t id);
     static void bindRenderbuffer(uint32_t id);
     static void renderbufferStorage(uint32_t internalFormat, int width, int height);
-    static void framebufferRenderbuffer(uint32_t target, uint32_t attachment, uint32_t renderbuffertarget, uint32_t renderbuffer);
+    static void framebufferRenderbuffer(uint32_t target, uint32_t attachment,
+                                        uint32_t renderbuffertarget, uint32_t renderbuffer);
 };

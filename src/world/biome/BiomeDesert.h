@@ -2,7 +2,8 @@
 
 #include "Biome.h"
 
-class BiomeDesert : public Biome {
+class BiomeDesert : public Biome
+{
 public:
     BiomeDesert();
 

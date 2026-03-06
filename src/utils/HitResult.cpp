@@ -1,10 +1,14 @@
 #include "HitResult.h"
 
-HitResult::HitResult() : m_type(MISS), m_hitPos(0.0, 0.0, 0.0), m_distance(0.0f), m_blockPos(), m_blockFace(nullptr), m_entityUUID(), m_entityType(0) {}
+HitResult::HitResult()
+    : m_type(MISS), m_hitPos(0.0, 0.0, 0.0), m_distance(0.0f), m_blockPos(), m_blockFace(nullptr),
+      m_entityUUID(), m_entityType(0)
+{}
 
 HitResult::~HitResult() {}
 
-void HitResult::setMiss() {
+void HitResult::setMiss()
+{
     m_type       = MISS;
     m_hitPos     = Vec3(0.0, 0.0, 0.0);
     m_distance   = 0.0f;
@@ -14,7 +18,8 @@ void HitResult::setMiss() {
     m_entityType = 0;
 }
 
-void HitResult::setBlock(const Vec3 &hitPos, const BlockPos &pos, Direction *face, float distance) {
+void HitResult::setBlock(const Vec3 &hitPos, const BlockPos &pos, Direction *face, float distance)
+{
     m_type       = BLOCK;
     m_hitPos     = hitPos;
     m_distance   = distance;
@@ -24,7 +29,8 @@ void HitResult::setBlock(const Vec3 &hitPos, const BlockPos &pos, Direction *fac
     m_entityType = 0;
 }
 
-void HitResult::setEntity(const Vec3 &hitPos, const UUID &uuid, uint64_t type, float distance) {
+void HitResult::setEntity(const Vec3 &hitPos, const UUID &uuid, uint64_t type, float distance)
+{
     m_type       = ENTITY;
     m_hitPos     = hitPos;
     m_distance   = distance;

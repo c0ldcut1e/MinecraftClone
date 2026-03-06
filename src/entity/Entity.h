@@ -8,7 +8,8 @@
 #include "../world/World.h"
 #include "../world/models/Model.h"
 
-class Entity {
+class Entity
+{
 public:
     explicit Entity(World *world);
     virtual ~Entity();

@@ -6,7 +6,8 @@
 
 #include "Texture.h"
 
-class TextureRepository {
+class TextureRepository
+{
 public:
     TextureRepository();
 

@@ -1,6 +1,7 @@
 #pragma once
 
-class FixedStepper {
+class FixedStepper
+{
 public:
     FixedStepper(double stepSeconds, double maxFrameSeconds);
 

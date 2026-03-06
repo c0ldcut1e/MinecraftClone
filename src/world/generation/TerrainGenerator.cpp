@@ -2,14 +2,18 @@
 
 #include <cmath>
 
-#include "../../utils/math/Math.h"
+#include "../../utils/math/Mth.h"
 #include "../biome/BiomeRegistry.h"
 #include "../block/Block.h"
 #include "../chunk/Chunk.h"
 
-static inline int getGridIndex(int gx, int gy, int gz) { return (gx * TerrainGenerator::GRID_Z + gz) * TerrainGenerator::GRID_Y + gy; }
+static inline int getGridIndex(int gx, int gy, int gz)
+{
+    return (gx * TerrainGenerator::GRID_Z + gz) * TerrainGenerator::GRID_Y + gy;
+}
 
-static inline uint64_t mix64(uint64_t value) {
+static inline uint64_t mix64(uint64_t value)
+{
     value ^= value >> 33;
     value *= 0xff51afd7ed558ccdULL;
     value ^= value >> 33;
@@ -18,18 +22,26 @@ static inline uint64_t mix64(uint64_t value) {
     return value;
 }
 
-static inline uint32_t seedCave(uint32_t seed, int chunkX, int chunkZ) {
-    uint64_t value = (uint64_t) (uint32_t) chunkX * 341873128712ULL + (uint64_t) (uint32_t) chunkZ * 132897987541ULL;
+static inline uint32_t seedCave(uint32_t seed, int chunkX, int chunkZ)
+{
+    uint64_t value = (uint64_t) (uint32_t) chunkX * 341873128712ULL +
+                     (uint64_t) (uint32_t) chunkZ * 132897987541ULL;
     value ^= (uint64_t) seed * 0x9e3779b97f4a7c15ULL;
     return (uint32_t) mix64(value);
 }
 
-static inline int getRandomIndex(Random &random, int maxExclusive) {
-    if (maxExclusive <= 1) return 0;
+static inline int getRandomIndex(Random &random, int maxExclusive)
+{
+    if (maxExclusive <= 1)
+    {
+        return 0;
+    }
+
     return random.nextInt(0, maxExclusive - 1);
 }
 
-TerrainGenerator::TerrainGenerator(uint32_t seed) : m_seed(seed), m_random(seed) {
+TerrainGenerator::TerrainGenerator(uint32_t seed) : m_seed(seed), m_random(seed)
+{
     auto deriveSeed = [](uint32_t s, uint32_t m, uint32_t a) { return (int) (s * m + a); };
     int s0          = deriveSeed(seed, 1u, 0u);
     int s1          = deriveSeed(seed, 747796405u, 2891336453u);
@@ -92,18 +104,24 @@ TerrainGenerator::TerrainGenerator(uint32_t seed) : m_seed(seed), m_random(seed)
     m_rock.SetFrequency(9.0f);
 }
 
-void TerrainGenerator::generate(World &world, const ChunkPos &center) {
+void TerrainGenerator::generate(World &world, const ChunkPos &center)
+{
     ChunkPos pos(center.x, 0, center.z);
     Chunk *chunk = world.getChunk(pos);
-    if (!chunk) {
+    if (!chunk)
+    {
         world.createChunk(pos);
         chunk = world.getChunk(pos);
     }
 
-    if (chunk) generateChunk(*chunk, pos);
+    if (chunk)
+    {
+        generateChunk(*chunk, pos);
+    }
 }
 
-void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos) {
+void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos)
+{
     Block *bedrock  = Block::byName("bedrock");
     Block *stone    = Block::byName("stone");
     Block *andesite = Block::byName("andesite");
@@ -120,7 +138,9 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos) {
     int heightMap[Chunk::SIZE_X * Chunk::SIZE_Z];
 
     for (int z = 0; z < Chunk::SIZE_Z; z++)
-        for (int x = 0; x < Chunk::SIZE_X; x++) {
+    {
+        for (int x = 0; x < Chunk::SIZE_X; x++)
+        {
             int gx0  = x / CELL_XZ;
             int gz0  = z / CELL_XZ;
             int gx1  = gx0 + 1;
@@ -129,11 +149,13 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos) {
             float tz = (float) (z % CELL_XZ) / CELL_XZ;
 
             int height = 0;
-            for (int y = Chunk::SIZE_Y - 1; y >= 1; y--) {
+            for (int y = Chunk::SIZE_Y - 1; y >= 1; y--)
+            {
                 int gy0  = y / CELL_Y;
                 int gy1  = gy0 + 1;
                 float ty = (float) (y % CELL_Y) / CELL_Y;
-                if (gy1 >= GRID_Y) continue;
+                if (gy1 >= GRID_Y)
+                    continue;
 
                 float d000 = grid[getGridIndex(gx0, gy0, gz0)];
                 float d100 = grid[getGridIndex(gx1, gy0, gz0)];
@@ -144,15 +166,16 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos) {
                 float d011 = grid[getGridIndex(gx0, gy1, gz1)];
                 float d111 = grid[getGridIndex(gx1, gy1, gz1)];
 
-                float c00     = Math::lerpf(d000, d100, tx);
-                float c10     = Math::lerpf(d010, d110, tx);
-                float c01     = Math::lerpf(d001, d101, tx);
-                float c11     = Math::lerpf(d011, d111, tx);
-                float c0      = Math::lerpf(c00, c01, tz);
-                float c1      = Math::lerpf(c10, c11, tz);
-                float density = Math::lerpf(c0, c1, ty);
+                float c00     = Mth::lerpf(d000, d100, tx);
+                float c10     = Mth::lerpf(d010, d110, tx);
+                float c01     = Mth::lerpf(d001, d101, tx);
+                float c11     = Mth::lerpf(d011, d111, tx);
+                float c0      = Mth::lerpf(c00, c01, tz);
+                float c1      = Mth::lerpf(c10, c11, tz);
+                float density = Mth::lerpf(c0, c1, ty);
 
-                if (density > 0.0f && height == 0) {
+                if (density > 0.0f && height == 0)
+                {
                     height = y;
                     break;
                 }
@@ -160,9 +183,12 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos) {
 
             heightMap[x + z * Chunk::SIZE_X] = height;
         }
+    }
 
     for (int z = 0; z < Chunk::SIZE_Z; z++)
-        for (int x = 0; x < Chunk::SIZE_X; x++) {
+    {
+        for (int x = 0; x < Chunk::SIZE_X; x++)
+        {
             int worldX = chunkPos.x * Chunk::SIZE_X + x;
             int worldZ = chunkPos.z * Chunk::SIZE_Z + z;
 
@@ -176,28 +202,38 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos) {
             int height = heightMap[x + z * Chunk::SIZE_X];
 
             Biome *biome = getBiomeAt(worldX, worldZ);
-            if (!biome) biome = Biome::byName("plains");
+            if (!biome)
+                biome = Biome::byName("plains");
 
             chunk.setBiomeAt(x, z, biome);
 
             Block *top;
             Block *filler;
-            if (height < seaLevel - 1) {
+            if (height < seaLevel - 1)
+            {
                 top    = gravel;
                 filler = gravel;
-            } else if (height <= seaLevel + 1) {
+            }
+            else if (height <= seaLevel + 1)
+            {
                 top    = sand;
                 filler = sand;
-            } else {
+            }
+            else
+            {
                 top    = biome->getTopBlock();
                 filler = biome->getFillerBlock();
             }
 
-            for (int y = 1; y < Chunk::SIZE_Y; y++) {
+            for (int y = 1; y < Chunk::SIZE_Y; y++)
+            {
                 int gy0  = y / CELL_Y;
                 int gy1  = gy0 + 1;
                 float ty = (float) (y % CELL_Y) / CELL_Y;
-                if (gy1 >= GRID_Y) continue;
+                if (gy1 >= GRID_Y)
+                {
+                    continue;
+                }
 
                 float d000 = grid[getGridIndex(gx0, gy0, gz0)];
                 float d100 = grid[getGridIndex(gx1, gy0, gz0)];
@@ -208,60 +244,89 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos) {
                 float d011 = grid[getGridIndex(gx0, gy1, gz1)];
                 float d111 = grid[getGridIndex(gx1, gy1, gz1)];
 
-                float c00     = Math::lerpf(d000, d100, tx);
-                float c10     = Math::lerpf(d010, d110, tx);
-                float c01     = Math::lerpf(d001, d101, tx);
-                float c11     = Math::lerpf(d011, d111, tx);
-                float c0      = Math::lerpf(c00, c01, tz);
-                float c1      = Math::lerpf(c10, c11, tz);
-                float density = Math::lerpf(c0, c1, ty);
+                float c00     = Mth::lerpf(d000, d100, tx);
+                float c10     = Mth::lerpf(d010, d110, tx);
+                float c01     = Mth::lerpf(d001, d101, tx);
+                float c11     = Mth::lerpf(d011, d111, tx);
+                float c0      = Mth::lerpf(c00, c01, tz);
+                float c1      = Mth::lerpf(c10, c11, tz);
+                float density = Mth::lerpf(c0, c1, ty);
 
-                if (density <= 0.0f) continue;
+                if (density <= 0.0f)
+                {
+                    continue;
+                }
 
-                if (y < bedrockCeil) {
+                if (y < bedrockCeil)
+                {
                     float bt        = (float) y / (float) bedrockCeil;
-                    float rockNoise = m_rock.GetNoise((float) worldX * 0.2f, (float) y * 2.0f, (float) worldZ * 0.2f);
+                    float rockNoise = m_rock.GetNoise((float) worldX * 0.2f, (float) y * 2.0f,
+                                                      (float) worldZ * 0.2f);
                     rockNoise       = (rockNoise + 1.0f) * 0.5f;
-                    if (rockNoise < 1.0f - bt * bt) {
+                    if (rockNoise < 1.0f - bt * bt)
+                    {
                         chunk.setBlock(x, y, z, bedrock);
                         continue;
                     }
                 }
 
-                if (y == height) chunk.setBlock(x, y, z, top);
+                if (y == height)
+                {
+                    chunk.setBlock(x, y, z, top);
+                }
                 else if (y >= height - 4)
+                {
                     chunk.setBlock(x, y, z, filler);
-                else {
+                }
+                else
+                {
                     float rock = m_rock.GetNoise((float) worldX, (float) y, (float) worldZ);
                     rock       = (rock + 1.0f) * 0.5f;
-                    if (rock > 0.62f) chunk.setBlock(x, y, z, andesite);
+                    if (rock > 0.62f)
+                    {
+                        chunk.setBlock(x, y, z, andesite);
+                    }
                     else
+                    {
                         chunk.setBlock(x, y, z, stone);
+                    }
                 }
             }
 
             chunk.setBlock(x, 0, z, bedrock);
         }
+    }
 
     for (int z = 0; z < Chunk::SIZE_Z; z++)
-        for (int x = 0; x < Chunk::SIZE_X; x++) {
+    {
+        for (int x = 0; x < Chunk::SIZE_X; x++)
+        {
             int height = heightMap[x + z * Chunk::SIZE_X];
-            if (height < seaLevel) {
+            if (height < seaLevel)
+            {
                 int wy0 = (height <= 0) ? 1 : (height + 1);
-                for (int wy = wy0; wy <= seaLevel && wy < Chunk::SIZE_Y; wy++) { chunk.setBlock(x, wy, z, water); }
+                for (int wy = wy0; wy <= seaLevel && wy < Chunk::SIZE_Y; wy++)
+                {
+                    chunk.setBlock(x, wy, z, water);
+                }
             }
         }
+    }
 
     static constexpr int caveNeighborRadius = 3;
     for (int neighborZ = -caveNeighborRadius; neighborZ <= caveNeighborRadius; neighborZ++)
-        for (int neighborX = -caveNeighborRadius; neighborX <= caveNeighborRadius; neighborX++) {
+    {
+        for (int neighborX = -caveNeighborRadius; neighborX <= caveNeighborRadius; neighborX++)
+        {
             int sourceChunkX = chunkPos.x + neighborX;
             int sourceChunkZ = chunkPos.z + neighborZ;
             carveCavesFromSourceChunk(chunk, chunkPos, sourceChunkX, sourceChunkZ);
         }
+    }
 }
 
-int TerrainGenerator::getHeightAt(int worldX, int worldZ) {
+int TerrainGenerator::getHeightAt(int worldX, int worldZ)
+{
     int chunkX = worldX >> 4;
     int chunkZ = worldZ >> 4;
     int lx     = worldX & 15;
@@ -277,11 +342,15 @@ int TerrainGenerator::getHeightAt(int worldX, int worldZ) {
     float tx = (float) (lx % CELL_XZ) / CELL_XZ;
     float tz = (float) (lz % CELL_XZ) / CELL_XZ;
 
-    for (int y = Chunk::SIZE_Y - 1; y >= 1; y--) {
+    for (int y = Chunk::SIZE_Y - 1; y >= 1; y--)
+    {
         int gy0  = y / CELL_Y;
         int gy1  = gy0 + 1;
         float ty = (float) (y % CELL_Y) / CELL_Y;
-        if (gy1 >= GRID_Y) continue;
+        if (gy1 >= GRID_Y)
+        {
+            continue;
+        }
 
         float d000 = grid[getGridIndex(gx0, gy0, gz0)];
         float d100 = grid[getGridIndex(gx1, gy0, gz0)];
@@ -292,38 +361,48 @@ int TerrainGenerator::getHeightAt(int worldX, int worldZ) {
         float d011 = grid[getGridIndex(gx0, gy1, gz1)];
         float d111 = grid[getGridIndex(gx1, gy1, gz1)];
 
-        float c00     = Math::lerpf(d000, d100, tx);
-        float c10     = Math::lerpf(d010, d110, tx);
-        float c01     = Math::lerpf(d001, d101, tx);
-        float c11     = Math::lerpf(d011, d111, tx);
-        float c0      = Math::lerpf(c00, c01, tz);
-        float c1      = Math::lerpf(c10, c11, tz);
-        float density = Math::lerpf(c0, c1, ty);
+        float c00     = Mth::lerpf(d000, d100, tx);
+        float c10     = Mth::lerpf(d010, d110, tx);
+        float c01     = Mth::lerpf(d001, d101, tx);
+        float c11     = Mth::lerpf(d011, d111, tx);
+        float c0      = Mth::lerpf(c00, c01, tz);
+        float c1      = Mth::lerpf(c10, c11, tz);
+        float density = Mth::lerpf(c0, c1, ty);
 
-        if (density > 0.0f) return y;
+        if (density > 0.0f)
+        {
+            return y;
+        }
     }
 
     return 0;
 }
 
-Biome *TerrainGenerator::getBiomeAt(int worldX, int worldZ) const {
+Biome *TerrainGenerator::getBiomeAt(int worldX, int worldZ) const
+{
     float temp     = m_temperature.GetNoise((float) worldX, (float) worldZ);
     float humidity = m_humidity.GetNoise((float) worldX, (float) worldZ);
     temp           = (temp + 1.0f) * 0.5f;
     humidity       = (humidity + 1.0f) * 0.5f;
-    if (temp > 0.55f) return Biome::byName("desert");
+    if (temp > 0.55f)
+    {
+        return Biome::byName("desert");
+    }
     return Biome::byName("plains");
 }
 
-void TerrainGenerator::buildDensityGrid(float *grid, int chunkX, int chunkZ) {
-    for (int gx = 0; gx < GRID_X; gx++) {
+void TerrainGenerator::buildDensityGrid(float *grid, int chunkX, int chunkZ)
+{
+    for (int gx = 0; gx < GRID_X; gx++)
+    {
         int worldX = chunkX * Chunk::SIZE_X + gx * CELL_XZ;
 
         double nxBase  = (double) worldX / (double) COORD_SCALE;
         double nxMain  = (double) worldX / ((double) COORD_SCALE / 80.0);
         double nxDepth = (double) worldX / (double) DEPTH_SCALE;
 
-        for (int gz = 0; gz < GRID_Z; gz++) {
+        for (int gz = 0; gz < GRID_Z; gz++)
+        {
             int worldZ = chunkZ * Chunk::SIZE_Z + gz * CELL_XZ;
 
             double nzBase  = (double) worldZ / (double) COORD_SCALE;
@@ -331,20 +410,27 @@ void TerrainGenerator::buildDensityGrid(float *grid, int chunkX, int chunkZ) {
             double nzDepth = (double) worldZ / (double) DEPTH_SCALE;
 
             float depthRaw = m_depthNoise.GetNoise((float) nxDepth, (float) nzDepth);
-            depthRaw       = Math::clamp(depthRaw, -1.0f, 1.0f);
+            depthRaw       = Mth::clamp(depthRaw, -1.0f, 1.0f);
 
-            for (int gy = 0; gy < GRID_Y; gy++) {
+            for (int gy = 0; gy < GRID_Y; gy++)
+            {
                 double worldY = (double) (gy * CELL_Y);
 
                 double nyBase = worldY / (double) HEIGHT_SCALE;
                 double nyMain = worldY / ((double) HEIGHT_SCALE / 160.0);
 
-                float lower = m_lowerNoise.GetNoise((float) nxBase, (float) nyBase, (float) nzBase) * 512.0f;
-                float upper = m_upperNoise.GetNoise((float) nxBase, (float) nyBase, (float) nzBase) * 512.0f;
-                float main  = (m_mainNoise.GetNoise((float) nxMain, (float) nyMain, (float) nzMain) + 1.0f) * 0.5f;
-                main        = Math::clamp(main, 0.0f, 1.0f);
+                float lower =
+                        m_lowerNoise.GetNoise((float) nxBase, (float) nyBase, (float) nzBase) *
+                        512.0f;
+                float upper =
+                        m_upperNoise.GetNoise((float) nxBase, (float) nyBase, (float) nzBase) *
+                        512.0f;
+                float main = (m_mainNoise.GetNoise((float) nxMain, (float) nyMain, (float) nzMain) +
+                              1.0f) *
+                             0.5f;
+                main = Mth::clamp(main, 0.0f, 1.0f);
 
-                float density = Math::lerpf(lower, upper, main);
+                float density = Mth::lerpf(lower, upper, main);
 
                 float yBias = (BASE_SIZE - (float) gy) / STRETCH_Y;
                 yBias += depthRaw;
@@ -357,7 +443,10 @@ void TerrainGenerator::buildDensityGrid(float *grid, int chunkX, int chunkZ) {
     }
 }
 
-void TerrainGenerator::carveEllipsoid(Chunk &chunk, const ChunkPos &chunkPos, double centerX, double centerY, double centerZ, double radiusHorizontal, double radiusVertical) {
+void TerrainGenerator::carveEllipsoid(Chunk &chunk, const ChunkPos &chunkPos, double centerX,
+                                      double centerY, double centerZ, double radiusHorizontal,
+                                      double radiusVertical)
+{
     int minX = (int) floor(centerX - radiusHorizontal) - chunkPos.x * Chunk::SIZE_X;
     int maxX = (int) floor(centerX + radiusHorizontal) - chunkPos.x * Chunk::SIZE_X;
     int minZ = (int) floor(centerZ - radiusHorizontal) - chunkPos.z * Chunk::SIZE_Z;
@@ -365,12 +454,12 @@ void TerrainGenerator::carveEllipsoid(Chunk &chunk, const ChunkPos &chunkPos, do
     int minY = (int) floor(centerY - radiusVertical);
     int maxY = (int) floor(centerY + radiusVertical);
 
-    minX = Math::clamp(minX, 0, Chunk::SIZE_X - 1);
-    maxX = Math::clamp(maxX, 0, Chunk::SIZE_X - 1);
-    minZ = Math::clamp(minZ, 0, Chunk::SIZE_Z - 1);
-    maxZ = Math::clamp(maxZ, 0, Chunk::SIZE_Z - 1);
-    minY = Math::clamp(minY, 1, Chunk::SIZE_Y - 2);
-    maxY = Math::clamp(maxY, 1, Chunk::SIZE_Y - 2);
+    minX = Mth::clamp(minX, 0, Chunk::SIZE_X - 1);
+    maxX = Mth::clamp(maxX, 0, Chunk::SIZE_X - 1);
+    minZ = Mth::clamp(minZ, 0, Chunk::SIZE_Z - 1);
+    maxZ = Mth::clamp(maxZ, 0, Chunk::SIZE_Z - 1);
+    minY = Mth::clamp(minY, 1, Chunk::SIZE_Y - 2);
+    maxY = Mth::clamp(maxY, 1, Chunk::SIZE_Y - 2);
 
     double invRadiusHorizontal = 1.0 / radiusHorizontal;
     double invRadiusVertical   = 1.0 / radiusVertical;
@@ -378,23 +467,40 @@ void TerrainGenerator::carveEllipsoid(Chunk &chunk, const ChunkPos &chunkPos, do
     Block *bedrock = Block::byName("bedrock");
     Block *air     = Block::byName("air");
 
-    for (int localX = minX; localX <= maxX; localX++) {
-        double dx  = ((double) (chunkPos.x * Chunk::SIZE_X + localX) + 0.5 - centerX) * invRadiusHorizontal;
+    for (int localX = minX; localX <= maxX; localX++)
+    {
+        double dx = ((double) (chunkPos.x * Chunk::SIZE_X + localX) + 0.5 - centerX) *
+                    invRadiusHorizontal;
         double dx2 = dx * dx;
-        if (dx2 >= 1.0) continue;
+        if (dx2 >= 1.0)
+        {
+            continue;
+        }
 
-        for (int localZ = minZ; localZ <= maxZ; localZ++) {
-            double dz  = ((double) (chunkPos.z * Chunk::SIZE_Z + localZ) + 0.5 - centerZ) * invRadiusHorizontal;
+        for (int localZ = minZ; localZ <= maxZ; localZ++)
+        {
+            double dz = ((double) (chunkPos.z * Chunk::SIZE_Z + localZ) + 0.5 - centerZ) *
+                        invRadiusHorizontal;
             double dz2 = dz * dz;
-            if (dx2 + dz2 >= 1.0) continue;
+            if (dx2 + dz2 >= 1.0)
+            {
+                continue;
+            }
 
-            for (int localY = minY; localY <= maxY; localY++) {
+            for (int localY = minY; localY <= maxY; localY++)
+            {
                 double dy   = ((double) localY + 0.5 - centerY) * invRadiusVertical;
                 double dist = dx2 + dz2 + dy * dy;
-                if (dist >= 1.0) continue;
+                if (dist >= 1.0)
+                {
+                    continue;
+                }
 
                 int currentId = chunk.getBlockId(localX, localY, localZ);
-                if (Block::byId(currentId) == bedrock) continue;
+                if (Block::byId(currentId) == bedrock)
+                {
+                    continue;
+                }
 
                 chunk.setBlock(localX, localY, localZ, air);
             }
@@ -402,7 +508,10 @@ void TerrainGenerator::carveEllipsoid(Chunk &chunk, const ChunkPos &chunkPos, do
     }
 }
 
-void TerrainGenerator::carveCaveTunnel(Chunk &chunk, Random &caveRandom, const ChunkPos &chunkPos, double startX, double startY, double startZ, float radius, float yaw, float pitch, int stepCount) {
+void TerrainGenerator::carveCaveTunnel(Chunk &chunk, Random &caveRandom, const ChunkPos &chunkPos,
+                                       double startX, double startY, double startZ, float radius,
+                                       float yaw, float pitch, int stepCount)
+{
     double positionX = startX;
     double positionY = startY;
     double positionZ = startZ;
@@ -411,21 +520,25 @@ void TerrainGenerator::carveCaveTunnel(Chunk &chunk, Random &caveRandom, const C
     float pitchChange = 0.0f;
 
     int roomStep = -1;
-    if (getRandomIndex(caveRandom, 6) == 0) roomStep = getRandomIndex(caveRandom, stepCount / 2) + stepCount / 4;
+    if (getRandomIndex(caveRandom, 6) == 0)
+        roomStep = getRandomIndex(caveRandom, stepCount / 2) + stepCount / 4;
 
-    for (int step = 0; step < stepCount; step++) {
+    for (int step = 0; step < stepCount; step++)
+    {
         double progress    = (double) step / (double) stepCount;
         double radiusScale = 1.5 + sin(progress * M_PI) * (double) radius;
 
         double radiusHorizontal = radiusScale;
         double radiusVertical   = radiusScale * 0.9;
 
-        if (step == roomStep) {
+        if (step == roomStep)
+        {
             radiusHorizontal *= 2.5;
             radiusVertical *= 1.7;
         }
 
-        carveEllipsoid(chunk, chunkPos, positionX, positionY, positionZ, radiusHorizontal, radiusVertical);
+        carveEllipsoid(chunk, chunkPos, positionX, positionY, positionZ, radiusHorizontal,
+                       radiusVertical);
 
         float cosPitch = cos(pitch);
         positionX += (double) (cos(yaw) * cosPitch);
@@ -436,33 +549,59 @@ void TerrainGenerator::carveCaveTunnel(Chunk &chunk, Random &caveRandom, const C
         pitch += pitchChange * 0.1f;
         yaw += yawChange * 0.1f;
 
-        pitchChange = pitchChange * 0.75f + (caveRandom.nextFloat() - caveRandom.nextFloat()) * caveRandom.nextFloat() * 2.5f;
-        yawChange   = yawChange * 0.9f + (caveRandom.nextFloat() - caveRandom.nextFloat()) * caveRandom.nextFloat() * 5.0f;
+        pitchChange = pitchChange * 0.75f + (caveRandom.nextFloat() - caveRandom.nextFloat()) *
+                                                    caveRandom.nextFloat() * 2.5f;
+        yawChange = yawChange * 0.9f + (caveRandom.nextFloat() - caveRandom.nextFloat()) *
+                                               caveRandom.nextFloat() * 5.0f;
 
-        if (positionY < 2.0) break;
-        if (positionY > (double) (Chunk::SIZE_Y - 2)) break;
+        if (positionY < 2.0)
+        {
+            break;
+        }
+        if (positionY > (double) (Chunk::SIZE_Y - 2))
+        {
+            break;
+        }
 
         double chunkWorldMinX = (double) (chunkPos.x * Chunk::SIZE_X);
         double chunkWorldMinZ = (double) (chunkPos.z * Chunk::SIZE_Z);
         double chunkWorldMaxX = chunkWorldMinX + (double) Chunk::SIZE_X;
         double chunkWorldMaxZ = chunkWorldMinZ + (double) Chunk::SIZE_Z;
 
-        if (positionX < chunkWorldMinX - 48.0) break;
-        if (positionZ < chunkWorldMinZ - 48.0) break;
-        if (positionX > chunkWorldMaxX + 48.0) break;
-        if (positionZ > chunkWorldMaxZ + 48.0) break;
+        if (positionX < chunkWorldMinX - 48.0)
+        {
+            break;
+        }
+        if (positionZ < chunkWorldMinZ - 48.0)
+        {
+            break;
+        }
+        if (positionX > chunkWorldMaxX + 48.0)
+        {
+            break;
+        }
+        if (positionZ > chunkWorldMaxZ + 48.0)
+        {
+            break;
+        }
     }
 }
 
-void TerrainGenerator::carveCavesFromSourceChunk(Chunk &chunk, const ChunkPos &targetChunkPos, int sourceChunkX, int sourceChunkZ) {
+void TerrainGenerator::carveCavesFromSourceChunk(Chunk &chunk, const ChunkPos &targetChunkPos,
+                                                 int sourceChunkX, int sourceChunkZ)
+{
     Random caveRandom(seedCave(m_seed, sourceChunkX, sourceChunkZ));
 
     int caveSystemCount = 0;
-    if (getRandomIndex(caveRandom, 10) == 0) caveSystemCount = getRandomIndex(caveRandom, getRandomIndex(caveRandom, 6) + 1) + 1;
+    if (getRandomIndex(caveRandom, 10) == 0)
+    {
+        caveSystemCount = getRandomIndex(caveRandom, getRandomIndex(caveRandom, 6) + 1) + 1;
+    }
 
     bool allowEntrances = (sourceChunkX == targetChunkPos.x && sourceChunkZ == targetChunkPos.z);
 
-    for (int caveIndex = 0; caveIndex < caveSystemCount; caveIndex++) {
+    for (int caveIndex = 0; caveIndex < caveSystemCount; caveIndex++)
+    {
         int startLocalX = getRandomIndex(caveRandom, Chunk::SIZE_X);
         int startLocalZ = getRandomIndex(caveRandom, Chunk::SIZE_Z);
 
@@ -474,33 +613,59 @@ void TerrainGenerator::carveCavesFromSourceChunk(Chunk &chunk, const ChunkPos &t
 
         int minY = 8;
         int maxY = 64;
-        if (maxY > Chunk::SIZE_Y - 8) maxY = Chunk::SIZE_Y - 8;
-        if (minY > maxY) minY = maxY;
+        if (maxY > Chunk::SIZE_Y - 8)
+        {
+            maxY = Chunk::SIZE_Y - 8;
+        }
+        if (minY > maxY)
+        {
+            minY = maxY;
+        }
 
         int startY = caveRandom.nextInt(minY, maxY);
-        if (preferEntrance) {
+        if (preferEntrance)
+        {
             int minE = 28, maxE = 52;
-            if (maxE > Chunk::SIZE_Y - 8) maxE = Chunk::SIZE_Y - 8;
-            if (minE > maxE) minE = maxE;
+            if (maxE > Chunk::SIZE_Y - 8)
+            {
+                maxE = Chunk::SIZE_Y - 8;
+            }
+            if (minE > maxE)
+            {
+                minE = maxE;
+            }
 
-            startY = Math::clamp(startY, minE, maxE);
+            startY = Mth::clamp(startY, minE, maxE);
         }
 
         int tunnelCount = getRandomIndex(caveRandom, 4) + 1;
-        if (getRandomIndex(caveRandom, 4) == 0) tunnelCount += getRandomIndex(caveRandom, 6) + 2;
+        if (getRandomIndex(caveRandom, 4) == 0)
+            tunnelCount += getRandomIndex(caveRandom, 6) + 2;
 
-        for (int tunnelIndex = 0; tunnelIndex < tunnelCount; tunnelIndex++) {
+        for (int tunnelIndex = 0; tunnelIndex < tunnelCount; tunnelIndex++)
+        {
             float yaw   = caveRandom.nextFloat() * 6.283185307179586f;
             float pitch = (caveRandom.nextFloat() - 0.5f) * 0.35f;
 
             float radius = caveRandom.nextFloat() * 2.0f + caveRandom.nextFloat() * 1.5f;
-            if (preferEntrance) radius += 0.4f;
-            if (getRandomIndex(caveRandom, 12) == 0) radius *= caveRandom.nextFloat() * caveRandom.nextFloat() * 3.0f + 1.2f;
+            if (preferEntrance)
+            {
+                radius += 0.4f;
+            }
+
+            if (getRandomIndex(caveRandom, 12) == 0)
+            {
+                radius *= caveRandom.nextFloat() * caveRandom.nextFloat() * 3.0f + 1.2f;
+            }
 
             int stepCount = getRandomIndex(caveRandom, 120) + 60;
-            if (preferEntrance) stepCount += 30;
+            if (preferEntrance)
+            {
+                stepCount += 30;
+            }
 
-            carveCaveTunnel(chunk, caveRandom, targetChunkPos, startX, (double) startY, startZ, radius, yaw, pitch, stepCount);
+            carveCaveTunnel(chunk, caveRandom, targetChunkPos, startX, (double) startY, startZ,
+                            radius, yaw, pitch, stepCount);
         }
     }
 }

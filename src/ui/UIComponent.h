@@ -2,7 +2,8 @@
 
 #include <string>
 
-class UIComponent {
+class UIComponent
+{
 public:
     explicit UIComponent(const std::string &name);
     virtual ~UIComponent();

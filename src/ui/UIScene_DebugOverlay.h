@@ -2,7 +2,8 @@
 
 #include "UIScene.h"
 
-class UIScene_DebugOverlay : public UIScene {
+class UIScene_DebugOverlay : public UIScene
+{
 public:
     UIScene_DebugOverlay();
     ~UIScene_DebugOverlay() override;

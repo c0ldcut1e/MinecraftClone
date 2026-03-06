@@ -8,9 +8,11 @@
 #include "../../utils/math/Vec3.h"
 #include "ModelPartCubeDefinition.h"
 
-class ModelPart {
+class ModelPart
+{
 public:
-    struct Cube {
+    struct Cube
+    {
         Vec3 min;
         Vec3 max;
         ModelPartCubeDefinition::FaceUV uv;

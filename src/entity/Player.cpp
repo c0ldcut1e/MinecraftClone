@@ -1,26 +1,50 @@
 #include "Player.h"
 
-Player::Player(World *world, const std::wstring &name) : LivingEntity(world), m_moveForward(false), m_moveBackward(false), m_moveLeft(false), m_moveRight(false) { m_name = name; }
+Player::Player(World *world, const std::wstring &name)
+    : LivingEntity(world), m_moveForward(false), m_moveBackward(false), m_moveLeft(false),
+      m_moveRight(false)
+{
+    m_name = name;
+}
 
 uint64_t Player::getType() { return TYPE; }
 
-void Player::tick() {
+void Player::tick()
+{
     Vec3 forward = m_flying ? m_front : Vec3(m_front.x, 0.0, m_front.z);
     Vec3 right(m_right.x, 0.0, m_right.z);
 
     Vec3 direction(0.0, 0.0, 0.0);
 
-    if (m_moveForward) direction = direction.add(forward);
-    if (m_moveBackward) direction = direction.sub(forward);
-    if (m_moveLeft) direction = direction.sub(right);
-    if (m_moveRight) direction = direction.add(right);
+    if (m_moveForward)
+    {
+        direction = direction.add(forward);
+    }
+    if (m_moveBackward)
+    {
+        direction = direction.sub(forward);
+    }
+    if (m_moveLeft)
+    {
+        direction = direction.sub(right);
+    }
+    if (m_moveRight)
+    {
+        direction = direction.add(right);
+    }
 
-    if (direction.x != 0.0 || direction.z != 0.0) setMoveIntent(direction.normalize());
+    if (direction.x != 0.0 || direction.z != 0.0)
+    {
+        setMoveIntent(direction.normalize());
+    }
 
-    if (m_flying) {
+    if (m_flying)
+    {
         setNoGravity(true);
         setNoCollision(true);
-    } else {
+    }
+    else
+    {
         setNoGravity(false);
         setNoCollision(false);
     }

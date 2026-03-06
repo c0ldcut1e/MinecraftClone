@@ -4,12 +4,14 @@
 
 static TextureRepository s_textures;
 
-BlockRegistry *BlockRegistry::get() {
+BlockRegistry *BlockRegistry::get()
+{
     static BlockRegistry instance;
     return &instance;
 }
 
-void BlockRegistry::init() {
+void BlockRegistry::init()
+{
     BlockRegistry *registry = get();
 
     static Block s_air("air", false, "");

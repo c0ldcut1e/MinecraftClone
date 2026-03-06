@@ -1,6 +1,7 @@
 #include "Direction.h"
 
-Direction::Direction(const char *name, int dx, int dy, int dz) : name(name), dx(dx), dy(dy), dz(dz) {}
+Direction::Direction(const char *name, int dx, int dy, int dz) : name(name), dx(dx), dy(dy), dz(dz)
+{}
 
 Direction *Direction::NORTH = new Direction("north", 0, 0, -1);
 Direction *Direction::SOUTH = new Direction("south", 0, 0, 1);

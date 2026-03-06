@@ -10,7 +10,10 @@
 
 static std::atomic<uint64_t> s_meshId{1};
 
-ChunkMesh::ChunkMesh(Texture *texture) : m_texture(texture), m_vao(0), m_vbo(0), m_vertexCount(0), m_id(s_meshId.fetch_add(1, std::memory_order_relaxed)) {
+ChunkMesh::ChunkMesh(Texture *texture)
+    : m_texture(texture), m_vao(0), m_vbo(0), m_vertexCount(0),
+      m_id(s_meshId.fetch_add(1, std::memory_order_relaxed))
+{
     m_vao = RenderCommand::createVertexArray();
     m_vbo = RenderCommand::createBuffer();
 
@@ -21,18 +24,24 @@ ChunkMesh::ChunkMesh(Texture *texture) : m_texture(texture), m_vao(0), m_vbo(0),
     RenderCommand::setVertexAttribPointer(0, 3, GL_FLOAT, false, 8 * sizeof(float), 0);
 
     RenderCommand::enableVertexAttrib(1);
-    RenderCommand::setVertexAttribPointer(1, 2, GL_FLOAT, false, 8 * sizeof(float), 3 * sizeof(float));
+    RenderCommand::setVertexAttribPointer(1, 2, GL_FLOAT, false, 8 * sizeof(float),
+                                          3 * sizeof(float));
 
     RenderCommand::enableVertexAttrib(2);
-    RenderCommand::setVertexAttribPointer(2, 3, GL_FLOAT, false, 8 * sizeof(float), 5 * sizeof(float));
+    RenderCommand::setVertexAttribPointer(2, 3, GL_FLOAT, false, 8 * sizeof(float),
+                                          5 * sizeof(float));
 }
 
-ChunkMesh::~ChunkMesh() {
+ChunkMesh::~ChunkMesh()
+{
     RenderCommand::deleteBuffer(m_vbo);
     RenderCommand::deleteVertexArray(m_vao);
 }
 
-void ChunkMesh::upload(const float *vertices, uint32_t vertexCount, std::vector<uint16_t> &&rawLights, std::vector<float> &&shades, std::vector<uint32_t> &&tints) {
+void ChunkMesh::upload(const float *vertices, uint32_t vertexCount,
+                       std::vector<uint16_t> &&rawLights, std::vector<float> &&shades,
+                       std::vector<uint32_t> &&tints)
+{
     m_vertexCount = vertexCount / 8;
 
     {
@@ -46,12 +55,15 @@ void ChunkMesh::upload(const float *vertices, uint32_t vertexCount, std::vector<
 
     RenderCommand::bindVertexArray(m_vao);
     RenderCommand::bindArrayBuffer(m_vbo);
-    RenderCommand::uploadArrayBuffer(m_vertices.data(), (uint32_t) (m_vertices.size() * sizeof(float)), GL_DYNAMIC_DRAW);
+    RenderCommand::uploadArrayBuffer(
+            m_vertices.data(), (uint32_t) (m_vertices.size() * sizeof(float)), GL_DYNAMIC_DRAW);
 }
 
 uint64_t ChunkMesh::getId() const { return m_id; }
 
-void ChunkMesh::snapshotSky(std::vector<float> *vertices, std::vector<uint16_t> *rawLights, std::vector<float> *shades, std::vector<uint32_t> *tints) const {
+void ChunkMesh::snapshotSky(std::vector<float> *vertices, std::vector<uint16_t> *rawLights,
+                            std::vector<float> *shades, std::vector<uint32_t> *tints) const
+{
     std::lock_guard<std::mutex> lock(m_cpuMutex);
     *vertices  = m_vertices;
     *rawLights = m_rawLights;
@@ -59,7 +71,8 @@ void ChunkMesh::snapshotSky(std::vector<float> *vertices, std::vector<uint16_t> 
     *tints     = m_tints;
 }
 
-void ChunkMesh::applySky(std::vector<float> &&vertices) {
+void ChunkMesh::applySky(std::vector<float> &&vertices)
+{
     {
         std::lock_guard<std::mutex> lock(m_cpuMutex);
 
@@ -68,11 +81,16 @@ void ChunkMesh::applySky(std::vector<float> &&vertices) {
 
     RenderCommand::bindVertexArray(m_vao);
     RenderCommand::bindArrayBuffer(m_vbo);
-    RenderCommand::bufferSubData(GL_ARRAY_BUFFER, 0, (uint32_t) (m_vertices.size() * sizeof(float)), m_vertices.data());
+    RenderCommand::bufferSubData(GL_ARRAY_BUFFER, 0, (uint32_t) (m_vertices.size() * sizeof(float)),
+                                 m_vertices.data());
 }
 
-void ChunkMesh::render() const {
-    if (!m_texture) return;
+void ChunkMesh::render() const
+{
+    if (!m_texture)
+    {
+        return;
+    }
 
     RenderCommand::activeTexture(0);
     RenderCommand::bindTexture2D(m_texture->getId());

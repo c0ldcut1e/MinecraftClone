@@ -2,19 +2,23 @@
 
 #include "Event.h"
 
-class EventDispatcher {
+class EventDispatcher
+{
 public:
     explicit EventDispatcher(Event &event) : m_event(event) {}
 
     template<typename T>
-    T *as() {
+    T *as()
+    {
         return dynamic_cast<T *>(&m_event);
     }
 
     template<typename T, typename F>
-    bool dispatch(const F &func) {
+    bool dispatch(const F &func)
+    {
         T *event = dynamic_cast<T *>(&m_event);
-        if (event) {
+        if (event)
+        {
             func(*event);
             return true;
         }

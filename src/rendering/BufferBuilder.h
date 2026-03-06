@@ -7,11 +7,11 @@
 #include "Shader.h"
 #include "Texture.h"
 
-class ImmediateRenderer {
-public:
-    static ImmediateRenderer *getForScreen();
-    static ImmediateRenderer *getForWorld();
+class Tesselator;
 
+class BufferBuilder
+{
+public:
     void begin(uint32_t mode);
     void color(uint32_t argb);
 
@@ -27,10 +27,13 @@ public:
     void end();
 
 private:
-    ImmediateRenderer(uint16_t type);
-    ~ImmediateRenderer();
+    friend class Tesselator;
 
-    struct Vertex {
+    explicit BufferBuilder(uint16_t type);
+    ~BufferBuilder();
+
+    struct Vertex
+    {
         float x;
         float y;
         float z;

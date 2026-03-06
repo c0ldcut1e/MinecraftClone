@@ -9,8 +9,8 @@
 
 #include "../entity/EntityRendererRegistry.h"
 #include "../entity/TestEntity.h"
-#include "../rendering/ImmediateRenderer.h"
 #include "../rendering/RenderCommand.h"
+#include "../rendering/Tesselator.h"
 #include "../ui/UIScene_DebugOverlay.h"
 #include "../ui/UIScene_HUD.h"
 #include "../utils/Time.h"
@@ -29,10 +29,14 @@
 #include "events/WindowResizedEvent.h"
 
 Minecraft::Minecraft()
-    : m_width(1280), m_height(720), m_window(m_width, m_height, "game"), m_shutdown(false), m_fixedStepper(nullptr), m_camera(nullptr), m_world(nullptr), m_localPlayer(nullptr), m_worldRenderer(nullptr), m_chunkManager(nullptr), m_defaultFont(nullptr),
-      m_uiController(nullptr), m_farPlane(3000.0), m_projection(), m_mouseLocked(true) {
+    : m_width(1280), m_height(720), m_window(m_width, m_height, "game"), m_shutdown(false),
+      m_fixedStepper(nullptr), m_camera(nullptr), m_world(nullptr), m_localPlayer(nullptr),
+      m_worldRenderer(nullptr), m_chunkManager(nullptr), m_defaultFont(nullptr),
+      m_uiController(nullptr), m_farPlane(3000.0), m_projection(), m_mouseLocked(true)
+{
     Logger::logInfo("OpenGL initialized: %s", glGetString(GL_VERSION));
 
+    // m_window.disableVSync();
     initGlfwEventBridge(m_window.getHandle());
     Logger::logInfo("GLFW event bridge initialized");
 
@@ -44,33 +48,49 @@ Minecraft::Minecraft()
     m_chunkManager  = new ChunkManager(m_world);
 
     m_defaultFont = new Font("fonts/default.ttf", 24);
-    m_defaultFont->setScreenProjection(Mat4::orthographic(0.0, (double) m_width, (double) m_height, 0.0, -1.0, 1.0));
+    m_defaultFont->setScreenProjection(
+            Mat4::orthographic(0.0, (double) m_width, (double) m_height, 0.0, -1.0, 1.0));
 
     m_uiController = new UIController();
     m_uiController->pushScene(new UIScene_DebugOverlay());
     m_uiController->pushScene(new UIScene_HUD());
 
-    ImmediateRenderer::getForScreen()->setScreenProjection(Mat4::orthographic(0.0, (double) m_width, (double) m_height, 0.0, -1.0, 1.0));
+    Tesselator::getInstance()->getBuilderForScreen()->setScreenProjection(
+            Mat4::orthographic(0.0, (double) m_width, (double) m_height, 0.0, -1.0, 1.0));
 
     EventManager::addListener([this](Event &event) {
         EventDispatcher dispatcher(event);
 
         dispatcher.dispatch<KeyPressedEvent>([this](KeyPressedEvent &event) {
-            if (event.getKey() == GLFW_KEY_C) toggleMouseLock();
+            if (event.getKey() == GLFW_KEY_C)
+            {
+                toggleMouseLock();
+            }
             else if (m_localPlayer)
+            {
                 m_localPlayer->onKeyPressed(event.getKey());
+            }
         });
 
         dispatcher.dispatch<KeyReleasedEvent>([this](KeyReleasedEvent &event) {
-            if (m_localPlayer) m_localPlayer->onKeyReleased(event.getKey());
+            if (m_localPlayer)
+            {
+                m_localPlayer->onKeyReleased(event.getKey());
+            }
         });
 
         dispatcher.dispatch<MouseButtonPressedEvent>([this](MouseButtonPressedEvent &event) {
-            if (m_localPlayer) m_localPlayer->onMouseButtonPressed(event.getButton());
+            if (m_localPlayer)
+            {
+                m_localPlayer->onMouseButtonPressed(event.getButton());
+            }
         });
 
         dispatcher.dispatch<MouseMovedEvent>([this](MouseMovedEvent &event) {
-            if (m_mouseLocked && m_localPlayer) m_localPlayer->onMouseMoved(event.getDeltaX(), event.getDeltaY());
+            if (m_mouseLocked && m_localPlayer)
+            {
+                m_localPlayer->onMouseMoved(event.getDeltaX(), event.getDeltaY());
+            }
         });
 
         dispatcher.dispatch<WindowResizedEvent>([this](WindowResizedEvent &event) {
@@ -78,9 +98,14 @@ Minecraft::Minecraft()
             m_height = event.getHeight();
 
             RenderCommand::setViewport(0, 0, event.getWidth(), event.getHeight());
-            m_projection = Mat4::perspective(70.0 * (M_PI / 180.0), (double) event.getWidth() / (double) event.getHeight(), 0.1, m_farPlane);
-            ImmediateRenderer::getForScreen()->setScreenProjection(Mat4::orthographic(0.0, (double) event.getWidth(), (double) event.getHeight(), 0.0, -1.0, 1.0));
-            m_defaultFont->setScreenProjection(Mat4::orthographic(0.0, (double) event.getWidth(), (double) event.getHeight(), 0.0, -1.0, 1.0));
+            m_projection = Mat4::perspective(70.0 * (M_PI / 180.0),
+                                             (double) event.getWidth() / (double) event.getHeight(),
+                                             0.1, m_farPlane);
+            Tesselator::getInstance()->getBuilderForScreen()->setScreenProjection(
+                    Mat4::orthographic(0.0, (double) event.getWidth(), (double) event.getHeight(),
+                                       0.0, -1.0, 1.0));
+            m_defaultFont->setScreenProjection(Mat4::orthographic(
+                    0.0, (double) event.getWidth(), (double) event.getHeight(), 0.0, -1.0, 1.0));
             m_worldRenderer->onResize(event.getWidth(), event.getHeight());
         });
     });
@@ -89,7 +114,8 @@ Minecraft::Minecraft()
 
     initRegistries();
 
-    m_projection = Mat4::perspective(70.0 * (M_PI / 180.0), (double) m_width / (double) m_height, 0.1, m_farPlane);
+    m_projection = Mat4::perspective(70.0 * (M_PI / 180.0), (double) m_width / (double) m_height,
+                                     0.1, m_farPlane);
 
     int spawnX    = 0;
     int spawnZ    = 0;
@@ -107,21 +133,25 @@ Minecraft::Minecraft()
 
 Minecraft::~Minecraft() { shutdown(); }
 
-Minecraft *Minecraft::getInstance() {
+Minecraft *Minecraft::getInstance()
+{
     static Minecraft instance;
     return &instance;
 }
 
-void Minecraft::start() {
+void Minecraft::start()
+{
     Time::update();
 
-    while (!m_window.shouldClose()) {
+    while (!m_window.shouldClose())
+    {
         Time::update();
 
         EventManager::process();
 
         m_fixedStepper->addFrame(Time::getDelta());
-        while (m_fixedStepper->shouldStep()) {
+        while (m_fixedStepper->shouldStep())
+        {
             m_world->tick();
             m_fixedStepper->consumeStep();
         }
@@ -143,42 +173,53 @@ void Minecraft::start() {
     shutdown();
 }
 
-void Minecraft::shutdown() {
-    if (m_shutdown) return;
+void Minecraft::shutdown()
+{
+    if (m_shutdown)
+    {
+        return;
+    }
     m_shutdown = true;
 
-    if (m_chunkManager) {
+    if (m_chunkManager)
+    {
         m_chunkManager->stop();
         delete m_chunkManager;
         m_chunkManager = nullptr;
     }
 
-    if (m_worldRenderer) {
+    if (m_worldRenderer)
+    {
         delete m_worldRenderer;
         m_worldRenderer = nullptr;
     }
 
-    if (m_uiController) {
+    if (m_uiController)
+    {
         delete m_uiController;
         m_uiController = nullptr;
     }
 
-    if (m_world) {
+    if (m_world)
+    {
         delete m_world;
         m_world = nullptr;
     }
 
-    if (m_camera) {
+    if (m_camera)
+    {
         delete m_camera;
         m_camera = nullptr;
     }
 
-    if (m_defaultFont) {
+    if (m_defaultFont)
+    {
         delete m_defaultFont;
         m_defaultFont = nullptr;
     }
 
-    if (m_fixedStepper) {
+    if (m_fixedStepper)
+    {
         delete m_fixedStepper;
         m_fixedStepper = nullptr;
     }
@@ -202,7 +243,8 @@ ChunkManager *Minecraft::getChunkManager() const { return m_chunkManager; }
 
 Font *Minecraft::getDefaultFont() const { return m_defaultFont; }
 
-void Minecraft::renderFrame() {
+void Minecraft::renderFrame()
+{
     RenderCommand::clearColor();
 
     m_worldRenderer->render(m_fixedStepper->getPartialTicks());
@@ -210,14 +252,18 @@ void Minecraft::renderFrame() {
     m_uiController->render();
 }
 
-void Minecraft::toggleMouseLock() {
+void Minecraft::toggleMouseLock()
+{
     GLFWwindow *window = m_window.getHandle();
 
     m_mouseLocked = !m_mouseLocked;
-    if (m_mouseLocked) {
+    if (m_mouseLocked)
+    {
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
         resetGlfwMouseState();
-    } else {
+    }
+    else
+    {
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         resetGlfwMouseState();
     }
@@ -225,7 +271,8 @@ void Minecraft::toggleMouseLock() {
     Logger::logInfo("Mouse lock: %d", m_mouseLocked);
 }
 
-void Minecraft::initRegistries() {
+void Minecraft::initRegistries()
+{
     BlockRegistry::init();
     BiomeRegistry::init();
     ModelRegistry::init();

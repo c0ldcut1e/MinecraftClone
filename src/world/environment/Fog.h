@@ -2,7 +2,8 @@
 
 #include "../../utils/math/Vec3.h"
 
-class Fog {
+class Fog
+{
 public:
     Fog();
 

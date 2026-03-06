@@ -2,7 +2,8 @@
 
 #include <string>
 
-class Direction {
+class Direction
+{
 public:
     Direction(const char *name, int dx, int dy, int dz);
 

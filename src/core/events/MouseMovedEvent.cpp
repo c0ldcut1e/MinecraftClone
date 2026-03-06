@@ -1,6 +1,7 @@
 #include "MouseMovedEvent.h"
 
-MouseMovedEvent::MouseMovedEvent(double deltaX, double deltaY) : m_deltaX(deltaX), m_deltaY(deltaY) {}
+MouseMovedEvent::MouseMovedEvent(double deltaX, double deltaY) : m_deltaX(deltaX), m_deltaY(deltaY)
+{}
 
 double MouseMovedEvent::getDeltaX() const { return m_deltaX; }
 

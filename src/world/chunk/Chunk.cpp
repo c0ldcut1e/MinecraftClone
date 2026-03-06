@@ -2,31 +2,43 @@
 
 #include "../block/BlockRegistry.h"
 
-Chunk::Chunk(const ChunkPos &pos) : m_pos(pos), m_needsRelight(true) {
-    for (int i = 0; i < SIZE_X * SIZE_Y * SIZE_Z; i++) {
-        m_blocks[i]       = 0;
+Chunk::Chunk(const ChunkPos &pos) : m_pos(pos), m_needsRelight(true)
+{
+    for (int i = 0; i < SIZE_X * SIZE_Y * SIZE_Z; i++)
+    {
+        m_blocks[i]               = 0;
         m_blockAttachmentFaces[i] = 0;
-        m_blockLight[i].r = 0;
-        m_blockLight[i].g = 0;
-        m_blockLight[i].b = 0;
-        m_skyLight[i]     = 0;
+        m_blockLight[i].r         = 0;
+        m_blockLight[i].g         = 0;
+        m_blockLight[i].b         = 0;
+        m_skyLight[i]             = 0;
     }
 
-    for (int i = 0; i < SIZE_X * SIZE_Z; i++) m_columnBiomes[i] = nullptr;
+    for (int i = 0; i < SIZE_X * SIZE_Z; i++)
+    {
+        m_columnBiomes[i] = nullptr;
+    }
 }
 
 uint32_t Chunk::getBlockId(int x, int y, int z) const { return m_blocks[index(x, y, z)]; }
 
-void Chunk::setBlock(int x, int y, int z, Block *block) {
-    int i      = index(x, y, z);
-    uint32_t id = BlockRegistry::get()->idOf(block);
-    m_blocks[i] = id;
+void Chunk::setBlock(int x, int y, int z, Block *block)
+{
+    int i                     = index(x, y, z);
+    uint32_t id               = BlockRegistry::get()->idOf(block);
+    m_blocks[i]               = id;
     m_blockAttachmentFaces[i] = 0;
 }
 
-uint8_t Chunk::getBlockAttachmentFace(int x, int y, int z) const { return m_blockAttachmentFaces[index(x, y, z)]; }
+uint8_t Chunk::getBlockAttachmentFace(int x, int y, int z) const
+{
+    return m_blockAttachmentFaces[index(x, y, z)];
+}
 
-void Chunk::setBlockAttachmentFace(int x, int y, int z, uint8_t face) { m_blockAttachmentFaces[index(x, y, z)] = face; }
+void Chunk::setBlockAttachmentFace(int x, int y, int z, uint8_t face)
+{
+    m_blockAttachmentFaces[index(x, y, z)] = face;
+}
 
 const ChunkPos &Chunk::getPos() const { return m_pos; }
 
@@ -36,32 +48,37 @@ void Chunk::setBiomeAt(int x, int z, Biome *biome) { m_columnBiomes[columnIndex(
 
 Biome *Chunk::getBiomeAt(int x, int z) const { return m_columnBiomes[columnIndex(x, z)]; }
 
-void Chunk::getLight(int x, int y, int z, uint8_t *r, uint8_t *g, uint8_t *b) const {
-    uint8_t br, bg, bb;
+void Chunk::getLight(int x, int y, int z, uint8_t *r, uint8_t *g, uint8_t *b) const
+{
+    uint8_t br;
+    uint8_t bg;
+    uint8_t bb;
     getBlockLight(x, y, z, &br, &bg, &bb);
 
     uint8_t sky = getSkyLight(x, y, z);
-
-    *r = br > sky ? br : sky;
-    *g = bg > sky ? bg : sky;
-    *b = bb > sky ? bb : sky;
+    *r          = br > sky ? br : sky;
+    *g          = bg > sky ? bg : sky;
+    *b          = bb > sky ? bb : sky;
 }
 
-void Chunk::setLight(int x, int y, int z, uint8_t r, uint8_t g, uint8_t b) {
+void Chunk::setLight(int x, int y, int z, uint8_t r, uint8_t g, uint8_t b)
+{
     LightData &data = m_blockLight[index(x, y, z)];
     data.r          = r;
     data.g          = g;
     data.b          = b;
 }
 
-void Chunk::getBlockLight(int x, int y, int z, uint8_t *r, uint8_t *g, uint8_t *b) const {
+void Chunk::getBlockLight(int x, int y, int z, uint8_t *r, uint8_t *g, uint8_t *b) const
+{
     LightData data = m_blockLight[index(x, y, z)];
     *r             = data.r;
     *g             = data.g;
     *b             = data.b;
 }
 
-void Chunk::setBlockLight(int x, int y, int z, uint8_t r, uint8_t g, uint8_t b) {
+void Chunk::setBlockLight(int x, int y, int z, uint8_t r, uint8_t g, uint8_t b)
+{
     LightData &data = m_blockLight[index(x, y, z)];
     data.r          = r;
     data.g          = g;

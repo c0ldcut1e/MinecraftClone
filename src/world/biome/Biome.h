@@ -5,7 +5,8 @@
 
 class Block;
 
-class Biome {
+class Biome
+{
 public:
     explicit Biome(const std::string &name);
     virtual ~Biome();

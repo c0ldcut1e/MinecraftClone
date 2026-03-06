@@ -2,7 +2,8 @@
 
 #include "UIComponent.h"
 
-class UIComponent_DebugPanel : public UIComponent {
+class UIComponent_DebugPanel : public UIComponent
+{
 public:
     UIComponent_DebugPanel();
     ~UIComponent_DebugPanel() override;

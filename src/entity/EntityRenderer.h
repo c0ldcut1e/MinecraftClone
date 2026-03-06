@@ -2,7 +2,8 @@
 
 #include "Entity.h"
 
-class EntityRenderer {
+class EntityRenderer
+{
 public:
     EntityRenderer();
     virtual ~EntityRenderer() = default;

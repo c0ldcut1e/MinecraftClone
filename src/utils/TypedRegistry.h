@@ -6,13 +6,18 @@
 #include "../core/Logger.h"
 
 template<typename K, typename V>
-class TypedRegistry {
+class TypedRegistry
+{
 public:
     void registerValue(K key, V value) { m_values[key] = value; }
 
-    V getValue(K key) const {
+    V getValue(K key) const
+    {
         auto it = m_values.find(key);
-        if (it == m_values.end()) return nullptr;
+        if (it == m_values.end())
+        {
+            return nullptr;
+        }
         return it->second;
     }
 

@@ -1,6 +1,7 @@
 #pragma once
 
-class Vec3 {
+class Vec3
+{
 public:
     Vec3();
     Vec3(double all);

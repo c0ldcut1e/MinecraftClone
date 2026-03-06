@@ -13,14 +13,22 @@ static double s_lastX = 0.0;
 static double s_lastY = 0.0;
 static bool s_first   = true;
 
-static void keyCallback(GLFWwindow *, int key, int, int action, int) {
-    if (action == GLFW_PRESS) EventManager::push(new KeyPressedEvent(key));
+static void keyCallback(GLFWwindow *, int key, int, int action, int)
+{
+    if (action == GLFW_PRESS)
+    {
+        EventManager::push(new KeyPressedEvent(key));
+    }
     else if (action == GLFW_RELEASE)
+    {
         EventManager::push(new KeyReleasedEvent(key));
+    }
 }
 
-static void cursorCallback(GLFWwindow *, double x, double y) {
-    if (s_first) {
+static void cursorCallback(GLFWwindow *, double x, double y)
+{
+    if (s_first)
+    {
         s_lastX = x;
         s_lastY = y;
         s_first = false;
@@ -33,16 +41,26 @@ static void cursorCallback(GLFWwindow *, double x, double y) {
     s_lastY = y;
 }
 
-static void mouseButtonCallback(GLFWwindow *, int button, int action, int) {
-    if (action == GLFW_PRESS) EventManager::push(new MouseButtonPressedEvent(button));
+static void mouseButtonCallback(GLFWwindow *, int button, int action, int)
+{
+    if (action == GLFW_PRESS)
+    {
+        EventManager::push(new MouseButtonPressedEvent(button));
+    }
 }
 
-static void framebufferSizeCallback(GLFWwindow *, int width, int height) {
-    if (width <= 0 || height <= 0) return;
+static void framebufferSizeCallback(GLFWwindow *, int width, int height)
+{
+    if (width <= 0 || height <= 0)
+    {
+        return;
+    }
+
     EventManager::push(new WindowResizedEvent(width, height));
 }
 
-void initGlfwEventBridge(void *windowHandle) {
+void initGlfwEventBridge(void *windowHandle)
+{
     GLFWwindow *window = (GLFWwindow *) windowHandle;
 
     glfwSetKeyCallback(window, keyCallback);

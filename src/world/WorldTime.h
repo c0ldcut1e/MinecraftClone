@@ -4,7 +4,8 @@
 
 #include "../utils/math/Vec3.h"
 
-class WorldTime {
+class WorldTime
+{
 public:
     static constexpr int DAY_TICKS                = 24000;
     static constexpr int DEFAULT_DARK_START_TICK  = 10000;

@@ -6,16 +6,19 @@
 
 #include "../../rendering/Texture.h"
 
-class ChunkMesh {
+class ChunkMesh
+{
 public:
     ChunkMesh(Texture *texture);
     ~ChunkMesh();
 
-    void upload(const float *vertices, uint32_t vertexCount, std::vector<uint16_t> &&rawLights, std::vector<float> &&shades, std::vector<uint32_t> &&tints);
+    void upload(const float *vertices, uint32_t vertexCount, std::vector<uint16_t> &&rawLights,
+                std::vector<float> &&shades, std::vector<uint32_t> &&tints);
     void render() const;
 
     uint64_t getId() const;
-    void snapshotSky(std::vector<float> *vertices, std::vector<uint16_t> *rawLights, std::vector<float> *shades, std::vector<uint32_t> *tints) const;
+    void snapshotSky(std::vector<float> *vertices, std::vector<uint16_t> *rawLights,
+                     std::vector<float> *shades, std::vector<uint32_t> *tints) const;
     void applySky(std::vector<float> &&vertices);
 
 private:

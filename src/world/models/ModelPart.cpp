@@ -1,8 +1,12 @@
 #include "ModelPart.h"
 
-ModelPart::ModelPart() : m_name(""), m_pivot(0.0, 0.0, 0.0), m_rotation(0.0, 0.0, 0.0), m_position(0.0, 0.0, 0.0) {}
+ModelPart::ModelPart()
+    : m_name(""), m_pivot(0.0, 0.0, 0.0), m_rotation(0.0, 0.0, 0.0), m_position(0.0, 0.0, 0.0)
+{}
 
-ModelPart::ModelPart(const std::string &name) : m_name(name), m_pivot(0.0, 0.0, 0.0), m_rotation(0.0, 0.0, 0.0), m_position(0.0, 0.0, 0.0) {}
+ModelPart::ModelPart(const std::string &name)
+    : m_name(name), m_pivot(0.0, 0.0, 0.0), m_rotation(0.0, 0.0, 0.0), m_position(0.0, 0.0, 0.0)
+{}
 
 const std::string &ModelPart::getName() const { return m_name; }
 
@@ -22,16 +26,24 @@ void ModelPart::addCube(const Cube &cube) { m_cubes.push_back(cube); }
 
 const std::vector<ModelPart::Cube> &ModelPart::getCubes() const { return m_cubes; }
 
-ModelPart *ModelPart::addChild(std::unique_ptr<ModelPart> child) {
+ModelPart *ModelPart::addChild(std::unique_ptr<ModelPart> child)
+{
     ModelPart *ptr               = child.get();
     m_children[child->getName()] = std::move(child);
     return ptr;
 }
 
-ModelPart *ModelPart::getChild(const std::string &name) {
+ModelPart *ModelPart::getChild(const std::string &name)
+{
     auto it = m_children.find(name);
-    if (it == m_children.end()) return nullptr;
+    if (it == m_children.end())
+    {
+        return nullptr;
+    }
     return it->second.get();
 }
 
-const std::unordered_map<std::string, std::unique_ptr<ModelPart>> &ModelPart::getChildren() const { return m_children; }
+const std::unordered_map<std::string, std::unique_ptr<ModelPart>> &ModelPart::getChildren() const
+{
+    return m_children;
+}

@@ -4,7 +4,8 @@
 #include <string>
 #include <unordered_map>
 
-class Shader {
+class Shader
+{
 public:
     Shader(const char *vertexPath, const char *fragmentPath);
     ~Shader();

@@ -2,7 +2,8 @@
 
 #include "UIScene.h"
 
-class UIScene_HUD : public UIScene {
+class UIScene_HUD : public UIScene
+{
 public:
     UIScene_HUD();
     ~UIScene_HUD() override;

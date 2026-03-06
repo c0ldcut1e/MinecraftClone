@@ -7,12 +7,14 @@
 #include "TestEntity.h"
 #include "TestEntityRenderer.h"
 
-EntityRendererRegistry *EntityRendererRegistry::get() {
+EntityRendererRegistry *EntityRendererRegistry::get()
+{
     static EntityRendererRegistry instance;
     return &instance;
 }
 
-void EntityRendererRegistry::init() {
+void EntityRendererRegistry::init()
+{
     EntityRendererRegistry *registry = get();
     registry->registerValue(Entity::TYPE, new EntityRenderer());
     registry->registerValue(LivingEntity::TYPE, new EntityRenderer());

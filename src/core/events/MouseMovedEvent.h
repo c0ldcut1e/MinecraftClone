@@ -2,7 +2,8 @@
 
 #include "Event.h"
 
-class MouseMovedEvent : public Event {
+class MouseMovedEvent : public Event
+{
 public:
     MouseMovedEvent(double deltaX, double deltaY);
 

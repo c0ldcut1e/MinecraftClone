@@ -6,28 +6,44 @@
 #include <vector>
 
 template<typename T>
-class MappedRegistry {
+class MappedRegistry
+{
 public:
-    uint32_t registerValue(const std::string &name, T value) {
+    uint32_t registerValue(const std::string &name, T value)
+    {
         uint32_t id      = (uint32_t) m_values.size();
         m_nameToId[name] = id;
         m_values.push_back(value);
         return id;
     }
 
-    T byId(uint32_t id) {
-        if (id >= (uint32_t) m_values.size()) return (T) nullptr;
+    T byId(uint32_t id)
+    {
+        if (id >= (uint32_t) m_values.size())
+        {
+            return (T) nullptr;
+        }
         return m_values[id];
     }
 
-    T byId(uint32_t id) const {
-        if (id >= (uint32_t) m_values.size()) return (T) nullptr;
+    T byId(uint32_t id) const
+    {
+        if (id >= (uint32_t) m_values.size())
+        {
+            return (T) nullptr;
+        }
         return m_values[id];
     }
 
-    uint32_t idOf(T value) const {
+    uint32_t idOf(T value) const
+    {
         for (uint32_t i = 0; i < (uint32_t) m_values.size(); i++)
-            if (m_values[i] == value) return i;
+        {
+            if (m_values[i] == value)
+            {
+                return i;
+            }
+        }
         return 0;
     }
 

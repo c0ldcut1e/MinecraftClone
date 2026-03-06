@@ -2,7 +2,8 @@
 
 #include <string>
 
-class ModelPartSkin {
+class ModelPartSkin
+{
 public:
     ModelPartSkin();
     ModelPartSkin(const std::string &texturePath, int textureWidth, int textureHeight);

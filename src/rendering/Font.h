@@ -14,7 +14,8 @@ struct FT_FaceRec_;
 using FT_Library = FT_LibraryRec_ *;
 using FT_Face    = FT_FaceRec_ *;
 
-class Font {
+class Font
+{
 public:
     Font(const char *ttfPath, int pixelHeight);
     ~Font();
@@ -37,7 +38,8 @@ public:
     void worldRenderShadow(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb);
 
 private:
-    struct Glyph {
+    struct Glyph
+    {
         uint32_t texture = 0;
         int width        = 0;
         int height       = 0;

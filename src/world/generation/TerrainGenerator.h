@@ -8,7 +8,8 @@
 #include "../biome/Biome.h"
 #include "../chunk/Chunk.h"
 
-class TerrainGenerator {
+class TerrainGenerator
+{
 public:
     explicit TerrainGenerator(uint32_t seed);
 
@@ -27,9 +28,13 @@ private:
     Biome *getBiomeAt(int worldX, int worldZ) const;
     void buildDensityGrid(float *grid, int chunkX, int chunkZ);
 
-    void carveCavesFromSourceChunk(Chunk &chunk, const ChunkPos &targetChunkPos, int sourceChunkX, int sourceChunkZ);
-    void carveCaveTunnel(Chunk &chunk, Random &caveRandom, const ChunkPos &chunkPos, double startX, double startY, double startZ, float radius, float yaw, float pitch, int stepCount);
-    void carveEllipsoid(Chunk &chunk, const ChunkPos &chunkPos, double centerX, double centerY, double centerZ, double radiusHorizontal, double radiusVertical);
+    void carveCavesFromSourceChunk(Chunk &chunk, const ChunkPos &targetChunkPos, int sourceChunkX,
+                                   int sourceChunkZ);
+    void carveCaveTunnel(Chunk &chunk, Random &caveRandom, const ChunkPos &chunkPos, double startX,
+                         double startY, double startZ, float radius, float yaw, float pitch,
+                         int stepCount);
+    void carveEllipsoid(Chunk &chunk, const ChunkPos &chunkPos, double centerX, double centerY,
+                        double centerZ, double radiusHorizontal, double radiusVertical);
 
     static constexpr float BASE_SIZE    = 17.0;
     static constexpr float STRETCH_Y    = 12.0;

@@ -6,9 +6,11 @@
 #include "../World.h"
 #include "Chunk.h"
 
-class ChunkMesher {
+class ChunkMesher
+{
 public:
-    struct MeshBuildResult {
+    struct MeshBuildResult
+    {
         Texture *texture;
         std::vector<float> vertices;
         std::vector<uint16_t> rawLights;
@@ -16,5 +18,6 @@ public:
         std::vector<uint32_t> tints;
     };
 
-    static void buildMeshes(World *world, const Chunk *chunk, std::vector<MeshBuildResult> *outMeshes);
+    static void buildMeshes(World *world, const Chunk *chunk,
+                            std::vector<MeshBuildResult> *outMeshes);
 };

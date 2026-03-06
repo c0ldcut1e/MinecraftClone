@@ -5,7 +5,8 @@
 
 #include "../utils/math/Mat4.h"
 
-class GlStateManager {
+class GlStateManager
+{
 public:
     static void setClearColor(float r, float g, float b, float a);
     static void clearColor();

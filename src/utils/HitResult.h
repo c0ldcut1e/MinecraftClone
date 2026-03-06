@@ -5,9 +5,15 @@
 #include "../world/block/BlockPos.h"
 #include "Direction.h"
 
-class HitResult {
+class HitResult
+{
 public:
-    enum Type { MISS, BLOCK, ENTITY };
+    enum Type
+    {
+        MISS,
+        BLOCK,
+        ENTITY
+    };
 
     HitResult();
     ~HitResult();

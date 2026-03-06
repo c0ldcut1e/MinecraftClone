@@ -8,7 +8,8 @@
 #include "ModelPart.h"
 #include "ModelPartSkin.h"
 
-class Model {
+class Model
+{
 public:
     Model();
     explicit Model(const ModelDefinition &definition);

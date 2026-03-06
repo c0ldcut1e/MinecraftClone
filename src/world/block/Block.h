@@ -12,15 +12,18 @@
 class Chunk;
 class World;
 
-class Block {
+class Block
+{
 public:
-    enum class RenderShape : uint8_t {
+    enum class RenderShape : uint8_t
+    {
         CUBE  = 0,
         CROSS = 1,
         TORCH = 2,
     };
 
-    struct UVRect {
+    struct UVRect
+    {
         float u0;
         float v0;
         float u1;
@@ -46,7 +49,8 @@ public:
     bool hasTintColormap(Direction *direction) const;
     const std::string &getTintColormap(Direction *direction) const;
 
-    uint32_t resolveTint(Direction *direction, World *world, const Chunk *chunk, int localX, int localZ) const;
+    uint32_t resolveTint(Direction *direction, World *world, const Chunk *chunk, int localX,
+                         int localZ) const;
 
     const std::string &getName() const;
 

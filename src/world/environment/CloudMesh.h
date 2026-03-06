@@ -3,7 +3,8 @@
 #include <cstdint>
 #include <vector>
 
-class CloudMesh {
+class CloudMesh
+{
 public:
     CloudMesh();
     ~CloudMesh();

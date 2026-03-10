@@ -29,68 +29,67 @@ void main() {
     vec3 dirView = normalize(v.xyz / max(v.w, 1e-6));
     vec3 dir = normalize(mat3(u_invViewRot) * dirView);
 
-    float up01 = sat(dir.y * 0.5 + 0.5);
-    float horizon01 = 1.0 - up01;
+    float td = u_celestialAngle;
+    float br = sat(u_dayFactor);
 
-    float ang = u_celestialAngle * 6.28318530718;
-    float angCos = cos(ang);
-
-    float dayFactor = sat(u_dayFactor);
-    float night = 1.0 - dayFactor;
-
-    float xSafe = 0.06;
-    vec3 dayLow  = sample0(u_skyColormap, vec2(xSafe, 0.18));
-    vec3 dayHigh = sample0(u_skyColormap, vec2(xSafe, 0.88));
-    float dayGrad = pow(smoothstep(0.0, 1.0, up01), 0.85);
-    vec3 daySky = mix(dayLow, dayHigh, dayGrad);
-
-    vec3 nightHorizon = vec3(0.02, 0.02, 0.04);
-    vec3 nightZenith  = vec3(0.0, 0.0, 0.0);
-    float nightGrad = pow(sat(up01), 1.65);
-    vec3 nightSky = mix(nightHorizon, nightZenith, nightGrad);
-
-    vec3 sky = mix(nightSky, daySky, dayFactor);
+    float skyLutX = sat(u_skyLut.x);
+    vec3 sky = sample0(u_skyColormap, vec2(skyLutX, 0.5)) * br;
 
     vec3 fogCol = sample0(u_fogColormap, u_fogLut);
+    fogCol.r *= br * 0.94 + 0.06;
+    fogCol.g *= br * 0.94 + 0.06;
+    fogCol.b *= br * 0.91 + 0.09;
 
-    float haze = smoothstep(0.0, 0.75, horizon01);
-    haze = pow(haze, 0.4);
+    float up01 = sat(dir.y * 0.5 + 0.5);
+    float horizon01 = 1.0 - up01;
+    float haze = pow(smoothstep(0.0, 1.0, horizon01), 0.45);
     if (u_fogEnabled == 0) haze = 0.0;
-
-    float hazeScale = dayFactor * 0.95 + 0.05;
-    haze *= hazeScale;
-
     vec3 col = mix(sky, fogCol, haze);
 
-    float edge = sat(1.0 - up01);
+    float span = 0.4;
+    float tt = cos(td * 6.28318530718) - 0.0;
+    float aa = 0.0;
+    float sunriseMix = 0.0;
+    if (tt >= -span && tt <= span) {
+        aa = (tt / span) * 0.5 + 0.5;
+        sunriseMix = 1.0 - ((1.0 - sin(aa * 3.14159265359)) * 0.99);
+        sunriseMix *= sunriseMix;
+    }
+
+    vec3 sunriseDark = sample0(u_skyColormap, vec2(skyLutX, sat(u_skyLut.y)));
+    vec3 sunriseBright = sample0(u_skyColormap, vec2(skyLutX, sat(u_skyLut.z)));
+    vec3 sunriseMapCol = mix(sunriseDark, sunriseBright, aa);
+    vec3 sunriseBetaCol = vec3(aa * 0.3 + 0.7, aa * aa * 0.7 + 0.2, aa * aa * 0.0 + 0.2);
+    vec3 sunriseCol = mix(sunriseMapCol, sunriseBetaCol, 0.85);
+
     float sunFacing = sat(dot(normalize(u_sunDir), dir));
-    float duskWindow = 1.0 - abs(angCos) / 0.4;
-    duskWindow = sat(duskWindow);
+    float dirXZLen = length(dir.xz);
+    float horizonSide = sin(td * 6.28318530718) < 0.0 ? -1.0 : 1.0;
+    float azimuthFacing = 0.0;
+    if (dirXZLen > 0.0001) {
+        azimuthFacing = sat(dot(dir.xz / dirXZLen, vec2(horizonSide, 0.0)));
+    }
+    float sunriseBand = exp(-pow((dir.y - 0.015) / 0.14, 2.0));
+    float sunriseMask = sunriseMix * sunriseBand * pow(azimuthFacing, 1.9);
+    float sunriseCore = sunriseMix * pow(sunFacing, 3.8) * exp(-pow((dir.y - u_sunDir.y) / 0.24, 2.0));
+    col = mix(col, sunriseCol, sat(sunriseMask * 1.35 + sunriseCore * 0.5));
 
-    float duskShape = duskWindow * duskWindow;
-    float duskMask = pow(edge, 2.6) * pow(sunFacing, 2.0);
-    float dusk = duskShape * duskMask;
+    float skyLuma = (sky.r + sky.r + sky.b + sky.g + sky.g + sky.g) / 6.0;
+    float ringBrightness = 0.6 + skyLuma * 0.4;
+    float ringBand = exp(-pow(abs(dir.y) / 0.055, 2.0));
+    float ringHeight = smoothstep(-0.08, 0.35, dir.y);
+    float ringAzimuth = mix(0.15, 1.0, pow(azimuthFacing, 2.0));
+    float ringAlpha = ringBand * ringHeight * ringAzimuth;
+    if (u_fogEnabled == 0) ringAlpha *= 0.35;
+    vec3 ringCol = mix(vec3(ringBrightness), sunriseCol, sunriseMix * ringAzimuth);
+    col += ringCol * ringAlpha * 0.10;
 
-    vec3 duskCol = vec3(0.80, 0.25, 0.05);
-    col = mix(col, duskCol, dusk);
-
+    vec3 lowerCol = vec3(sky.r * 0.2 + 0.04, sky.g * 0.2 + 0.04, sky.b * 0.6 + 0.1);
     float below01 = sat(-dir.y);
-    float voidBlend = smoothstep(0.12, 0.20, below01);
-    float deep = smoothstep(0.55, 1.0, below01);
-
-    vec3 dayVoidShallow = vec3(0.39, 0.43, 0.78);
-    vec3 dayVoidDeep    = vec3(0.02, 0.02, 0.08);
-    vec3 dayVoidCol = mix(dayVoidShallow, dayVoidDeep, deep);
-
-    vec3 nightVoidShallow = vec3(0.01, 0.01, 0.02);
-    vec3 nightVoidDeep    = vec3(0.00, 0.00, 0.00);
-    vec3 nightVoidCol = mix(nightVoidShallow, nightVoidDeep, deep);
-
-    vec3 voidCol = mix(nightVoidCol, dayVoidCol, dayFactor);
-
-    float voidStrength = mix(0.35, 1.0, dayFactor);
-
-    col = mix(col, voidCol, voidBlend * voidStrength);
+    float voidBlend = smoothstep(0.04, 0.18, below01);
+    float deep = smoothstep(0.50, 1.0, below01);
+    col = mix(col, lowerCol, voidBlend);
+    col = mix(col, vec3(0.0), deep);
 
     FragColor = vec4(col, 1.0);
 }

@@ -23,6 +23,11 @@ public:
     void update(const Vec3 &playerPosition);
 
     void drainFinished(std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> *out, int max);
+    size_t getPendingCount() const;
+    size_t getActiveCount() const;
+    size_t getMaxActiveCount() const;
+    size_t getFinishedCount() const;
+    size_t getThreadCount() const;
 
 private:
     struct GenerationTask
@@ -63,7 +68,7 @@ private:
 
     BinaryHeap<GenerationTask, TaskCompare> m_pending;
     std::unordered_set<ChunkPos, ChunkPosHash> m_pendingSet;
-    std::mutex m_pendingMutex;
+    mutable std::mutex m_pendingMutex;
 
     std::unordered_set<ChunkPos, ChunkPosHash> m_activeSet;
     std::mutex m_activeMutex;
@@ -72,7 +77,7 @@ private:
     int m_maxActive;
 
     std::deque<std::pair<ChunkPos, std::unique_ptr<Chunk>>> m_finished;
-    std::mutex m_finishedMutex;
+    mutable std::mutex m_finishedMutex;
 
     ChunkPos m_lastPlayerChunk;
 

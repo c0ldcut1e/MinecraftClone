@@ -10,7 +10,7 @@ public:
     static constexpr int DAY_TICKS                = 24000;
     static constexpr int DEFAULT_DARK_START_TICK  = 10000;
     static constexpr int DEFAULT_DARK_PEAK_TICK   = 15000;
-    static constexpr uint64_t DEFAULT_START_TICKS = 0;
+    static constexpr uint64_t DEFAULT_START_TICKS = 5000;
 
     WorldTime();
 

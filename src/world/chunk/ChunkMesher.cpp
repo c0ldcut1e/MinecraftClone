@@ -19,6 +19,110 @@ struct MaskCell
     bool filled;
 };
 
+struct VertexLight
+{
+    uint16_t rawLight;
+    float r;
+    float g;
+    float b;
+};
+
+static constexpr int BUILD_CACHE_X    = Chunk::SIZE_X + 2;
+static constexpr int BUILD_CACHE_Y    = Chunk::SIZE_Y + 2;
+static constexpr int BUILD_CACHE_Z    = Chunk::SIZE_Z + 2;
+static constexpr int BUILD_CACHE_SIZE = BUILD_CACHE_X * BUILD_CACHE_Y * BUILD_CACHE_Z;
+
+struct BuildData
+{
+    BuildData(World *world, const Chunk *chunk, bool cacheRawLight)
+        : world(world), chunk(chunk), chunkPos(chunk->getPos()),
+          baseX(chunkPos.x * Chunk::SIZE_X), baseY(chunkPos.y * Chunk::SIZE_Y),
+          baseZ(chunkPos.z * Chunk::SIZE_Z), cacheRawLight(cacheRawLight), rawLights(),
+          rawLoaded(), solids()
+    {
+        for (int dz = -1; dz <= 1; dz++)
+        {
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    if (dx == 0 && dy == 0 && dz == 0)
+                    {
+                        chunks[dx + 1][dy + 1][dz + 1] = chunk;
+                    }
+                    else
+                    {
+                        chunks[dx + 1][dy + 1][dz + 1] =
+                                world->getChunk(ChunkPos(chunkPos.x + dx, chunkPos.y + dy,
+                                                         chunkPos.z + dz));
+                    }
+                }
+            }
+        }
+
+        solids.resize(BUILD_CACHE_SIZE);
+
+        if (cacheRawLight)
+        {
+            rawLights.resize(BUILD_CACHE_SIZE);
+            rawLoaded.resize(BUILD_CACHE_SIZE);
+        }
+    }
+
+    World *world;
+    const Chunk *chunk;
+    ChunkPos chunkPos;
+    int baseX;
+    int baseY;
+    int baseZ;
+    bool cacheRawLight;
+    const Chunk *chunks[3][3][3];
+    std::vector<uint16_t> rawLights;
+    std::vector<uint8_t> rawLoaded;
+    std::vector<uint8_t> solids;
+};
+
+static constexpr float AO_STRENGTH_MIN   = 0.0f;
+static constexpr float AO_STRENGTH_MAX   = 1.0f;
+static constexpr float AO_STRENGTH_VALUE = 0.2f;
+
+static constexpr uint8_t TINT_MODE_MASKED = 255;
+
+static inline uint8_t getTintMode(uint32_t tintPacked)
+{
+    return (uint8_t) ((tintPacked >> 24) & 0xFF);
+}
+
+static inline uint32_t packTintMode(uint32_t tintRgb, uint8_t mode)
+{
+    return (tintRgb & 0x00FFFFFFu) | ((uint32_t) mode << 24);
+}
+
+static inline float getAoStrength()
+{
+    float t = Mth::clampf(AO_STRENGTH_VALUE, 0.0f, 1.0f);
+    return AO_STRENGTH_MIN + (AO_STRENGTH_MAX - AO_STRENGTH_MIN) * t;
+}
+
+static inline float getDirectionalShade(Direction *direction)
+{
+    float occlusion = 0.0f;
+    if (direction == Direction::NORTH || direction == Direction::SOUTH)
+    {
+        occlusion = 0.2f;
+    }
+    else if (direction == Direction::EAST || direction == Direction::WEST)
+    {
+        occlusion = 0.4f;
+    }
+    else if (direction == Direction::DOWN)
+    {
+        occlusion = 0.5f;
+    }
+
+    return 1.0f - occlusion * getAoStrength();
+}
+
 static inline uint16_t packLight(uint8_t r, uint8_t g, uint8_t b)
 {
     if (r > 15)
@@ -88,19 +192,7 @@ static inline void shade(Direction *direction, uint8_t lr, uint8_t lg, uint8_t l
         baseB = minLight;
     }
 
-    float _shade = 1.0f;
-    if (direction == Direction::NORTH || direction == Direction::SOUTH)
-    {
-        _shade = 0.8f;
-    }
-    else if (direction == Direction::EAST || direction == Direction::WEST)
-    {
-        _shade = 0.6f;
-    }
-    else if (direction == Direction::DOWN)
-    {
-        _shade = 0.5f;
-    }
+    float _shade = getDirectionalShade(direction);
 
     *r = baseR * _shade;
     *g = baseG * _shade;
@@ -158,6 +250,147 @@ static inline void addFace4UV(std::vector<float> &vertices, std::vector<uint16_t
     push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, r, g, b, rawLight, shadeMul, tint);
     push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, r, g, b, rawLight, shadeMul, tint);
     push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, r, g, b, rawLight, shadeMul, tint);
+}
+
+static inline void addFaceSmooth(std::vector<float> &vertices, std::vector<uint16_t> &rawLights,
+                                 std::vector<float> &shades, std::vector<uint32_t> &tints, float x1,
+                                 float y1, float z1, float x2, float y2, float z2, float x3,
+                                 float y3, float z3, float x4, float y4, float z4, float uMax,
+                                 float vMax, const VertexLight &l1, const VertexLight &l2,
+                                 const VertexLight &l3, const VertexLight &l4, float shadeMul,
+                                 uint32_t tint)
+{
+    float b1    = l1.r + l1.g + l1.b;
+    float b2    = l2.r + l2.g + l2.b;
+    float b3    = l3.r + l3.g + l3.b;
+    float b4    = l4.r + l4.g + l4.b;
+    bool diag13 = fabsf(b1 - b3) <= fabsf(b2 - b4);
+
+    if (diag13)
+    {
+        push(vertices, rawLights, shades, tints, x1, y1, z1, uMax, vMax, l1.r, l1.g, l1.b,
+             l1.rawLight, shadeMul, tint);
+        push(vertices, rawLights, shades, tints, x2, y2, z2, uMax, 0.0f, l2.r, l2.g, l2.b,
+             l2.rawLight, shadeMul, tint);
+        push(vertices, rawLights, shades, tints, x3, y3, z3, 0.0f, 0.0f, l3.r, l3.g, l3.b,
+             l3.rawLight, shadeMul, tint);
+
+        push(vertices, rawLights, shades, tints, x3, y3, z3, 0.0f, 0.0f, l3.r, l3.g, l3.b,
+             l3.rawLight, shadeMul, tint);
+        push(vertices, rawLights, shades, tints, x4, y4, z4, 0.0f, vMax, l4.r, l4.g, l4.b,
+             l4.rawLight, shadeMul, tint);
+        push(vertices, rawLights, shades, tints, x1, y1, z1, uMax, vMax, l1.r, l1.g, l1.b,
+             l1.rawLight, shadeMul, tint);
+        return;
+    }
+
+    push(vertices, rawLights, shades, tints, x2, y2, z2, uMax, 0.0f, l2.r, l2.g, l2.b, l2.rawLight,
+         shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x3, y3, z3, 0.0f, 0.0f, l3.r, l3.g, l3.b, l3.rawLight,
+         shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x4, y4, z4, 0.0f, vMax, l4.r, l4.g, l4.b, l4.rawLight,
+         shadeMul, tint);
+
+    push(vertices, rawLights, shades, tints, x4, y4, z4, 0.0f, vMax, l4.r, l4.g, l4.b, l4.rawLight,
+         shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x1, y1, z1, uMax, vMax, l1.r, l1.g, l1.b, l1.rawLight,
+         shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x2, y2, z2, uMax, 0.0f, l2.r, l2.g, l2.b, l2.rawLight,
+         shadeMul, tint);
+}
+
+static inline void addFaceUVSmooth(std::vector<float> &vertices, std::vector<uint16_t> &rawLights,
+                                   std::vector<float> &shades, std::vector<uint32_t> &tints,
+                                   float x1, float y1, float z1, float x2, float y2, float z2,
+                                   float x3, float y3, float z3, float x4, float y4, float z4,
+                                   float u0, float v0, float u1, float v1, const VertexLight &l1,
+                                   const VertexLight &l2, const VertexLight &l3,
+                                   const VertexLight &l4, float shadeMul, uint32_t tint)
+{
+    float b1    = l1.r + l1.g + l1.b;
+    float b2    = l2.r + l2.g + l2.b;
+    float b3    = l3.r + l3.g + l3.b;
+    float b4    = l4.r + l4.g + l4.b;
+    bool diag13 = fabsf(b1 - b3) <= fabsf(b2 - b4);
+
+    if (diag13)
+    {
+        push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b, l1.rawLight,
+             shadeMul, tint);
+        push(vertices, rawLights, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b, l2.rawLight,
+             shadeMul, tint);
+        push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b, l3.rawLight,
+             shadeMul, tint);
+
+        push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b, l3.rawLight,
+             shadeMul, tint);
+        push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b, l4.rawLight,
+             shadeMul, tint);
+        push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b, l1.rawLight,
+             shadeMul, tint);
+        return;
+    }
+
+    push(vertices, rawLights, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b, l2.rawLight,
+         shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b, l3.rawLight,
+         shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b, l4.rawLight,
+         shadeMul, tint);
+
+    push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b, l4.rawLight,
+         shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b, l1.rawLight,
+         shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b, l2.rawLight,
+         shadeMul, tint);
+}
+
+static inline void addFace4UVSmooth(std::vector<float> &vertices, std::vector<uint16_t> &rawLights,
+                                    std::vector<float> &shades, std::vector<uint32_t> &tints,
+                                    float x1, float y1, float z1, float x2, float y2, float z2,
+                                    float x3, float y3, float z3, float x4, float y4, float z4,
+                                    float u0, float v0, float u1, float v1, const VertexLight &l1,
+                                    const VertexLight &l2, const VertexLight &l3,
+                                    const VertexLight &l4, float shadeMul, uint32_t tint)
+{
+    float b1    = l1.r + l1.g + l1.b;
+    float b2    = l2.r + l2.g + l2.b;
+    float b3    = l3.r + l3.g + l3.b;
+    float b4    = l4.r + l4.g + l4.b;
+    bool diag13 = fabsf(b1 - b3) <= fabsf(b2 - b4);
+
+    if (diag13)
+    {
+        push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b, l1.rawLight,
+             shadeMul, tint);
+        push(vertices, rawLights, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b, l2.rawLight,
+             shadeMul, tint);
+        push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b, l3.rawLight,
+             shadeMul, tint);
+
+        push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b, l3.rawLight,
+             shadeMul, tint);
+        push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b, l4.rawLight,
+             shadeMul, tint);
+        push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b, l1.rawLight,
+             shadeMul, tint);
+        return;
+    }
+
+    push(vertices, rawLights, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b, l2.rawLight,
+         shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b, l3.rawLight,
+         shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b, l4.rawLight,
+         shadeMul, tint);
+
+    push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b, l4.rawLight,
+         shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b, l1.rawLight,
+         shadeMul, tint);
+    push(vertices, rawLights, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b, l2.rawLight,
+         shadeMul, tint);
 }
 
 static inline Direction *decodeDirection(uint8_t id)
@@ -220,6 +453,192 @@ static inline uint16_t sampleLightKey(World *world, const Chunk *chunk, int wx, 
 
     uint8_t sky = _chunk->getSkyLight(lx, ly, lz);
     return packRawLight(br, bg, bb, sky);
+}
+
+static inline bool sampleLightKeyIfLoaded(World *world, const Chunk *chunk, int wx, int wy, int wz,
+                                          uint16_t *outRawLight)
+{
+    WorldSource source(world);
+
+    int cx = Mth::floorDiv(wx, Chunk::SIZE_X);
+    int cy = Mth::floorDiv(wy, Chunk::SIZE_Y);
+    int cz = Mth::floorDiv(wz, Chunk::SIZE_Z);
+
+    int lx = Mth::floorMod(wx, Chunk::SIZE_X);
+    int ly = Mth::floorMod(wy, Chunk::SIZE_Y);
+    int lz = Mth::floorMod(wz, Chunk::SIZE_Z);
+
+    const Chunk *_chunk = chunk;
+    ChunkPos chunkPos   = chunk->getPos();
+
+    if (cx != chunkPos.x || cy != chunkPos.y || cz != chunkPos.z)
+    {
+        _chunk = source.getChunk(ChunkPos(cx, cy, cz));
+        if (!_chunk)
+        {
+            return false;
+        }
+    }
+
+    uint8_t br;
+    uint8_t bg;
+    uint8_t bb;
+    _chunk->getBlockLight(lx, ly, lz, &br, &bg, &bb);
+
+    uint8_t sky  = _chunk->getSkyLight(lx, ly, lz);
+    *outRawLight = packRawLight(br, bg, bb, sky);
+    return true;
+}
+
+static inline void decodeFaceBasis(Direction *direction, int *nx, int *ny, int *nz, int *ux,
+                                   int *uy, int *uz, int *vx, int *vy, int *vz)
+{
+    *nx = direction->dx;
+    *ny = direction->dy;
+    *nz = direction->dz;
+
+    if (direction == Direction::UP || direction == Direction::DOWN)
+    {
+        *ux = 1;
+        *uy = 0;
+        *uz = 0;
+        *vx = 0;
+        *vy = 0;
+        *vz = 1;
+        return;
+    }
+    if (direction == Direction::NORTH || direction == Direction::SOUTH)
+    {
+        *ux = 1;
+        *uy = 0;
+        *uz = 0;
+        *vx = 0;
+        *vy = 1;
+        *vz = 0;
+        return;
+    }
+
+    *ux = 0;
+    *uy = 1;
+    *uz = 0;
+    *vx = 0;
+    *vy = 0;
+    *vz = 1;
+}
+
+static inline float getShadeMul(Direction *direction) { return getDirectionalShade(direction); }
+
+static inline void colorFromRawLight(World *world, Direction *direction, uint16_t rawLight,
+                                     uint32_t tint, float *r, float *g, float *b)
+{
+    uint8_t br    = (uint8_t) (rawLight & 15);
+    uint8_t bg    = (uint8_t) ((rawLight >> 4) & 15);
+    uint8_t bb    = (uint8_t) ((rawLight >> 8) & 15);
+    uint8_t sky   = (uint8_t) ((rawLight >> 12) & 15);
+    uint8_t clamp = world->getSkyLightClamp();
+    if (sky > clamp)
+    {
+        sky = clamp;
+    }
+
+    uint8_t lr = br > sky ? br : sky;
+    uint8_t lg = bg > sky ? bg : sky;
+    uint8_t lb = bb > sky ? bb : sky;
+
+    shade(direction, lr, lg, lb, r, g, b);
+
+    *r *= (float) ((tint >> 16) & 0xFF) / 255.0f;
+    *g *= (float) ((tint >> 8) & 0xFF) / 255.0f;
+    *b *= (float) (tint & 0xFF) / 255.0f;
+}
+
+static inline uint16_t sampleSmoothRawLight(World *world, const Chunk *chunk, Direction *direction,
+                                            uint16_t fallbackRawLight, float x, float y, float z)
+{
+    int nx;
+    int ny;
+    int nz;
+    int ux;
+    int uy;
+    int uz;
+    int vx;
+    int vy;
+    int vz;
+    decodeFaceBasis(direction, &nx, &ny, &nz, &ux, &uy, &uz, &vx, &vy, &vz);
+
+    int bx = (int) floorf(x - 0.5f * (float) nx);
+    int by = (int) floorf(y - 0.5f * (float) ny);
+    int bz = (int) floorf(z - 0.5f * (float) nz);
+
+    float cx = (float) bx + 0.5f;
+    float cy = (float) by + 0.5f;
+    float cz = (float) bz + 0.5f;
+
+    float du = 0.0f;
+    if (ux != 0)
+        du = x - cx;
+    else if (uy != 0)
+        du = y - cy;
+    else
+        du = z - cz;
+
+    float dv = 0.0f;
+    if (vx != 0)
+        dv = x - cx;
+    else if (vy != 0)
+        dv = y - cy;
+    else
+        dv = z - cz;
+
+    int su = du >= 0.0f ? 1 : -1;
+    int sv = dv >= 0.0f ? 1 : -1;
+
+    uint16_t s0 = fallbackRawLight;
+    uint16_t s1 = fallbackRawLight;
+    uint16_t s2 = fallbackRawLight;
+    uint16_t s3 = fallbackRawLight;
+
+    (void) sampleLightKeyIfLoaded(world, chunk, bx + nx, by + ny, bz + nz, &s0);
+    (void) sampleLightKeyIfLoaded(world, chunk, bx + nx + su * ux, by + ny + su * uy,
+                                  bz + nz + su * uz, &s1);
+    (void) sampleLightKeyIfLoaded(world, chunk, bx + nx + sv * vx, by + ny + sv * vy,
+                                  bz + nz + sv * vz, &s2);
+    (void) sampleLightKeyIfLoaded(world, chunk, bx + nx + su * ux + sv * vx,
+                                  by + ny + su * uy + sv * vy, bz + nz + su * uz + sv * vz, &s3);
+
+    float br = (float) ((s0 & 15) + (s1 & 15) + (s2 & 15) + (s3 & 15)) * 0.25f;
+    float bg = (float) (((s0 >> 4) & 15) + ((s1 >> 4) & 15) + ((s2 >> 4) & 15) + ((s3 >> 4) & 15)) *
+               0.25f;
+    float bb = (float) (((s0 >> 8) & 15) + ((s1 >> 8) & 15) + ((s2 >> 8) & 15) + ((s3 >> 8) & 15)) *
+               0.25f;
+    float sk = (float) (((s0 >> 12) & 15) + ((s1 >> 12) & 15) + ((s2 >> 12) & 15) +
+                        ((s3 >> 12) & 15)) *
+               0.25f;
+
+    uint8_t outBr = (uint8_t) Mth::clampf(br + 0.5f, 0.0f, 15.0f);
+    uint8_t outBg = (uint8_t) Mth::clampf(bg + 0.5f, 0.0f, 15.0f);
+    uint8_t outBb = (uint8_t) Mth::clampf(bb + 0.5f, 0.0f, 15.0f);
+    uint8_t outSk = (uint8_t) Mth::clampf(sk + 0.5f, 0.0f, 15.0f);
+    return packRawLight(outBr, outBg, outBb, outSk);
+}
+
+static inline VertexLight buildVertexLight(World *world, const Chunk *chunk, Direction *direction,
+                                           bool smoothLighting, uint16_t rawLightFallback,
+                                           uint32_t tint, float x, float y, float z)
+{
+    VertexLight light;
+    light.rawLight = rawLightFallback;
+
+    if (smoothLighting)
+    {
+        light.rawLight = sampleSmoothRawLight(world, chunk, direction, rawLightFallback, x, y, z);
+    }
+
+    uint32_t tintForLighting = getTintMode(tint) == TINT_MODE_MASKED ? 0xFFFFFFu : tint;
+    colorFromRawLight(world, direction, light.rawLight, tintForLighting, &light.r, &light.g,
+                      &light.b);
+
+    return light;
 }
 
 static inline Block *getBlockWorld(World *world, const Chunk *chunk, const BlockPos &pos)
@@ -285,7 +704,288 @@ static inline bool isSolidWorld(World *world, const Chunk *chunk, const BlockPos
     return block->isSolid();
 }
 
-static void greedy2D(std::vector<MaskCell> &mask, int width, int height, auto &&emitRect)
+static inline int getBuildCacheIndex(int x, int y, int z)
+{
+    return (x + 1) + BUILD_CACHE_X * ((y + 1) + BUILD_CACHE_Y * (z + 1));
+}
+
+static inline bool isInsideBuildCache(int x, int y, int z)
+{
+    return x >= -1 && x <= Chunk::SIZE_X && y >= -1 && y <= Chunk::SIZE_Y && z >= -1 &&
+           z <= Chunk::SIZE_Z;
+}
+
+static inline const Chunk *getBuildChunk2D(const BuildData &buildData, int *x, int *z)
+{
+    int ox = 0;
+    int oz = 0;
+
+    if (*x < 0)
+    {
+        ox = -1;
+        *x += Chunk::SIZE_X;
+    }
+    else if (*x >= Chunk::SIZE_X)
+    {
+        ox = 1;
+        *x -= Chunk::SIZE_X;
+    }
+
+    if (*z < 0)
+    {
+        oz = -1;
+        *z += Chunk::SIZE_Z;
+    }
+    else if (*z >= Chunk::SIZE_Z)
+    {
+        oz = 1;
+        *z -= Chunk::SIZE_Z;
+    }
+
+    return buildData.chunks[ox + 1][1][oz + 1];
+}
+
+static inline const Chunk *getBuildChunk3D(const BuildData &buildData, int *x, int *y, int *z)
+{
+    int ox = 0;
+    int oy = 0;
+    int oz = 0;
+
+    if (*x < 0)
+    {
+        ox = -1;
+        *x += Chunk::SIZE_X;
+    }
+    else if (*x >= Chunk::SIZE_X)
+    {
+        ox = 1;
+        *x -= Chunk::SIZE_X;
+    }
+
+    if (*y < 0)
+    {
+        oy = -1;
+        *y += Chunk::SIZE_Y;
+    }
+    else if (*y >= Chunk::SIZE_Y)
+    {
+        oy = 1;
+        *y -= Chunk::SIZE_Y;
+    }
+
+    if (*z < 0)
+    {
+        oz = -1;
+        *z += Chunk::SIZE_Z;
+    }
+    else if (*z >= Chunk::SIZE_Z)
+    {
+        oz = 1;
+        *z -= Chunk::SIZE_Z;
+    }
+
+    return buildData.chunks[ox + 1][oy + 1][oz + 1];
+}
+
+static void buildSolidCache(BuildData *buildData)
+{
+    for (int z = -1; z <= Chunk::SIZE_Z; z++)
+    {
+        for (int y = -1; y <= Chunk::SIZE_Y; y++)
+        {
+            for (int x = -1; x <= Chunk::SIZE_X; x++)
+            {
+                uint8_t solid = 0;
+
+                if (y >= 0 && y < Chunk::SIZE_Y)
+                {
+                    int lx = x;
+                    int lz = z;
+                    const Chunk *chunk = getBuildChunk2D(*buildData, &lx, &lz);
+
+                    solid = 1;
+                    if (chunk)
+                    {
+                        Block *block = Block::byId(chunk->getBlockId(lx, y, lz));
+                        solid        = block ? (block->isSolid() ? 1 : 0) : 1;
+                    }
+                }
+
+                buildData->solids[(size_t) getBuildCacheIndex(x, y, z)] = solid;
+            }
+        }
+    }
+}
+
+static void buildRawLightCache(BuildData *buildData)
+{
+    for (int z = -1; z <= Chunk::SIZE_Z; z++)
+    {
+        for (int y = -1; y <= Chunk::SIZE_Y; y++)
+        {
+            for (int x = -1; x <= Chunk::SIZE_X; x++)
+            {
+                int lx = x;
+                int ly = y;
+                int lz = z;
+
+                size_t index = (size_t) getBuildCacheIndex(x, y, z);
+                const Chunk *chunk = getBuildChunk3D(*buildData, &lx, &ly, &lz);
+                if (!chunk)
+                {
+                    buildData->rawLights[index] = packRawLight(0, 0, 0, 0);
+                    buildData->rawLoaded[index] = 0;
+                    continue;
+                }
+
+                uint8_t br;
+                uint8_t bg;
+                uint8_t bb;
+                chunk->getBlockLight(lx, ly, lz, &br, &bg, &bb);
+
+                buildData->rawLights[index] = packRawLight(br, bg, bb, chunk->getSkyLight(lx, ly, lz));
+                buildData->rawLoaded[index] = 1;
+            }
+        }
+    }
+}
+
+static inline uint16_t sampleLightKey(const BuildData &buildData, int wx, int wy, int wz)
+{
+    if (buildData.cacheRawLight)
+    {
+        int x = wx - buildData.baseX;
+        int y = wy - buildData.baseY;
+        int z = wz - buildData.baseZ;
+        if (isInsideBuildCache(x, y, z))
+        {
+            return buildData.rawLights[(size_t) getBuildCacheIndex(x, y, z)];
+        }
+    }
+
+    return sampleLightKey(buildData.world, buildData.chunk, wx, wy, wz);
+}
+
+static inline bool sampleLightKeyIfLoaded(const BuildData &buildData, int wx, int wy, int wz,
+                                          uint16_t *outRawLight)
+{
+    if (buildData.cacheRawLight)
+    {
+        int x = wx - buildData.baseX;
+        int y = wy - buildData.baseY;
+        int z = wz - buildData.baseZ;
+        if (isInsideBuildCache(x, y, z))
+        {
+            size_t index = (size_t) getBuildCacheIndex(x, y, z);
+            *outRawLight = buildData.rawLights[index];
+            return buildData.rawLoaded[index] != 0;
+        }
+    }
+
+    return sampleLightKeyIfLoaded(buildData.world, buildData.chunk, wx, wy, wz, outRawLight);
+}
+
+static inline uint16_t sampleSmoothRawLight(const BuildData &buildData, Direction *direction,
+                                            uint16_t fallbackRawLight, float x, float y, float z)
+{
+    int nx;
+    int ny;
+    int nz;
+    int ux;
+    int uy;
+    int uz;
+    int vx;
+    int vy;
+    int vz;
+    decodeFaceBasis(direction, &nx, &ny, &nz, &ux, &uy, &uz, &vx, &vy, &vz);
+
+    int bx = (int) floorf(x - 0.5f * (float) nx);
+    int by = (int) floorf(y - 0.5f * (float) ny);
+    int bz = (int) floorf(z - 0.5f * (float) nz);
+
+    float cx = (float) bx + 0.5f;
+    float cy = (float) by + 0.5f;
+    float cz = (float) bz + 0.5f;
+
+    float du = 0.0f;
+    if (ux != 0)
+        du = x - cx;
+    else if (uy != 0)
+        du = y - cy;
+    else
+        du = z - cz;
+
+    float dv = 0.0f;
+    if (vx != 0)
+        dv = x - cx;
+    else if (vy != 0)
+        dv = y - cy;
+    else
+        dv = z - cz;
+
+    int su = du >= 0.0f ? 1 : -1;
+    int sv = dv >= 0.0f ? 1 : -1;
+
+    uint16_t s0 = fallbackRawLight;
+    uint16_t s1 = fallbackRawLight;
+    uint16_t s2 = fallbackRawLight;
+    uint16_t s3 = fallbackRawLight;
+
+    (void) sampleLightKeyIfLoaded(buildData, bx + nx, by + ny, bz + nz, &s0);
+    (void) sampleLightKeyIfLoaded(buildData, bx + nx + su * ux, by + ny + su * uy,
+                                  bz + nz + su * uz, &s1);
+    (void) sampleLightKeyIfLoaded(buildData, bx + nx + sv * vx, by + ny + sv * vy,
+                                  bz + nz + sv * vz, &s2);
+    (void) sampleLightKeyIfLoaded(buildData, bx + nx + su * ux + sv * vx,
+                                  by + ny + su * uy + sv * vy, bz + nz + su * uz + sv * vz, &s3);
+
+    float br = (float) ((s0 & 15) + (s1 & 15) + (s2 & 15) + (s3 & 15)) * 0.25f;
+    float bg = (float) (((s0 >> 4) & 15) + ((s1 >> 4) & 15) + ((s2 >> 4) & 15) + ((s3 >> 4) & 15)) *
+               0.25f;
+    float bb = (float) (((s0 >> 8) & 15) + ((s1 >> 8) & 15) + ((s2 >> 8) & 15) + ((s3 >> 8) & 15)) *
+               0.25f;
+    float sk = (float) (((s0 >> 12) & 15) + ((s1 >> 12) & 15) + ((s2 >> 12) & 15) +
+                        ((s3 >> 12) & 15)) *
+               0.25f;
+
+    uint8_t outBr = (uint8_t) Mth::clampf(br + 0.5f, 0.0f, 15.0f);
+    uint8_t outBg = (uint8_t) Mth::clampf(bg + 0.5f, 0.0f, 15.0f);
+    uint8_t outBb = (uint8_t) Mth::clampf(bb + 0.5f, 0.0f, 15.0f);
+    uint8_t outSk = (uint8_t) Mth::clampf(sk + 0.5f, 0.0f, 15.0f);
+    return packRawLight(outBr, outBg, outBb, outSk);
+}
+
+static inline VertexLight buildVertexLight(const BuildData &buildData, Direction *direction,
+                                           bool smoothLighting, uint16_t rawLightFallback,
+                                           uint32_t tint, float x, float y, float z)
+{
+    VertexLight light;
+    light.rawLight = rawLightFallback;
+
+    if (smoothLighting)
+    {
+        light.rawLight = sampleSmoothRawLight(buildData, direction, rawLightFallback, x, y, z);
+    }
+
+    uint32_t tintForLighting = getTintMode(tint) == TINT_MODE_MASKED ? 0xFFFFFFu : tint;
+    colorFromRawLight(buildData.world, direction, light.rawLight, tintForLighting, &light.r,
+                      &light.g, &light.b);
+
+    return light;
+}
+
+static inline bool isSolidWorld(const BuildData &buildData, const BlockPos &pos)
+{
+    if (isInsideBuildCache(pos.x, pos.y, pos.z))
+    {
+        return buildData.solids[(size_t) getBuildCacheIndex(pos.x, pos.y, pos.z)] != 0;
+    }
+
+    return isSolidWorld(buildData.world, buildData.chunk, pos);
+}
+
+static void greedy2D(std::vector<MaskCell> &mask, int width, int height, bool useGreedy,
+                     auto &&emitRect)
 {
     for (int j = 0; j < height; j++)
     {
@@ -299,7 +999,7 @@ static void greedy2D(std::vector<MaskCell> &mask, int width, int height, auto &&
                 }
 
                 int rWidth = 1;
-                while (i + rWidth < width)
+                while (useGreedy && i + rWidth < width)
                 {
                     MaskCell _cell = mask[(size_t) (i + rWidth) + (size_t) width * (size_t) j];
                     if (!_cell.filled || _cell.texture != cell.texture ||
@@ -313,7 +1013,7 @@ static void greedy2D(std::vector<MaskCell> &mask, int width, int height, auto &&
 
                 int rHeight = 1;
                 bool ok     = true;
-                while (j + rHeight < height && ok)
+                while (useGreedy && j + rHeight < height && ok)
                 {
                     for (int k = 0; k < rWidth; k++)
                     {
@@ -354,8 +1054,8 @@ static void greedy2D(std::vector<MaskCell> &mask, int width, int height, auto &&
     }
 }
 
-void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
-                              std::vector<MeshBuildResult> *outMeshes)
+void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLighting,
+                              bool grassSideOverlay, std::vector<MeshBuildResult> *outMeshes)
 {
     struct Bucket
     {
@@ -366,11 +1066,18 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
     };
 
     std::unordered_map<Texture *, Bucket> buckets;
+    BuildData buildData(world, chunk, smoothLighting);
+    buildSolidCache(&buildData);
+    if (smoothLighting)
+    {
+        buildRawLightCache(&buildData);
+    }
 
     ChunkPos chunkPos = chunk->getPos();
     int baseX         = chunkPos.x * Chunk::SIZE_X;
     int baseY         = chunkPos.y * Chunk::SIZE_Y;
     int baseZ         = chunkPos.z * Chunk::SIZE_Z;
+    Block *grassBlock = Block::byName("grass");
 
     auto emit = [&](Direction *direction, Texture *texture, uint16_t rawLight, uint32_t tint,
                     float x1, float y1, float z1, float x2, float y2, float z2) {
@@ -397,72 +1104,139 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
             vMax = fabsf(z2 - z1);
         }
 
-        float shadeMul = 1.0f;
-        if (direction == Direction::NORTH || direction == Direction::SOUTH)
-        {
-            shadeMul = 0.8f;
-        }
-        else if (direction == Direction::EAST || direction == Direction::WEST)
-        {
-            shadeMul = 0.6f;
-        }
-        else if (direction == Direction::DOWN)
-        {
-            shadeMul = 0.5f;
-        }
-
-        uint8_t br  = (uint8_t) (rawLight & 15);
-        uint8_t bg  = (uint8_t) ((rawLight >> 4) & 15);
-        uint8_t bb  = (uint8_t) ((rawLight >> 8) & 15);
-        uint8_t sky = (uint8_t) ((rawLight >> 12) & 15);
-
-        uint8_t clamp = world->getSkyLightClamp();
-        if (sky > clamp)
-            sky = clamp;
-
-        uint8_t lr = br > sky ? br : sky;
-        uint8_t lg = bg > sky ? bg : sky;
-        uint8_t lb = bb > sky ? bb : sky;
-
-        float r;
-        float g;
-        float b;
-        shade(direction, lr, lg, lb, &r, &g, &b);
-
-        r *= (float) ((tint >> 16) & 0xFF) / 255.0f;
-        g *= (float) ((tint >> 8) & 0xFF) / 255.0f;
-        b *= (float) (tint & 0xFF) / 255.0f;
+        float shadeMul = getShadeMul(direction);
 
         Bucket &bucket = buckets[texture];
+        if (!smoothLighting)
+        {
+            float r;
+            float g;
+            float b;
+            uint32_t tintForLighting = getTintMode(tint) == TINT_MODE_MASKED ? 0xFFFFFFu : tint;
+            colorFromRawLight(world, direction, rawLight, tintForLighting, &r, &g, &b);
+
+            if (direction == Direction::NORTH)
+            {
+                addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1,
+                        x1, y2, z1, x2, y2, z1, x2, y1, z1, uMax, vMax, r, g, b, rawLight, shadeMul,
+                        tint);
+            }
+            else if (direction == Direction::SOUTH)
+            {
+                addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1, z2,
+                        x2, y2, z2, x1, y2, z2, x1, y1, z2, uMax, vMax, r, g, b, rawLight, shadeMul,
+                        tint);
+            }
+            else if (direction == Direction::UP)
+            {
+                addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y2, z1,
+                        x1, y2, z2, x2, y2, z2, x2, y2, z1, uMax, vMax, r, g, b, rawLight, shadeMul,
+                        tint);
+            }
+            else if (direction == Direction::DOWN)
+            {
+                addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z2,
+                        x1, y1, z1, x2, y1, z1, x2, y1, z2, uMax, vMax, r, g, b, rawLight, shadeMul,
+                        tint);
+            }
+            else if (direction == Direction::EAST)
+            {
+                addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1, z1,
+                        x2, y2, z1, x2, y2, z2, x2, y1, z2, uMax, vMax, r, g, b, rawLight, shadeMul,
+                        tint);
+            }
+            else if (direction == Direction::WEST)
+            {
+                addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z2,
+                        x1, y2, z2, x1, y2, z1, x1, y1, z1, uMax, vMax, r, g, b, rawLight, shadeMul,
+                        tint);
+            }
+            return;
+        }
+
         if (direction == Direction::NORTH)
         {
-            addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1, x1,
-                    y2, z1, x2, y2, z1, x2, y1, z1, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
+            VertexLight l1 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z1);
+            VertexLight l2 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z1);
+            VertexLight l3 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z1);
+            VertexLight l4 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z1);
+            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
+                          z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, uMax, vMax, l1, l2, l3, l4,
+                          shadeMul, tint);
         }
         else if (direction == Direction::SOUTH)
         {
-            addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1, z2, x2,
-                    y2, z2, x1, y2, z2, x1, y1, z2, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
+            VertexLight l1 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z2);
+            VertexLight l2 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z2);
+            VertexLight l3 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z2);
+            VertexLight l4 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z2);
+            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1,
+                          z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, uMax, vMax, l1, l2, l3, l4,
+                          shadeMul, tint);
         }
         else if (direction == Direction::UP)
         {
-            addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y2, z1, x1,
-                    y2, z2, x2, y2, z2, x2, y2, z1, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
+            VertexLight l1 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z1);
+            VertexLight l2 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z2);
+            VertexLight l3 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z2);
+            VertexLight l4 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z1);
+            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y2,
+                          z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, uMax, vMax, l1, l2, l3, l4,
+                          shadeMul, tint);
         }
         else if (direction == Direction::DOWN)
         {
-            addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z2, x1,
-                    y1, z1, x2, y1, z1, x2, y1, z2, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
+            VertexLight l1 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z2);
+            VertexLight l2 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z1);
+            VertexLight l3 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z1);
+            VertexLight l4 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z2);
+            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
+                          z2, x1, y1, z1, x2, y1, z1, x2, y1, z2, uMax, vMax, l1, l2, l3, l4,
+                          shadeMul, tint);
         }
         else if (direction == Direction::EAST)
         {
-            addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1, z1, x2,
-                    y2, z1, x2, y2, z2, x2, y1, z2, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
+            VertexLight l1 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z1);
+            VertexLight l2 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z1);
+            VertexLight l3 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z2);
+            VertexLight l4 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z2);
+            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1,
+                          z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, uMax, vMax, l1, l2, l3, l4,
+                          shadeMul, tint);
         }
         else if (direction == Direction::WEST)
         {
-            addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z2, x1,
-                    y2, z2, x1, y2, z1, x1, y1, z1, uMax, vMax, r, g, b, rawLight, shadeMul, tint);
+            VertexLight l1 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z2);
+            VertexLight l2 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z2);
+            VertexLight l3 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z1);
+            VertexLight l4 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z1);
+            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
+                          z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, uMax, vMax, l1, l2, l3, l4,
+                          shadeMul, tint);
         }
     };
 
@@ -474,48 +1248,40 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
             return;
         }
 
-        float shadeMul = 1.0f;
-        if (direction == Direction::NORTH || direction == Direction::SOUTH)
-        {
-            shadeMul = 0.8f;
-        }
-        else if (direction == Direction::EAST || direction == Direction::WEST)
-        {
-            shadeMul = 0.6f;
-        }
-        else if (direction == Direction::DOWN)
-        {
-            shadeMul = 0.5f;
-        }
-
-        uint8_t br    = (uint8_t) (rawLight & 15);
-        uint8_t bg    = (uint8_t) ((rawLight >> 4) & 15);
-        uint8_t bb    = (uint8_t) ((rawLight >> 8) & 15);
-        uint8_t sky   = (uint8_t) ((rawLight >> 12) & 15);
-        uint8_t clamp = world->getSkyLightClamp();
-        if (sky > clamp)
-        {
-            sky = clamp;
-        }
-
-        uint8_t lr = br > sky ? br : sky;
-        uint8_t lg = bg > sky ? bg : sky;
-        uint8_t lb = bb > sky ? bb : sky;
-
-        float r;
-        float g;
-        float b;
-        shade(direction, lr, lg, lb, &r, &g, &b);
-
-        r *= (float) ((tint >> 16) & 0xFF) / 255.0f;
-        g *= (float) ((tint >> 8) & 0xFF) / 255.0f;
-        b *= (float) (tint & 0xFF) / 255.0f;
+        float shadeMul = getShadeMul(direction);
 
         Bucket &bucket = buckets[texture];
-        addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1, x2, y2,
-                z2, x3, y3, z3, x4, y4, z4, 1.0f, 1.0f, r, g, b, rawLight, shadeMul, tint);
-        addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x4, y4, z4, x3, y3,
-                z3, x2, y2, z2, x1, y1, z1, 1.0f, 1.0f, r, g, b, rawLight, shadeMul, tint);
+        bool useSmooth = false;
+        if (!useSmooth)
+        {
+            float r;
+            float g;
+            float b;
+            uint32_t tintForLighting = getTintMode(tint) == TINT_MODE_MASKED ? 0xFFFFFFu : tint;
+            colorFromRawLight(world, direction, rawLight, tintForLighting, &r, &g, &b);
+
+            addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1, x2,
+                    y2, z2, x3, y3, z3, x4, y4, z4, 1.0f, 1.0f, r, g, b, rawLight, shadeMul, tint);
+            addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x4, y4, z4, x3,
+                    y3, z3, x2, y2, z2, x1, y1, z1, 1.0f, 1.0f, r, g, b, rawLight, shadeMul, tint);
+            return;
+        }
+
+        VertexLight l1 =
+                buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z1);
+        VertexLight l2 =
+                buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z2);
+        VertexLight l3 =
+                buildVertexLight(buildData, direction, true, rawLight, tint, x3, y3, z3);
+        VertexLight l4 =
+                buildVertexLight(buildData, direction, true, rawLight, tint, x4, y4, z4);
+
+        addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1,
+                      x2, y2, z2, x3, y3, z3, x4, y4, z4, 1.0f, 1.0f, l1, l2, l3, l4, shadeMul,
+                      tint);
+        addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x4, y4, z4,
+                      x3, y3, z3, x2, y2, z2, x1, y1, z1, 1.0f, 1.0f, l4, l3, l2, l1, shadeMul,
+                      tint);
     };
 
     auto emitFixedUV = [&](Direction *direction, Texture *texture, uint16_t rawLight, uint32_t tint,
@@ -526,80 +1292,139 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
             return;
         }
 
-        float shadeMul = 1.0f;
-        if (direction == Direction::NORTH || direction == Direction::SOUTH)
-        {
-            shadeMul = 0.8f;
-        }
-        else if (direction == Direction::EAST || direction == Direction::WEST)
-        {
-            shadeMul = 0.6f;
-        }
-        else if (direction == Direction::DOWN)
-        {
-            shadeMul = 0.5f;
-        }
-
-        uint8_t br    = (uint8_t) (rawLight & 15);
-        uint8_t bg    = (uint8_t) ((rawLight >> 4) & 15);
-        uint8_t bb    = (uint8_t) ((rawLight >> 8) & 15);
-        uint8_t sky   = (uint8_t) ((rawLight >> 12) & 15);
-        uint8_t clamp = world->getSkyLightClamp();
-        if (sky > clamp)
-        {
-            sky = clamp;
-        }
-
-        uint8_t lr = br > sky ? br : sky;
-        uint8_t lg = bg > sky ? bg : sky;
-        uint8_t lb = bb > sky ? bb : sky;
-
-        float r;
-        float g;
-        float b;
-        shade(direction, lr, lg, lb, &r, &g, &b);
-
-        r *= (float) ((tint >> 16) & 0xFF) / 255.0f;
-        g *= (float) ((tint >> 8) & 0xFF) / 255.0f;
-        b *= (float) (tint & 0xFF) / 255.0f;
+        float shadeMul = getShadeMul(direction);
 
         Bucket &bucket = buckets[texture];
+        if (!smoothLighting)
+        {
+            float r;
+            float g;
+            float b;
+            uint32_t tintForLighting = getTintMode(tint) == TINT_MODE_MASKED ? 0xFFFFFFu : tint;
+            colorFromRawLight(world, direction, rawLight, tintForLighting, &r, &g, &b);
+
+            if (direction == Direction::NORTH)
+            {
+                addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
+                          z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, u0, v0, u1, v1, r, g, b, rawLight,
+                          shadeMul, tint);
+            }
+            else if (direction == Direction::SOUTH)
+            {
+                addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1,
+                          z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, u0, v0, u1, v1, r, g, b, rawLight,
+                          shadeMul, tint);
+            }
+            else if (direction == Direction::UP)
+            {
+                addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y2,
+                          z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, u0, v0, u1, v1, r, g, b, rawLight,
+                          shadeMul, tint);
+            }
+            else if (direction == Direction::DOWN)
+            {
+                addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
+                          z2, x1, y1, z1, x2, y1, z1, x2, y1, z2, u0, v0, u1, v1, r, g, b, rawLight,
+                          shadeMul, tint);
+            }
+            else if (direction == Direction::EAST)
+            {
+                addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1,
+                          z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, u0, v0, u1, v1, r, g, b, rawLight,
+                          shadeMul, tint);
+            }
+            else if (direction == Direction::WEST)
+            {
+                addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
+                          z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, u0, v0, u1, v1, r, g, b, rawLight,
+                          shadeMul, tint);
+            }
+            return;
+        }
 
         if (direction == Direction::NORTH)
         {
-            addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1,
-                      x1, y2, z1, x2, y2, z1, x2, y1, z1, u0, v0, u1, v1, r, g, b, rawLight,
-                      shadeMul, tint);
+            VertexLight l1 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z1);
+            VertexLight l2 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z1);
+            VertexLight l3 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z1);
+            VertexLight l4 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z1);
+            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
+                            z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, u0, v0, u1, v1, l1, l2, l3, l4,
+                            shadeMul, tint);
         }
         else if (direction == Direction::SOUTH)
         {
-            addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1, z2,
-                      x2, y2, z2, x1, y2, z2, x1, y1, z2, u0, v0, u1, v1, r, g, b, rawLight,
-                      shadeMul, tint);
+            VertexLight l1 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z2);
+            VertexLight l2 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z2);
+            VertexLight l3 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z2);
+            VertexLight l4 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z2);
+            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1,
+                            z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, u0, v0, u1, v1, l1, l2, l3, l4,
+                            shadeMul, tint);
         }
         else if (direction == Direction::UP)
         {
-            addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y2, z1,
-                      x1, y2, z2, x2, y2, z2, x2, y2, z1, u0, v0, u1, v1, r, g, b, rawLight,
-                      shadeMul, tint);
+            VertexLight l1 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z1);
+            VertexLight l2 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z2);
+            VertexLight l3 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z2);
+            VertexLight l4 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z1);
+            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y2,
+                            z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, u0, v0, u1, v1, l1, l2, l3, l4,
+                            shadeMul, tint);
         }
         else if (direction == Direction::DOWN)
         {
-            addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z2,
-                      x1, y1, z1, x2, y1, z1, x2, y1, z2, u0, v0, u1, v1, r, g, b, rawLight,
-                      shadeMul, tint);
+            VertexLight l1 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z2);
+            VertexLight l2 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z1);
+            VertexLight l3 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z1);
+            VertexLight l4 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z2);
+            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
+                            z2, x1, y1, z1, x2, y1, z1, x2, y1, z2, u0, v0, u1, v1, l1, l2, l3, l4,
+                            shadeMul, tint);
         }
         else if (direction == Direction::EAST)
         {
-            addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1, z1,
-                      x2, y2, z1, x2, y2, z2, x2, y1, z2, u0, v0, u1, v1, r, g, b, rawLight,
-                      shadeMul, tint);
+            VertexLight l1 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z1);
+            VertexLight l2 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z1);
+            VertexLight l3 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z2);
+            VertexLight l4 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z2);
+            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1,
+                            z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, u0, v0, u1, v1, l1, l2, l3, l4,
+                            shadeMul, tint);
         }
         else if (direction == Direction::WEST)
         {
-            addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z2,
-                      x1, y2, z2, x1, y2, z1, x1, y1, z1, u0, v0, u1, v1, r, g, b, rawLight,
-                      shadeMul, tint);
+            VertexLight l1 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z2);
+            VertexLight l2 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z2);
+            VertexLight l3 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z1);
+            VertexLight l4 =
+                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z1);
+            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
+                            z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, u0, v0, u1, v1, l1, l2, l3, l4,
+                            shadeMul, tint);
         }
     };
 
@@ -612,47 +1437,35 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
             return;
         }
 
-        float shadeMul = 1.0f;
-        if (direction == Direction::NORTH || direction == Direction::SOUTH)
-        {
-            shadeMul = 0.8f;
-        }
-        else if (direction == Direction::EAST || direction == Direction::WEST)
-        {
-            shadeMul = 0.6f;
-        }
-        else if (direction == Direction::DOWN)
-        {
-            shadeMul = 0.5f;
-        }
-
-        uint8_t br    = (uint8_t) (rawLight & 15);
-        uint8_t bg    = (uint8_t) ((rawLight >> 4) & 15);
-        uint8_t bb    = (uint8_t) ((rawLight >> 8) & 15);
-        uint8_t sky   = (uint8_t) ((rawLight >> 12) & 15);
-        uint8_t clamp = world->getSkyLightClamp();
-        if (sky > clamp)
-        {
-            sky = clamp;
-        }
-
-        uint8_t lr = br > sky ? br : sky;
-        uint8_t lg = bg > sky ? bg : sky;
-        uint8_t lb = bb > sky ? bb : sky;
-
-        float r;
-        float g;
-        float b;
-        shade(direction, lr, lg, lb, &r, &g, &b);
-
-        r *= (float) ((tint >> 16) & 0xFF) / 255.0f;
-        g *= (float) ((tint >> 8) & 0xFF) / 255.0f;
-        b *= (float) (tint & 0xFF) / 255.0f;
+        float shadeMul = getShadeMul(direction);
 
         Bucket &bucket = buckets[texture];
-        addFace4UV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1, x2,
-                   y2, z2, x3, y3, z3, x4, y4, z4, u0, v0, u1, v1, r, g, b, rawLight, shadeMul,
-                   tint);
+        bool useSmooth = false;
+        if (!useSmooth)
+        {
+            float r;
+            float g;
+            float b;
+            uint32_t tintForLighting = getTintMode(tint) == TINT_MODE_MASKED ? 0xFFFFFFu : tint;
+            colorFromRawLight(world, direction, rawLight, tintForLighting, &r, &g, &b);
+
+            addFace4UV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1,
+                       x2, y2, z2, x3, y3, z3, x4, y4, z4, u0, v0, u1, v1, r, g, b, rawLight,
+                       shadeMul, tint);
+            return;
+        }
+
+        VertexLight l1 =
+                buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z1);
+        VertexLight l2 =
+                buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z2);
+        VertexLight l3 =
+                buildVertexLight(buildData, direction, true, rawLight, tint, x3, y3, z3);
+        VertexLight l4 =
+                buildVertexLight(buildData, direction, true, rawLight, tint, x4, y4, z4);
+        addFace4UVSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1,
+                         x2, y2, z2, x3, y3, z3, x4, y4, z4, u0, v0, u1, v1, l1, l2, l3, l4,
+                         shadeMul, tint);
     };
 
     {
@@ -665,8 +1478,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
             {
                 for (int z = 0; z < Chunk::SIZE_Z; z++)
                 {
-                    bool a = isSolidWorld(world, chunk, BlockPos(x - 1, y, z));
-                    bool b = isSolidWorld(world, chunk, BlockPos(x, y, z));
+                    bool a = isSolidWorld(buildData, BlockPos(x - 1, y, z));
+                    bool b = isSolidWorld(buildData, BlockPos(x, y, z));
 
                     MaskCell &cell = mask[(size_t) z + (size_t) Chunk::SIZE_Z * (size_t) y];
                     cell.filled    = false;
@@ -682,15 +1495,21 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
                         {
                             cell.filled  = true;
                             cell.texture = texture;
-                            cell.rawLight =
-                                    sampleLightKey(world, chunk, baseX + x, baseY + y, baseZ + z);
+                            cell.rawLight = sampleLightKey(buildData, baseX + x, baseY + y,
+                                                           baseZ + z);
                             cell.tint = block->resolveTint(Direction::EAST, world, chunk, x - 1, z);
+                            if (grassSideOverlay && block == grassBlock)
+                            {
+                                uint32_t foliageTint =
+                                        block->resolveTint(Direction::UP, world, chunk, x - 1, z);
+                                cell.tint = packTintMode(foliageTint, TINT_MODE_MASKED);
+                            }
                         }
                     }
                 }
             }
 
-            greedy2D(mask, Chunk::SIZE_Z, Chunk::SIZE_Y,
+            greedy2D(mask, Chunk::SIZE_Z, Chunk::SIZE_Y, !smoothLighting,
                      [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t rawLight,
                          uint32_t tint) {
                          float X  = (float) (baseX + x);
@@ -708,8 +1527,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
             {
                 for (int z = 0; z < Chunk::SIZE_Z; z++)
                 {
-                    bool a = isSolidWorld(world, chunk, BlockPos(x - 1, y, z));
-                    bool b = isSolidWorld(world, chunk, BlockPos(x, y, z));
+                    bool a = isSolidWorld(buildData, BlockPos(x - 1, y, z));
+                    bool b = isSolidWorld(buildData, BlockPos(x, y, z));
 
                     MaskCell &cell = mask[(size_t) z + (size_t) Chunk::SIZE_Z * (size_t) y];
                     cell.filled    = false;
@@ -725,15 +1544,21 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
                         {
                             cell.filled   = true;
                             cell.texture  = texture;
-                            cell.rawLight = sampleLightKey(world, chunk, baseX + x - 1, baseY + y,
+                            cell.rawLight = sampleLightKey(buildData, baseX + x - 1, baseY + y,
                                                            baseZ + z);
                             cell.tint     = block->resolveTint(Direction::WEST, world, chunk, x, z);
+                            if (grassSideOverlay && block == grassBlock)
+                            {
+                                uint32_t foliageTint =
+                                        block->resolveTint(Direction::UP, world, chunk, x, z);
+                                cell.tint = packTintMode(foliageTint, TINT_MODE_MASKED);
+                            }
                         }
                     }
                 }
             }
 
-            greedy2D(mask, Chunk::SIZE_Z, Chunk::SIZE_Y,
+            greedy2D(mask, Chunk::SIZE_Z, Chunk::SIZE_Y, !smoothLighting,
                      [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t rawLight,
                          uint32_t tint) {
                          float X  = (float) (baseX + x);
@@ -756,8 +1581,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
             {
                 for (int x = 0; x < Chunk::SIZE_X; x++)
                 {
-                    bool a = isSolidWorld(world, chunk, BlockPos(x, y, z - 1));
-                    bool b = isSolidWorld(world, chunk, BlockPos(x, y, z));
+                    bool a = isSolidWorld(buildData, BlockPos(x, y, z - 1));
+                    bool b = isSolidWorld(buildData, BlockPos(x, y, z));
 
                     MaskCell &cell = mask[(size_t) x + (size_t) Chunk::SIZE_X * (size_t) y];
                     cell.filled    = false;
@@ -773,16 +1598,22 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
                         {
                             cell.filled  = true;
                             cell.texture = texture;
-                            cell.rawLight =
-                                    sampleLightKey(world, chunk, baseX + x, baseY + y, baseZ + z);
+                            cell.rawLight = sampleLightKey(buildData, baseX + x, baseY + y,
+                                                           baseZ + z);
                             cell.tint =
                                     block->resolveTint(Direction::SOUTH, world, chunk, x, z - 1);
+                            if (grassSideOverlay && block == grassBlock)
+                            {
+                                uint32_t foliageTint =
+                                        block->resolveTint(Direction::UP, world, chunk, x, z - 1);
+                                cell.tint = packTintMode(foliageTint, TINT_MODE_MASKED);
+                            }
                         }
                     }
                 }
             }
 
-            greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Y,
+            greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Y, !smoothLighting,
                      [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t rawLight,
                          uint32_t tint) {
                          float Z  = (float) (baseZ + z);
@@ -800,8 +1631,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
             {
                 for (int x = 0; x < Chunk::SIZE_X; x++)
                 {
-                    bool a = isSolidWorld(world, chunk, BlockPos(x, y, z - 1));
-                    bool b = isSolidWorld(world, chunk, BlockPos(x, y, z));
+                    bool a = isSolidWorld(buildData, BlockPos(x, y, z - 1));
+                    bool b = isSolidWorld(buildData, BlockPos(x, y, z));
 
                     MaskCell &cell = mask[(size_t) x + (size_t) Chunk::SIZE_X * (size_t) y];
                     cell.filled    = false;
@@ -817,16 +1648,22 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
                         {
                             cell.filled   = true;
                             cell.texture  = texture;
-                            cell.rawLight = sampleLightKey(world, chunk, baseX + x, baseY + y,
+                            cell.rawLight = sampleLightKey(buildData, baseX + x, baseY + y,
                                                            baseZ + z - 1);
                             cell.tint = block->resolveTint(Direction::NORTH, world, chunk, x, z);
+                            if (grassSideOverlay && block == grassBlock)
+                            {
+                                uint32_t foliageTint =
+                                        block->resolveTint(Direction::UP, world, chunk, x, z);
+                                cell.tint = packTintMode(foliageTint, TINT_MODE_MASKED);
+                            }
                         }
                     }
                 }
             }
             {
 
-                greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Y,
+                greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Y, !smoothLighting,
                          [&](int i, int j, int rWidth, int rHeight, Texture *texture,
                              uint16_t rawLight, uint32_t tint) {
                              float Z  = (float) (baseZ + z);
@@ -849,8 +1686,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
                 {
                     for (int x = 0; x < Chunk::SIZE_X; x++)
                     {
-                        bool a = isSolidWorld(world, chunk, BlockPos(x, y - 1, z));
-                        bool b = isSolidWorld(world, chunk, BlockPos(x, y, z));
+                        bool a = isSolidWorld(buildData, BlockPos(x, y - 1, z));
+                        bool b = isSolidWorld(buildData, BlockPos(x, y, z));
 
                         MaskCell &cell = mask[(size_t) x + (size_t) Chunk::SIZE_X * (size_t) z];
                         cell.filled    = false;
@@ -866,7 +1703,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
                             {
                                 cell.filled   = true;
                                 cell.texture  = texture;
-                                cell.rawLight = sampleLightKey(world, chunk, baseX + x, baseY + y,
+                                cell.rawLight = sampleLightKey(buildData, baseX + x, baseY + y,
                                                                baseZ + z);
                                 cell.tint = block->resolveTint(Direction::UP, world, chunk, x, z);
                             }
@@ -874,7 +1711,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
                     }
                 }
 
-                greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Z,
+                greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Z, !smoothLighting,
                          [&](int i, int j, int rWidth, int rHeight, Texture *texture,
                              uint16_t rawLight, uint32_t tint) {
                              float Y  = (float) (baseY + y);
@@ -892,8 +1729,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
                 {
                     for (int x = 0; x < Chunk::SIZE_X; x++)
                     {
-                        bool a = isSolidWorld(world, chunk, BlockPos(x, y - 1, z));
-                        bool b = isSolidWorld(world, chunk, BlockPos(x, y, z));
+                        bool a = isSolidWorld(buildData, BlockPos(x, y - 1, z));
+                        bool b = isSolidWorld(buildData, BlockPos(x, y, z));
 
                         MaskCell &cell = mask[(size_t) x + (size_t) Chunk::SIZE_X * (size_t) z];
                         cell.filled    = false;
@@ -901,7 +1738,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
                         cell.rawLight  = 0;
                         cell.tint      = 0xFFFFFF;
 
-                        if (b && !a && y < Chunk::SIZE_Y)
+                        if (b && !a && y < Chunk::SIZE_Y && y > 0)
                         {
                             Block *block     = Block::byId(chunk->getBlockId(x, y, z));
                             Texture *texture = block ? block->getTexture(Direction::DOWN) : nullptr;
@@ -909,7 +1746,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
                             {
                                 cell.filled   = true;
                                 cell.texture  = texture;
-                                cell.rawLight = sampleLightKey(world, chunk, baseX + x,
+                                cell.rawLight = sampleLightKey(buildData, baseX + x,
                                                                baseY + y - 1, baseZ + z);
                                 cell.tint = block->resolveTint(Direction::DOWN, world, chunk, x, z);
                             }
@@ -917,7 +1754,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
                     }
                 }
 
-                greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Z,
+                greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Z, !smoothLighting,
                          [&](int i, int j, int rWidth, int rHeight, Texture *texture,
                              uint16_t rawLight, uint32_t tint) {
                              float Y  = (float) (baseY + y);
@@ -957,7 +1794,7 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk,
                     float wy = (float) (baseY + y);
                     float wz = (float) (baseZ + z);
 
-                    uint16_t rawLight = sampleLightKey(world, chunk, (int) wx, (int) wy, (int) wz);
+                    uint16_t rawLight = sampleLightKey(buildData, (int) wx, (int) wy, (int) wz);
                     uint32_t tint     = 0xFFFFFF;
 
                     if (renderType == Block::RenderShape::CROSS)

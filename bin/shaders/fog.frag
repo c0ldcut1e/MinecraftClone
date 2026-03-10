@@ -11,6 +11,7 @@ uniform int u_fogEnabled;
 uniform mat4 u_invViewProj;
 
 uniform float u_fogStrength;
+uniform float u_dayFactor;
 
 out vec4 FragColor;
 
@@ -45,7 +46,13 @@ void main()
     fogValue = pow(fogValue, 1.5);
     fogValue *= clamp(u_fogStrength, 0.0, 1.0);
 
+    float br = clamp(u_dayFactor, 0.0, 1.0);
+
     vec3 fogColor = texture(u_fogColormap, clamp(u_fogLut, 0.0, 1.0)).rgb;
+    fogColor.r *= br * 0.94 + 0.06;
+    fogColor.g *= br * 0.94 + 0.06;
+    fogColor.b *= br * 0.91 + 0.09;
+
     vec3 rgb = mix(sceneColor.rgb, fogColor, fogValue);
     FragColor = vec4(rgb, sceneColor.a);
 }

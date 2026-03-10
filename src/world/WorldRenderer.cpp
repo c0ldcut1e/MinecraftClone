@@ -1,9 +1,11 @@
 #include "WorldRenderer.h"
 
+#include <cstdio>
 #include <cmath>
 
 #include <glad/glad.h>
 
+#include "../core/Logger.h"
 #include "../core/Minecraft.h"
 #include "../entity/EntityRendererRegistry.h"
 #include "../memory/MemoryTracker.h"
@@ -16,6 +18,8 @@
 #include "../utils/Time.h"
 #include "../utils/math/Mth.h"
 #include "block/Block.h"
+#include "block/BlockRegistry.h"
+#include "lighting/LightSource.h"
 #include "models/Model.h"
 #include "models/ModelDefinition.h"
 #include "models/ModelPartsSkinned.h"
@@ -49,12 +53,18 @@ static Direction *decodeDirection(uint8_t face)
     return nullptr;
 }
 
+static inline uint8_t decodeTintMode(uint32_t packedTint)
+{
+    return (uint8_t) ((packedTint >> 24) & 0xFF);
+}
+
 WorldRenderer::WorldRenderer(World *world, int width, int height)
     : m_worldShader(nullptr), m_skyShader(nullptr), m_cloudShader(nullptr), m_fogShader(nullptr),
       m_starShader(nullptr), m_starVao(0), m_starVbo(0), m_starVertexCount(0),
       m_sceneFramebuffer(nullptr), m_world(world), m_renderChunkGrid(false), m_cloudOffset(0.0f),
       m_cloudLastCamCellX(INT_MIN), m_cloudLastCamCellZ(INT_MIN), m_cloudLastBuiltOffset(-99999.0f),
-      m_cloudLightSmooth(1.0f), m_lastSkyLightClamp(255)
+      m_cloudLightSmooth(1.0f), m_lastSkyLightClamp(255), m_lightingMode(LightingMode::NEW),
+      m_grassSideOverlayEnabled(true)
 {
     m_worldShader = new Shader("shaders/world.vert", "shaders/world.frag");
     m_skyShader   = new Shader("shaders/sky.vert", "shaders/sky.frag");
@@ -89,6 +99,10 @@ WorldRenderer::WorldRenderer(World *world, int width, int height)
     m_mesherRunning = true;
     m_mesherPool    = std::make_unique<ThreadPool>(
             (size_t) std::max(1u, std::thread::hardware_concurrency() - 2));
+
+    float skyLightClamp = LightSource::sampleSkyLightClamp(m_world->getWorldTime());
+    m_lightStorage.reset(skyLightClamp);
+    m_lightCache.rebuild(skyLightClamp);
 }
 
 WorldRenderer::~WorldRenderer()
@@ -107,9 +121,13 @@ WorldRenderer::~WorldRenderer()
     }
 
     if (m_starVbo)
+    {
         RenderCommand::deleteBuffer(m_starVbo);
+    }
     if (m_starVao)
+    {
         RenderCommand::deleteVertexArray(m_starVao);
+    }
 
     if (m_starShader)
     {
@@ -156,7 +174,9 @@ void WorldRenderer::render(float partialTicks)
     const WorldTime &worldTime = m_world->getWorldTime();
 
     float blendFactor = 1.0f - expf(-Time::getDelta() * 2.5f);
-    m_cloudLightSmooth += (worldTime.getDaylightFactor() - m_cloudLightSmooth) * blendFactor;
+    float cloudTarget = worldTime.getDaylightFactor() * 0.90f + 0.10f;
+    m_cloudLightSmooth += (cloudTarget - m_cloudLightSmooth) * blendFactor;
+    updateLightState(worldTime);
 
     setupMatrices(cameraPos);
     setupFog();
@@ -174,8 +194,11 @@ void WorldRenderer::render(float partialTicks)
     bindWorldShader(cameraPos, viewMatrix, projection);
 
     uploadPendingMeshes();
-    beginSkyLightClampUpdate(worldTime);
-    pumpSkyLightClampUpdate(64, 64);
+    if (m_lightingMode == LightingMode::OLD)
+    {
+        beginSkyLightClampUpdate(worldTime);
+        pumpSkyLightClampUpdate(64, 64);
+    }
 
     renderChunks(viewMatrix, projection);
 
@@ -201,11 +224,14 @@ void WorldRenderer::render(float partialTicks)
 void WorldRenderer::rebuild()
 {
     m_chunks.clear();
+    bool smoothLighting   = m_lightingMode == LightingMode::NEW;
+    bool grassSideOverlay = m_grassSideOverlayEnabled;
 
     for (const auto &[pos, chunkPtr] : m_world->getChunks())
     {
         std::vector<ChunkMesher::MeshBuildResult> results;
-        ChunkMesher::buildMeshes(m_world, chunkPtr.get(), &results);
+        ChunkMesher::buildMeshes(m_world, chunkPtr.get(), smoothLighting, grassSideOverlay,
+                                 &results);
 
         std::vector<std::unique_ptr<ChunkMesh>> meshes;
         meshes.reserve(results.size());
@@ -252,6 +278,100 @@ void WorldRenderer::rebuildChunkUrgent(const ChunkPos &pos)
     }
 
     scheduleMesher();
+}
+
+void WorldRenderer::cycleLightingMode()
+{
+    if (m_lightingMode == LightingMode::OLD)
+    {
+        m_lightingMode = LightingMode::NEW;
+    }
+    else
+    {
+        m_lightingMode = LightingMode::OLD;
+    }
+
+    float skyLightClamp = m_lightingMode == LightingMode::NEW
+                                  ? LightSource::sampleSkyLightClamp(m_world->getWorldTime())
+                                  : (float) m_world->getSkyLightClamp();
+    m_lightStorage.reset(skyLightClamp);
+    m_lightCache.rebuild(skyLightClamp);
+    m_lastSkyLightClamp = 255;
+    m_skyQueue.clear();
+    m_skyQueued.clear();
+    {
+        std::lock_guard<std::mutex> lock(m_skyMutex);
+        m_skyResults.clear();
+    }
+
+    const char *mode = m_lightingMode == LightingMode::NEW ? "new" : "old";
+    Logger::logInfo("Lighting mode: %s", mode);
+
+    for (const auto &[pos, chunk] : m_world->getChunks())
+    {
+        (void) chunk;
+        rebuildChunkUrgent(pos);
+    }
+}
+
+WorldRenderer::LightingMode WorldRenderer::getLightingMode() const { return m_lightingMode; }
+
+void WorldRenderer::toggleGrassSideOverlay()
+{
+    m_grassSideOverlayEnabled = !m_grassSideOverlayEnabled;
+    Logger::logInfo("Grass side overlay: %s", m_grassSideOverlayEnabled ? "on" : "off");
+
+    for (const auto &[pos, chunk] : m_world->getChunks())
+    {
+        (void) chunk;
+        rebuildChunkUrgent(pos);
+    }
+}
+
+bool WorldRenderer::isGrassSideOverlayEnabled() const { return m_grassSideOverlayEnabled; }
+
+size_t WorldRenderer::getMeshedChunkCount() const { return m_chunks.size(); }
+
+size_t WorldRenderer::getVisibleChunkCount() const { return m_lastVisibleChunkCount; }
+
+size_t WorldRenderer::getRenderedMeshCount() const { return m_lastRenderedMeshCount; }
+
+size_t WorldRenderer::getPendingMeshCount() const
+{
+    std::lock_guard<std::mutex> lock(m_meshQueueMutex);
+    return m_pendingMeshes.size();
+}
+
+size_t WorldRenderer::getQueuedRebuildCount() const
+{
+    std::lock_guard<std::mutex> lock(m_rebuildQueueMutex);
+    return m_rebuildQueue.size();
+}
+
+size_t WorldRenderer::getUrgentRebuildCount() const
+{
+    std::lock_guard<std::mutex> lock(m_rebuildQueueMutex);
+    return m_urgentQueue.size();
+}
+
+size_t WorldRenderer::getSkyQueueCount() const { return m_skyQueue.size(); }
+
+size_t WorldRenderer::getMesherThreadCount() const
+{
+    if (!m_mesherPool)
+    {
+        return 0;
+    }
+    return m_mesherPool->getThreadCount();
+}
+
+void WorldRenderer::updateLightState(const WorldTime &worldTime)
+{
+    float skyLightClamp = m_lightingMode == LightingMode::NEW
+                                  ? LightSource::sampleSkyLightClamp(worldTime)
+                                  : (float) worldTime.getSkyLightClamp();
+    m_lightStorage.update(skyLightClamp, Time::getDelta(), m_lightingMode == LightingMode::NEW);
+    m_lightCache.rebuild(m_lightStorage.getSkyLightClamp());
 }
 
 std::vector<uint8_t> WorldRenderer::buildCloudMap()
@@ -311,7 +431,7 @@ std::vector<float> WorldRenderer::buildStarVertices()
 
     Random random(0);
 
-    const float starSphereRadius = 100.0f;
+    const float starSphereRadius = 160.0f;
 
     for (int i = 0; i < 1500; i++)
     {
@@ -332,7 +452,7 @@ std::vector<float> WorldRenderer::buildStarVertices()
         float invertedLength = 1.0f / sqrtf(d2);
         Vec3 direction(x * invertedLength, y * invertedLength, z * invertedLength);
 
-        float size = 0.25f + random.nextFloat() * 0.25f;
+        float size = 0.15f + random.nextFloat() * 0.10f;
 
         Vec3 up;
         if (fabs(direction.y) > 0.9f)
@@ -418,14 +538,29 @@ void WorldRenderer::setupFog()
 
     GlStateManager::enableFog();
 
-    const Vec3 &fogColor = fog.getColor();
-    GlStateManager::setFogColor((float) fogColor.x, (float) fogColor.y, (float) fogColor.z);
+    float fogR = (float) fog.getColor().x;
+    float fogG = (float) fog.getColor().y;
+    float fogB = (float) fog.getColor().z;
+
+    Texture *fogColormap = ColormapManager::getInstance()->get("fog");
+    if (fogColormap)
+    {
+        int px = (int) (fog.getLutX() * (float) (fogColormap->getPixelWidth() - 1));
+        int py = (int) (fog.getLutY() * (float) (fogColormap->getPixelHeight() - 1));
+        fogColormap->samplePixel(px, py, &fogR, &fogG, &fogB);
+    }
+
+    float br = m_world->getDaylightFactor();
+
+    fogR *= br * 0.94f + 0.06f;
+    fogG *= br * 0.94f + 0.06f;
+    fogB *= br * 0.91f + 0.09f;
+
+    GlStateManager::setFogColor(fogR, fogG, fogB);
+
     float renderEnd   = (float) (m_world->getRenderDistance() * Chunk::SIZE_X);
-    float nightFactor = 1.0f - m_world->getDaylightFactor();
-    float fogStartMul = 1.0f + nightFactor * 1.35f;
-    float fogEndMul   = 1.0f + nightFactor * 2.25f;
-    float fogStart    = renderEnd * fog.getStartFactor() * fogStartMul;
-    float fogEnd      = renderEnd * fog.getEndFactor() * fogEndMul;
+    float fogStart    = renderEnd * fog.getStartFactor();
+    float fogEnd      = renderEnd * fog.getEndFactor();
     if (fogEnd < fogStart + 0.001f)
     {
         fogEnd = fogStart + 0.001f;
@@ -447,7 +582,7 @@ void WorldRenderer::renderSky(const Mat4 &viewMatrix, const Mat4 &projection)
 
     Fog &fog = m_world->getFog();
     m_skyShader->setVec2("u_fogLut", fog.getLutX(), fog.getLutY());
-    m_skyShader->setVec3("u_skyLut", 0.85f, 0.30f, 0.70f);
+    m_skyShader->setVec3("u_skyLut", fog.getLutX(), 0.30f, 0.70f);
 
     m_skyShader->setInt("u_fogEnabled", GlStateManager::isFogEnabled());
 
@@ -912,9 +1047,18 @@ void WorldRenderer::renderStars(const Mat4 &viewMatrix, const Mat4 &projection)
 {
     const WorldTime &worldTime = m_world->getWorldTime();
 
-    float alpha = 1.0f - worldTime.getDaylightFactor();
-    alpha       = powf(alpha, 12.0f);
-    if (alpha < 0.02f)
+    float td    = worldTime.getCelestialAngle();
+    float alpha = 1.0f - (cosf(td * 6.28318530718f) * 2.0f + 0.25f);
+    if (alpha < 0.0f)
+    {
+        alpha = 0.0f;
+    }
+    if (alpha > 1.0f)
+    {
+        alpha = 1.0f;
+    }
+    alpha = alpha * alpha * 0.5f;
+    if (alpha < 0.01f)
     {
         return;
     }
@@ -933,7 +1077,7 @@ void WorldRenderer::renderStars(const Mat4 &viewMatrix, const Mat4 &projection)
     m_starShader->setMat4("u_viewRot", viewRotOnly.data);
     m_starShader->setMat4("u_projection", projection.data);
 
-    const float starSpeed = 0.08f;
+    const float starSpeed = 1.0f;
     m_starShader->setFloat("u_starAngle",
                            worldTime.getCelestialAngle() * 6.28318530718f * starSpeed);
     m_starShader->setFloat("u_starAlpha", alpha);
@@ -951,6 +1095,24 @@ void WorldRenderer::bindWorldShader(const Vec3 &cameraPos, const Mat4 &viewMatri
 {
     m_worldShader->bind();
     m_worldShader->setInt("u_texture", 0);
+    m_worldShader->setInt("u_grassOverlayTexture", 1);
+    m_worldShader->setInt("u_grassSideOverlayEnabled", m_grassSideOverlayEnabled ? 1 : 0);
+    m_worldShader->setInt("u_lightingMode", m_lightingMode == LightingMode::NEW ? 1 : 0);
+
+    const std::array<float, 16> &skyLightLevels = m_lightCache.getSkyLightLevels();
+    for (int i = 0; i < 16; i++)
+    {
+        char name[32];
+        snprintf(name, sizeof(name), "u_skyLightLevels[%d]", i);
+        m_worldShader->setFloat(name, skyLightLevels[(unsigned int) i]);
+    }
+
+    Texture *grassOverlayMask = BlockRegistry::getTextureRepository()
+                                        ->get("textures/block/grass_side_overlay.png")
+                                        .get();
+    RenderCommand::activeTexture(1);
+    RenderCommand::bindTexture2D(grassOverlayMask ? grassOverlayMask->getId() : 0);
+    RenderCommand::activeTexture(0);
 
     m_worldShader->setMat4("u_model", GlStateManager::getMatrix().data);
     m_worldShader->setMat4("u_view", viewMatrix.data);
@@ -1001,7 +1163,8 @@ void WorldRenderer::uploadPendingMeshes()
 
         m_chunks[pos] = std::move(meshes);
 
-        if (m_lastSkyLightClamp != 15 && m_lastSkyLightClamp != 255)
+        if (m_lightingMode == LightingMode::OLD && m_lastSkyLightClamp != 15 &&
+            m_lastSkyLightClamp != 255)
         {
             if (m_skyQueued.insert(pos).second)
             {
@@ -1026,6 +1189,9 @@ void WorldRenderer::renderChunks(const Mat4 &viewMatrix, const Mat4 &projection)
     GlStateManager::enableBlend();
     GlStateManager::setBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    size_t visibleChunkCount = 0;
+    size_t renderedMeshCount = 0;
+
     for (const auto &[pos, meshes] : m_chunks)
     {
         int dx = pos.x - playerChunkX;
@@ -1044,11 +1210,17 @@ void WorldRenderer::renderChunks(const Mat4 &viewMatrix, const Mat4 &projection)
             continue;
         }
 
+        visibleChunkCount++;
+        renderedMeshCount += meshes.size();
+
         for (const std::unique_ptr<ChunkMesh> &mesh : meshes)
         {
             mesh->render();
         }
     }
+
+    m_lastVisibleChunkCount = visibleChunkCount;
+    m_lastRenderedMeshCount = renderedMeshCount;
 
     GlStateManager::disableBlend();
 }
@@ -1259,11 +1431,12 @@ void WorldRenderer::renderFogPass(const Mat4 &projection)
 
     Fog &fog = m_world->getFog();
     m_fogShader->setVec2("u_fogLut", fog.getLutX(), fog.getLutY());
+    m_fogShader->setFloat("u_dayFactor", m_world->getDaylightFactor());
 
     bool fogEnabled = GlStateManager::isFogEnabled();
     m_fogShader->setInt("u_fogEnabled", fogEnabled);
 
-    m_fogShader->setFloat("u_fogStrength", m_world->getDaylightFactor());
+    m_fogShader->setFloat("u_fogStrength", 1.0f);
 
     if (fogEnabled)
     {
@@ -1292,6 +1465,8 @@ void WorldRenderer::scheduleMesher()
 
     std::vector<ChunkPos> urgent;
     std::vector<ChunkPos> normal;
+    bool smoothLighting   = m_lightingMode == LightingMode::NEW;
+    bool grassSideOverlay = m_grassSideOverlayEnabled;
 
     {
         std::lock_guard<std::mutex> lock(m_rebuildQueueMutex);
@@ -1314,7 +1489,7 @@ void WorldRenderer::scheduleMesher()
     }
 
     for (ChunkPos pos : urgent)
-        m_mesherPool->detachTask([this, pos] {
+        m_mesherPool->detachTask([this, pos, smoothLighting, grassSideOverlay] {
             ThreadStorage::useDefaultThreadStorage();
             if (!m_mesherRunning)
             {
@@ -1328,12 +1503,13 @@ void WorldRenderer::scheduleMesher()
             }
 
             std::vector<ChunkMesher::MeshBuildResult> results;
-            ChunkMesher::buildMeshes(m_world, it->second.get(), &results);
+            ChunkMesher::buildMeshes(m_world, it->second.get(), smoothLighting, grassSideOverlay,
+                                     &results);
             submitMesh(pos, std::move(results));
         });
 
     for (ChunkPos pos : normal)
-        m_mesherPool->detachTask([this, pos] {
+        m_mesherPool->detachTask([this, pos, smoothLighting, grassSideOverlay] {
             ThreadStorage::useDefaultThreadStorage();
             if (!m_mesherRunning)
             {
@@ -1347,7 +1523,8 @@ void WorldRenderer::scheduleMesher()
             }
 
             std::vector<ChunkMesher::MeshBuildResult> results;
-            ChunkMesher::buildMeshes(m_world, it->second.get(), &results);
+            ChunkMesher::buildMeshes(m_world, it->second.get(), smoothLighting, grassSideOverlay,
+                                     &results);
             submitMesh(pos, std::move(results));
         });
 }
@@ -1466,13 +1643,14 @@ void WorldRenderer::pumpSkyLightClampUpdate(int scheduleBudget, int applyBudget)
                 size_t vc = rawLights.size();
                 for (size_t v = 0; v < vc; v++)
                 {
-                    uint16_t raw  = rawLights[v];
-                    float shade   = shades[v];
-                    uint32_t tint = tints[v];
-                    uint8_t br    = (uint8_t) (raw & 15);
-                    uint8_t bg    = (uint8_t) ((raw >> 4) & 15);
-                    uint8_t bb    = (uint8_t) ((raw >> 8) & 15);
-                    uint8_t sky   = (uint8_t) ((raw >> 12) & 15);
+                    uint16_t raw     = rawLights[v];
+                    float shade      = shades[v];
+                    uint32_t tint    = tints[v];
+                    uint8_t tintMode = decodeTintMode(tint);
+                    uint8_t br       = (uint8_t) (raw & 15);
+                    uint8_t bg       = (uint8_t) ((raw >> 4) & 15);
+                    uint8_t bb       = (uint8_t) ((raw >> 8) & 15);
+                    uint8_t sky      = (uint8_t) ((raw >> 12) & 15);
                     if (sky > clamp)
                     {
                         sky = clamp;
@@ -1498,9 +1676,15 @@ void WorldRenderer::pumpSkyLightClampUpdate(int scheduleBudget, int applyBudget)
                         baseB = minLight;
                     }
 
-                    float tr           = (float) ((tint >> 16) & 0xFF) / 255.0f;
-                    float tg           = (float) ((tint >> 8) & 0xFF) / 255.0f;
-                    float tb           = (float) (tint & 0xFF) / 255.0f;
+                    float tr = 1.0f;
+                    float tg = 1.0f;
+                    float tb = 1.0f;
+                    if (tintMode != 255)
+                    {
+                        tr = (float) ((tint >> 16) & 0xFF) / 255.0f;
+                        tg = (float) ((tint >> 8) & 0xFF) / 255.0f;
+                        tb = (float) (tint & 0xFF) / 255.0f;
+                    }
                     float r            = baseR * shade * tr;
                     float g            = baseG * shade * tg;
                     float b            = baseB * shade * tb;

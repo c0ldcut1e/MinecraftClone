@@ -66,6 +66,14 @@ Minecraft::Minecraft()
             {
                 toggleMouseLock();
             }
+            else if (event.getKey() == GLFW_KEY_L)
+            {
+                m_worldRenderer->cycleLightingMode();
+            }
+            else if (event.getKey() == GLFW_KEY_G)
+            {
+                m_worldRenderer->toggleGrassSideOverlay();
+            }
             else if (m_localPlayer)
             {
                 m_localPlayer->onKeyPressed(event.getKey());

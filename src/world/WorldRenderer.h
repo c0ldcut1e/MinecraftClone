@@ -20,10 +20,18 @@
 #include "chunk/ChunkMesher.h"
 #include "chunk/ChunkPos.h"
 #include "environment/CloudMesh.h"
+#include "lighting/LightCache.h"
+#include "lighting/LightStorage.h"
 
 class WorldRenderer
 {
 public:
+    enum class LightingMode
+    {
+        OLD,
+        NEW
+    };
+
     explicit WorldRenderer(World *world, int width, int height);
     ~WorldRenderer();
 
@@ -33,6 +41,18 @@ public:
     void rebuild();
     void rebuildChunk(const ChunkPos &pos);
     void rebuildChunkUrgent(const ChunkPos &pos);
+    void cycleLightingMode();
+    void toggleGrassSideOverlay();
+    LightingMode getLightingMode() const;
+    bool isGrassSideOverlayEnabled() const;
+    size_t getMeshedChunkCount() const;
+    size_t getVisibleChunkCount() const;
+    size_t getRenderedMeshCount() const;
+    size_t getPendingMeshCount() const;
+    size_t getQueuedRebuildCount() const;
+    size_t getUrgentRebuildCount() const;
+    size_t getSkyQueueCount() const;
+    size_t getMesherThreadCount() const;
 
 private:
     struct SkyUpdateResult
@@ -67,6 +87,7 @@ private:
 
     void scheduleMesher();
 
+    void updateLightState(const WorldTime &worldTime);
     void beginSkyLightClampUpdate(const WorldTime &worldTime);
     void pumpSkyLightClampUpdate(int scheduleBudget, int applyBudget);
 
@@ -98,6 +119,8 @@ private:
     float m_cloudLightSmooth;
 
     uint8_t m_lastSkyLightClamp{255};
+    LightStorage m_lightStorage;
+    LightCache m_lightCache;
 
     std::mutex m_skyMutex;
     std::deque<SkyUpdateResult> m_skyResults;
@@ -106,14 +129,19 @@ private:
     uint8_t m_skyClampTarget{15};
 
     std::unordered_map<ChunkPos, std::vector<std::unique_ptr<ChunkMesh>>, ChunkPosHash> m_chunks;
-    std::mutex m_meshQueueMutex;
+    size_t m_lastVisibleChunkCount{0};
+    size_t m_lastRenderedMeshCount{0};
+    mutable std::mutex m_meshQueueMutex;
     std::deque<std::pair<ChunkPos, std::vector<ChunkMesher::MeshBuildResult>>> m_pendingMeshes;
 
     std::unique_ptr<ThreadPool> m_mesherPool;
     std::atomic<bool> m_mesherRunning{false};
     std::atomic<bool> m_mesherScheduled{false};
 
-    std::mutex m_rebuildQueueMutex;
+    LightingMode m_lightingMode;
+    bool m_grassSideOverlayEnabled;
+
+    mutable std::mutex m_rebuildQueueMutex;
     std::queue<ChunkPos> m_rebuildQueue;
     std::queue<ChunkPos> m_urgentQueue;
     std::unordered_set<ChunkPos, ChunkPosHash> m_rebuildQueued;

@@ -102,7 +102,7 @@ static Direction *decodeDirection(uint8_t face)
     return nullptr;
 }
 
-World::World() : m_emptyChunksSolid(true), m_renderDistance(12) {}
+World::World() : m_emptyChunksSolid(true), m_renderDistance(16) {}
 
 void World::update(float partialTicks)
 {
@@ -264,18 +264,11 @@ Chunk *World::getChunk(const ChunkPos &pos)
 
 const Chunk *World::getChunk(const ChunkPos &pos) const
 {
-    if (const Chunk *cached = m_chunkCache.get(pos))
-    {
-        return cached;
-    }
-
     auto it = m_chunks.find(pos);
     if (it == m_chunks.end())
     {
         return nullptr;
     }
-
-    m_chunkCache.put(pos, const_cast<Chunk *>(it->second.get()));
     return it->second.get();
 }
 
@@ -328,6 +321,18 @@ void World::markChunkDirtyUrgent(const ChunkPos &chunkPos)
 }
 
 const std::deque<ChunkPos> &World::getDirtyChunks() const { return m_dirtyChunks; }
+
+size_t World::getQueuedDirtyChunkCount() const
+{
+    std::lock_guard<std::mutex> lock(m_dirtyMutex);
+    return m_dirtyChunks.size();
+}
+
+size_t World::getUrgentDirtyChunkCount() const
+{
+    std::lock_guard<std::mutex> lock(m_dirtyMutex);
+    return m_urgentDirtyChunks.size();
+}
 
 void World::clearDirtyChunks()
 {
@@ -822,6 +827,8 @@ uint8_t World::getBlockLightLevel(const BlockPos &pos) const
 }
 
 void World::queueLightUpdate(const BlockPos &pos) { m_lightUpdates.push_back(pos); }
+
+size_t World::getQueuedLightUpdateCount() const { return m_lightUpdates.size(); }
 
 Fog &World::getFog() { return m_fog; }
 

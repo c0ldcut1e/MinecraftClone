@@ -298,6 +298,31 @@ void ChunkManager::drainFinished(std::deque<std::pair<ChunkPos, std::unique_ptr<
     }
 }
 
+size_t ChunkManager::getPendingCount() const
+{
+    std::lock_guard<std::mutex> lock(m_pendingMutex);
+    return m_pending.size();
+}
+
+size_t ChunkManager::getActiveCount() const { return (size_t) m_active.load(); }
+
+size_t ChunkManager::getMaxActiveCount() const { return (size_t) m_maxActive; }
+
+size_t ChunkManager::getFinishedCount() const
+{
+    std::lock_guard<std::mutex> lock(m_finishedMutex);
+    return m_finished.size();
+}
+
+size_t ChunkManager::getThreadCount() const
+{
+    if (!m_pool)
+    {
+        return 0;
+    }
+    return m_pool->getThreadCount();
+}
+
 void ChunkManager::generateChunk(const ChunkPos &pos)
 {
     thread_local TerrainGenerator generator(0);

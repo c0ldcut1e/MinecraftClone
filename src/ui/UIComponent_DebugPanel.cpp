@@ -14,8 +14,10 @@
 #include "../utils/Time.h"
 #include "../utils/math/Mth.h"
 #include "../world/World.h"
+#include "../world/WorldRenderer.h"
 #include "../world/block/Block.h"
 #include "../world/chunk/Chunk.h"
+#include "../world/chunk/ChunkManager.h"
 #include "../world/chunk/ChunkPos.h"
 
 UIComponent_DebugPanel::UIComponent_DebugPanel() : UIComponent("ComponentDebugPanel") {}
@@ -66,8 +68,65 @@ void UIComponent_DebugPanel::render()
 
         if (world)
         {
-            swprintf(buffer, 0xFF, L"chunks loaded: %d  renderDistance: %d",
-                     (uint32_t) world->getChunks().size(), world->getRenderDistance());
+            WorldRenderer *worldRenderer = minecraft->getWorldRenderer();
+            ChunkManager *chunkManager   = minecraft->getChunkManager();
+
+            uint32_t loadedChunks  = (uint32_t) world->getChunks().size();
+            uint32_t meshedChunks  = worldRenderer ? (uint32_t) worldRenderer->getMeshedChunkCount() : 0;
+            uint32_t visibleChunks = worldRenderer ? (uint32_t) worldRenderer->getVisibleChunkCount() : 0;
+            uint32_t renderedMeshes =
+                    worldRenderer ? (uint32_t) worldRenderer->getRenderedMeshCount() : 0;
+
+            swprintf(buffer, 0xFF, L"chunks: loaded %u  meshed %u  visible %u", loadedChunks,
+                     meshedChunks, visibleChunks);
+            lines.emplace_back(buffer);
+
+            swprintf(buffer, 0xFF, L"render: meshes %u  distance %d", renderedMeshes,
+                     world->getRenderDistance());
+            lines.emplace_back(buffer);
+
+            if (worldRenderer)
+            {
+                const wchar_t *mode = worldRenderer->getLightingMode() ==
+                                              WorldRenderer::LightingMode::NEW
+                                              ? L"new"
+                                              : L"old";
+                swprintf(buffer, 0xFF, L"lighting: %ls  (L to toggle)", mode);
+                lines.emplace_back(buffer);
+
+                const wchar_t *grassOverlay =
+                        worldRenderer->isGrassSideOverlayEnabled() ? L"on" : L"off";
+                swprintf(buffer, 0xFF, L"grass side overlay: %ls  (G to toggle)", grassOverlay);
+                lines.emplace_back(buffer);
+
+                swprintf(buffer, 0xFF, L"mesher: upload %u  rebuild %u  urgent %u  sky %u",
+                         (uint32_t) worldRenderer->getPendingMeshCount(),
+                         (uint32_t) worldRenderer->getQueuedRebuildCount(),
+                         (uint32_t) worldRenderer->getUrgentRebuildCount(),
+                         (uint32_t) worldRenderer->getSkyQueueCount());
+                lines.emplace_back(buffer);
+
+                swprintf(buffer, 0xFF, L"mesher threads: %u",
+                         (uint32_t) worldRenderer->getMesherThreadCount());
+                lines.emplace_back(buffer);
+            }
+
+            if (chunkManager)
+            {
+                swprintf(buffer, 0xFF, L"generator: pending %u  active %u/%u  ready %u  threads %u",
+                         (uint32_t) chunkManager->getPendingCount(),
+                         (uint32_t) chunkManager->getActiveCount(),
+                         (uint32_t) chunkManager->getMaxActiveCount(),
+                         (uint32_t) chunkManager->getFinishedCount(),
+                         (uint32_t) chunkManager->getThreadCount());
+                lines.emplace_back(buffer);
+            }
+
+            swprintf(buffer, 0xFF, L"world q: dirty %u  urgent %u  light %u  entities %u",
+                     (uint32_t) world->getQueuedDirtyChunkCount(),
+                     (uint32_t) world->getUrgentDirtyChunkCount(),
+                     (uint32_t) world->getQueuedLightUpdateCount(),
+                     (uint32_t) world->getEntities().size());
             lines.emplace_back(buffer);
 
             lines.emplace_back(L"");

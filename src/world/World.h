@@ -40,6 +40,8 @@ public:
     void markChunkDirtyUrgent(const ChunkPos &pos);
     void clearDirtyChunks();
     const std::deque<ChunkPos> &getDirtyChunks() const;
+    size_t getQueuedDirtyChunkCount() const;
+    size_t getUrgentDirtyChunkCount() const;
 
     void addEntity(std::unique_ptr<Entity> entity);
     void removeEntity(Entity *entity);
@@ -62,6 +64,7 @@ public:
     uint8_t getSkyLightLevel(const BlockPos &pos) const;
     uint8_t getBlockLightLevel(const BlockPos &pos) const;
     void queueLightUpdate(const BlockPos &pos);
+    size_t getQueuedLightUpdateCount() const;
 
     Fog &getFog();
     const Fog &getFog() const;
@@ -102,7 +105,7 @@ private:
     std::deque<ChunkPos> m_urgentDirtyChunks;
     std::unordered_set<ChunkPos, ChunkPosHash> m_dirtyChunksSet;
     std::unordered_set<ChunkPos, ChunkPosHash> m_urgentDirtyChunksSet;
-    std::mutex m_dirtyMutex;
+    mutable std::mutex m_dirtyMutex;
     std::deque<BlockPos> m_lightUpdates;
     bool m_emptyChunksSolid;
 

@@ -18,6 +18,7 @@ public:
         std::vector<uint32_t> tints;
     };
 
-    static void buildMeshes(World *world, const Chunk *chunk,
+    static void buildMeshes(World *world, const Chunk *chunk, bool smoothLighting,
+                            bool grassSideOverlay,
                             std::vector<MeshBuildResult> *outMeshes);
 };

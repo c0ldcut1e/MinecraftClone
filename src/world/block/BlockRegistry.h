@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../../rendering/TextureAtlas.h"
 #include "../../rendering/TextureRepository.h"
 #include "../../utils/MappedRegistry.h"
 #include "Block.h"
@@ -11,4 +12,5 @@ public:
     static void init();
 
     static TextureRepository *getTextureRepository();
+    static TextureAtlas *getTextureAtlas();
 };

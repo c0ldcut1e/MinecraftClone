@@ -42,14 +42,14 @@ void UIComponent_Vignette::render()
 {
     Minecraft *mc       = Minecraft::getInstance();
     LocalPlayer *player = mc ? mc->getLocalPlayer() : nullptr;
-    World *world        = player ? player->getWorld() : nullptr;
+    Level *level        = player ? player->getLevel() : nullptr;
 
     float strength = 0.0f;
 
     Vec3 playerPos = player->getPosition();
     BlockPos pos((int) floor(playerPos.x), (int) floor(playerPos.y), (int) floor(playerPos.z));
 
-    uint8_t light = world->getLightLevel(pos);
+    uint8_t light = level->getLightLevel(pos);
     float light01 = std::min((float) light / 15.0f, 1.0f);
 
     float brightness = light01 * light01;

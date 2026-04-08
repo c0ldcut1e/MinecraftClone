@@ -9,13 +9,13 @@
 
 #include "../../threading/ThreadPool.h"
 #include "../../utils/heap/BinaryHeap.h"
-#include "../World.h"
+#include "../Level.h"
 #include "ChunkPos.h"
 
 class ChunkManager
 {
 public:
-    explicit ChunkManager(World *world);
+    explicit ChunkManager(Level *level);
     ~ChunkManager();
 
     void start();
@@ -61,7 +61,7 @@ private:
     bool shouldStartTask(const ChunkPos &pos, uint32_t taskEpoch) const;
     bool shouldKeepResult(const ChunkPos &pos) const;
 
-    World *m_world;
+    Level *m_level;
 
     std::unique_ptr<ThreadPool> m_pool;
     std::atomic<bool> m_running;

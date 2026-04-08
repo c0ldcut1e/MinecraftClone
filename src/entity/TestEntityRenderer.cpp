@@ -9,7 +9,8 @@
 #include "../world/models/ModelRegistry.h"
 #include "TestEntity.h"
 
-void TestEntityRenderer::render(const Entity *entity, float partialTicks) const
+void TestEntityRenderer::render(const Entity *entity, float partialTicks,
+                                uint32_t lightColor) const
 {
     const TestEntity *_entity = (const TestEntity *) entity;
 
@@ -79,7 +80,7 @@ void TestEntityRenderer::render(const Entity *entity, float partialTicks) const
             leftLeg->setRotation(rot);
         }
 
-        model->render(*ModelRegistry::get()->getTextures());
+        model->render(*ModelRegistry::get()->getTextures(), lightColor);
     }
 
     GlStateManager::popMatrix();

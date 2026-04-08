@@ -3,12 +3,11 @@
 #include <algorithm>
 #include <cmath>
 
-#include "../utils/Time.h"
 #include "../utils/math/Mth.h"
 #include "../world/models/ModelRegistry.h"
 
-TestEntity::TestEntity(World *world)
-    : LivingEntity(world), m_hasLastPos(false), m_lastPos(Vec3(0.0)), m_limbSwing(0.0f),
+TestEntity::TestEntity(Level *level)
+    : LivingEntity(level), m_hasLastPos(false), m_lastPos(Vec3(0.0)), m_limbSwing(0.0f),
       m_limbSwingAmount(0.0f), m_limbSwingOld(0.0f), m_limbSwingAmountOld(0.0f)
 {
     setModel(ModelRegistry::get()->getModel("steve")->copy());

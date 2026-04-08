@@ -13,14 +13,14 @@
 #include "../../core/Minecraft.h"
 #include "../../threading/ThreadStorage.h"
 #include "../../utils/math/Mth.h"
-#include "../WorldRenderer.h"
+#include "../LevelRenderer.h"
 #include "../block/Block.h"
 #include "../chunk/ChunkMesher.h"
 #include "../generation/TerrainGenerator.h"
 #include "../lighting/LightEngine.h"
 
-ChunkManager::ChunkManager(World *world)
-    : m_world(world), m_running(false), m_active(0), m_maxActive(0),
+ChunkManager::ChunkManager(Level *level)
+    : m_level(level), m_running(false), m_active(0), m_maxActive(0),
       m_lastPlayerChunk{INT32_MAX, INT32_MAX, INT32_MAX}, m_centerX(0), m_centerZ(0), m_epoch(0),
       m_renderDistance(0)
 {}
@@ -41,9 +41,9 @@ void ChunkManager::start()
     m_pool      = std::make_unique<ThreadPool>((size_t) threadCount);
     m_maxActive = std::max(1, threadCount * 4);
 
-    if (m_world)
+    if (m_level)
     {
-        m_renderDistance.store(m_world->getRenderDistance());
+        m_renderDistance.store(m_level->getRenderDistance());
     }
 }
 
@@ -98,7 +98,6 @@ bool ChunkManager::shouldStartTask(const ChunkPos &pos, uint32_t taskEpoch) cons
     {
         return false;
     }
-
     return true;
 }
 
@@ -114,7 +113,6 @@ bool ChunkManager::shouldKeepResult(const ChunkPos &pos) const
     {
         return false;
     }
-
     return true;
 }
 
@@ -142,7 +140,6 @@ void ChunkManager::rebuildPending(const ChunkPos &center,
             {
                 continue;
             }
-
             {
                 std::lock_guard<std::mutex> lock(m_activeMutex);
 
@@ -186,9 +183,9 @@ void ChunkManager::update(const Vec3 &playerPosition)
     int cz = Mth::floorDiv((int) playerPosition.z, Chunk::SIZE_Z);
     ChunkPos playerChunk{cx, 0, cz};
 
-    if (m_world)
+    if (m_level)
     {
-        m_renderDistance.store(m_world->getRenderDistance());
+        m_renderDistance.store(m_level->getRenderDistance());
     }
 
     if (!m_pool || !m_running.load())
@@ -207,7 +204,7 @@ void ChunkManager::update(const Vec3 &playerPosition)
 
         std::unordered_set<ChunkPos, ChunkPosHash> known;
         const std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> &chunks =
-                m_world->getChunks();
+                m_level->getChunks();
         known.reserve(chunks.size());
         for (const auto &[pos, _] : chunks)
         {
@@ -328,6 +325,34 @@ void ChunkManager::generateChunk(const ChunkPos &pos)
     thread_local TerrainGenerator generator(0);
 
     std::unique_ptr<Chunk> chunk = std::make_unique<Chunk>(pos);
+
+    if (m_level && m_level->isWorldBorderEnabled() && !m_level->isChunkInsideWorldBorder(pos))
+    {
+        Block *borderBlock = Block::byName("world_border");
+        for (int z = 0; z < Chunk::SIZE_Z; z++)
+        {
+            for (int y = 0; y < Chunk::SIZE_Y; y++)
+            {
+                for (int x = 0; x < Chunk::SIZE_X; x++)
+                {
+                    chunk->setBlock(x, y, z, borderBlock);
+                    chunk->setSkyLight(x, y, z, 0);
+                }
+            }
+        }
+
+        if (!shouldKeepResult(pos))
+        {
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_finishedMutex);
+
+            m_finished.emplace_back(pos, std::move(chunk));
+        }
+        return;
+    }
 
     generator.generateChunk(*chunk, pos);
 

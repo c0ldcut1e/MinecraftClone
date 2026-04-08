@@ -6,6 +6,8 @@ void Camera::setPosition(const Vec3 &position) { m_position = position; }
 
 const Vec3 &Camera::getPosition() const { return m_position; }
 
+const Vec3 &Camera::getFront() const { return m_front; }
+
 void Camera::setDirection(const Vec3 &front, const Vec3 &up)
 {
     m_front = front;

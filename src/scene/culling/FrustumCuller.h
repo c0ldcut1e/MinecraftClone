@@ -14,6 +14,7 @@ public:
     const FrustumData &getData() const;
 
     bool testAABB(const AABB &aabb) const override;
+    bool testSphere(const Vec3 &center, double radius) const;
 
 private:
     FrustumData m_data;

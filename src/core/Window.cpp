@@ -1,155 +1,13 @@
 #include "Window.h"
 
-#include <cstdio>
-#include <cstdlib>
 #include <stdexcept>
 #include <string>
 
 #include <glad/glad.h>
 
-#ifndef _WIN32
-static bool envTruthy(const char *name)
-{
-    const char *variable = getenv(name);
-    if (!variable || !*variable)
-    {
-        return false;
-    }
-    if (variable[0] == '0')
-    {
-        return false;
-    }
-    if (variable[0] == 'f' || variable[0] == 'F')
-    {
-        return false;
-    }
-    if (variable[0] == 'n' || variable[0] == 'N')
-    {
-        return false;
-    }
-    return true;
-}
-
-static bool isWaylandSession()
-{
-    if (getenv("WAYLAND_DISPLAY"))
-    {
-        return true;
-    }
-
-    const char *type = getenv("XDG_SESSION_TYPE");
-    if (!type)
-    {
-        return false;
-    }
-
-    return std::string(type) == "wayland";
-}
-#endif
-
-static bool tryInitGlfw(int platform)
-{
-#if defined(GLFW_PLATFORM) && defined(GLFW_PLATFORM_WAYLAND) && defined(GLFW_PLATFORM_X11)
-    if (platform != 0)
-        glfwInitHint(GLFW_PLATFORM, platform);
-#else
-    (void) platform;
-#endif
-
-    if (glfwInit() == GLFW_TRUE)
-    {
-        return true;
-    }
-    glfwTerminate();
-    return false;
-}
-
-static GLFWwindow *tryCreateWindowWithHints(int width, int height, const char *title,
-                                            bool preferEgl)
-{
-    glfwDefaultWindowHints();
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
-    glfwWindowHint(GLFW_DEPTH_BITS, 24);
-
-#ifdef __linux__
-#if defined(GLFW_CONTEXT_CREATION_API) && defined(GLFW_EGL_CONTEXT_API) &&                         \
-        defined(GLFW_NATIVE_CONTEXT_API)
-    glfwWindowHint(GLFW_CONTEXT_CREATION_API,
-                   preferEgl ? GLFW_EGL_CONTEXT_API : GLFW_NATIVE_CONTEXT_API);
-#else
-    (void) preferEgl;
-#endif
-#else
-    (void) preferEgl;
-#endif
-
-    GLFWwindow *window = glfwCreateWindow(width, height, title, nullptr, nullptr);
-    if (window)
-        return window;
-
-    glfwDefaultWindowHints();
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-    glfwWindowHint(GLFW_DEPTH_BITS, 24);
-
-#ifdef __linux__
-#if defined(GLFW_CONTEXT_CREATION_API) && defined(GLFW_EGL_CONTEXT_API) &&                         \
-        defined(GLFW_NATIVE_CONTEXT_API)
-    glfwWindowHint(GLFW_CONTEXT_CREATION_API,
-                   preferEgl ? GLFW_EGL_CONTEXT_API : GLFW_NATIVE_CONTEXT_API);
-#endif
-#endif
-
-    window = glfwCreateWindow(width, height, title, nullptr, nullptr);
-    if (window)
-    {
-        return window;
-    }
-
-    glfwDefaultWindowHints();
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-    glfwWindowHint(GLFW_DEPTH_BITS, 24);
-
-#ifdef __linux__
-#if defined(GLFW_CONTEXT_CREATION_API) && defined(GLFW_EGL_CONTEXT_API) &&                         \
-        defined(GLFW_NATIVE_CONTEXT_API)
-    glfwWindowHint(GLFW_CONTEXT_CREATION_API,
-                   preferEgl ? GLFW_EGL_CONTEXT_API : GLFW_NATIVE_CONTEXT_API);
-#endif
-#endif
-
-    return glfwCreateWindow(width, height, title, nullptr, nullptr);
-}
-
-static GLFWwindow *tryInitAndCreate(int platform, bool preferEgl, int width, int height,
-                                    const char *title)
-{
-    if (!tryInitGlfw(platform))
-    {
-        return nullptr;
-    }
-
-    GLFWwindow *window = tryCreateWindowWithHints(width, height, title, preferEgl);
-    if (window)
-    {
-        return window;
-    }
-
-    glfwTerminate();
-    return nullptr;
-}
-
 static void initOpenGLOrThrow()
 {
-    if (!gladLoadGLLoader((GLADloadproc) glfwGetProcAddress))
+    if (!gladLoadGLLoader((GLADloadproc) SDL_GL_GetProcAddress))
     {
         throw std::runtime_error("gladLoadGLLoader failed");
     }
@@ -160,106 +18,80 @@ static void initOpenGLOrThrow()
     }
 }
 
-Window::Window(int width, int height, const char *title) : m_window(nullptr)
+Window::Window(int width, int height, const char *title)
+    : m_window(nullptr), m_glContext(nullptr), m_shouldClose(false)
 {
-#ifdef _WIN32
-    m_window = tryInitAndCreate(0, false, width, height, title);
-    if (!m_window)
-        throw std::runtime_error("failed to create window");
-#else
-    bool forceX11     = envTruthy("FORCE_GLFW_X11") || envTruthy("FORCE_X11");
-    bool forceWayland = envTruthy("FORCE_GLFW_WAYLAND") || envTruthy("FORCE_WAYLAND");
-    bool wlSession    = isWaylandSession();
-
-#if defined(GLFW_PLATFORM) && defined(GLFW_PLATFORM_WAYLAND) && defined(GLFW_PLATFORM_X11)
-    bool canWayland = glfwPlatformSupported(GLFW_PLATFORM_WAYLAND);
-    bool canX11     = glfwPlatformSupported(GLFW_PLATFORM_X11);
-
-    if (forceWayland)
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0)
     {
-        if (canWayland)
-        {
-            m_window = tryInitAndCreate(GLFW_PLATFORM_WAYLAND, true, width, height, title);
-        }
-
-        if (!m_window && canX11)
-        {
-            m_window = tryInitAndCreate(GLFW_PLATFORM_X11, false, width, height, title);
-        }
-    }
-    else if (forceX11)
-    {
-        if (canX11)
-        {
-            m_window = tryInitAndCreate(GLFW_PLATFORM_X11, false, width, height, title);
-        }
-
-        if (!m_window && canWayland)
-        {
-            m_window = tryInitAndCreate(GLFW_PLATFORM_WAYLAND, true, width, height, title);
-        }
-    }
-    else if (wlSession)
-    {
-        if (canWayland)
-        {
-            m_window = tryInitAndCreate(GLFW_PLATFORM_WAYLAND, true, width, height, title);
-        }
-
-        if (!m_window && canX11)
-        {
-            m_window = tryInitAndCreate(GLFW_PLATFORM_X11, false, width, height, title);
-        }
-    }
-    else
-    {
-        if (canX11)
-        {
-            m_window = tryInitAndCreate(GLFW_PLATFORM_X11, false, width, height, title);
-        }
-
-        if (!m_window && canWayland)
-        {
-            m_window = tryInitAndCreate(GLFW_PLATFORM_WAYLAND, true, width, height, title);
-        }
+        throw std::runtime_error(std::string("SDL_Init failed: ") + SDL_GetError());
     }
 
-    if (!m_window)
-    {
-        m_window = tryInitAndCreate(0, false, width, height, title);
-    }
-#else
-    m_window = tryInitAndCreate(0, false, width, height, title);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+#ifdef __APPLE__
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
 #endif
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+
+    m_window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width,
+                                height, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 
     if (!m_window)
     {
-        throw std::runtime_error("failed to create window");
+        SDL_Quit();
+        throw std::runtime_error(std::string("SDL_CreateWindow failed: ") + SDL_GetError());
     }
-#endif
 
-    glfwMakeContextCurrent(m_window);
+    m_glContext = SDL_GL_CreateContext(m_window);
+    if (!m_glContext)
+    {
+        SDL_DestroyWindow(m_window);
+        SDL_Quit();
+        throw std::runtime_error(std::string("SDL_GL_CreateContext failed: ") + SDL_GetError());
+    }
+
+    if (SDL_GL_MakeCurrent(m_window, m_glContext) != 0)
+    {
+        SDL_GL_DeleteContext(m_glContext);
+        SDL_DestroyWindow(m_window);
+        SDL_Quit();
+        throw std::runtime_error(std::string("SDL_GL_MakeCurrent failed: ") + SDL_GetError());
+    }
+
     initOpenGLOrThrow();
     enableVSync();
 }
 
 Window::~Window()
 {
+    if (m_glContext)
+    {
+        SDL_GL_DeleteContext(m_glContext);
+        m_glContext = nullptr;
+    }
+
     if (m_window)
     {
-        glfwDestroyWindow(m_window);
+        SDL_DestroyWindow(m_window);
+        m_window = nullptr;
     }
-    glfwTerminate();
+
+    SDL_Quit();
 }
 
-bool Window::shouldClose() const { return glfwWindowShouldClose(m_window); }
+void Window::requestClose() { m_shouldClose = true; }
 
-void Window::pollEvents() const { glfwPollEvents(); }
+bool Window::shouldClose() const { return m_shouldClose; }
 
-void Window::swapBuffers() const { glfwSwapBuffers(m_window); }
+void Window::swapBuffers() const { SDL_GL_SwapWindow(m_window); }
 
-void Window::enableVSync() const { glfwSwapInterval(1); }
+void Window::enableVSync() const { SDL_GL_SetSwapInterval(1); }
 
-void Window::disableVSync() const { glfwSwapInterval(0); }
+void Window::disableVSync() const { SDL_GL_SetSwapInterval(0); }
 
-GLFWwindow *Window::getHandle() const { return m_window; }
+SDL_Window *Window::getHandle() const { return m_window; }
+
+SDL_GLContext Window::getGLContext() const { return m_glContext; }

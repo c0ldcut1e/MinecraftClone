@@ -1,7 +1,7 @@
 #include "Player.h"
 
-Player::Player(World *world, const std::wstring &name)
-    : LivingEntity(world), m_moveForward(false), m_moveBackward(false), m_moveLeft(false),
+Player::Player(Level *level, const std::wstring &name)
+    : LivingEntity(level), m_moveForward(false), m_moveBackward(false), m_moveLeft(false),
       m_moveRight(false)
 {
     m_name = name;

@@ -1,40 +1,40 @@
 #include "LightSource.h"
 
-#include "../WorldTime.h"
+#include "../DimensionTime.h"
 
-float LightSource::sampleSkyLightClamp(const WorldTime &worldTime)
+float LightSource::sampleSkyLightClamp(const DimensionTime &dimensionTime)
 {
-    int tickInDay = (int) (worldTime.getTicks() % (uint64_t) WorldTime::DAY_TICKS);
-    int darkStartTick = worldTime.getDarkStartTick();
-    int darkPeakTick  = worldTime.getDarkPeakTick();
+    int tickInDay     = (int) (dimensionTime.getTicks() % (uint64_t) DimensionTime::DAY_TICKS);
+    int darkStartTick = dimensionTime.getDarkStartTick();
+    int darkPeakTick  = dimensionTime.getDarkPeakTick();
 
     int duskLength = darkPeakTick - darkStartTick;
     if (duskLength < 0)
     {
-        duskLength += WorldTime::DAY_TICKS;
+        duskLength += DimensionTime::DAY_TICKS;
     }
     if (duskLength < 1)
     {
         return 15.0f;
     }
 
-    int dayPeakTick = (darkPeakTick + 12000) % WorldTime::DAY_TICKS;
+    int dayPeakTick = (darkPeakTick + 12000) % DimensionTime::DAY_TICKS;
     int dawnStartTick =
-            ((dayPeakTick - duskLength) % WorldTime::DAY_TICKS + WorldTime::DAY_TICKS) %
-            WorldTime::DAY_TICKS;
+            ((dayPeakTick - duskLength) % DimensionTime::DAY_TICKS + DimensionTime::DAY_TICKS) %
+            DimensionTime::DAY_TICKS;
     int nightLength =
-            ((dawnStartTick - darkPeakTick) % WorldTime::DAY_TICKS + WorldTime::DAY_TICKS) %
-            WorldTime::DAY_TICKS;
+            ((dawnStartTick - darkPeakTick) % DimensionTime::DAY_TICKS + DimensionTime::DAY_TICKS) %
+            DimensionTime::DAY_TICKS;
 
     int fromDusk =
-            ((tickInDay - darkStartTick) % WorldTime::DAY_TICKS + WorldTime::DAY_TICKS) %
-            WorldTime::DAY_TICKS;
+            ((tickInDay - darkStartTick) % DimensionTime::DAY_TICKS + DimensionTime::DAY_TICKS) %
+            DimensionTime::DAY_TICKS;
     int fromNight =
-            ((tickInDay - darkPeakTick) % WorldTime::DAY_TICKS + WorldTime::DAY_TICKS) %
-            WorldTime::DAY_TICKS;
+            ((tickInDay - darkPeakTick) % DimensionTime::DAY_TICKS + DimensionTime::DAY_TICKS) %
+            DimensionTime::DAY_TICKS;
     int fromDawn =
-            ((tickInDay - dawnStartTick) % WorldTime::DAY_TICKS + WorldTime::DAY_TICKS) %
-            WorldTime::DAY_TICKS;
+            ((tickInDay - dawnStartTick) % DimensionTime::DAY_TICKS + DimensionTime::DAY_TICKS) %
+            DimensionTime::DAY_TICKS;
 
     if (fromDusk < duskLength)
     {

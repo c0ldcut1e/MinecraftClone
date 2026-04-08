@@ -10,7 +10,7 @@
 #include "BlockPos.h"
 
 class Chunk;
-class World;
+class Level;
 
 class Block
 {
@@ -37,24 +37,28 @@ public:
     static Block *byId(uint32_t id);
     static Block *byName(const std::string &name);
 
-    virtual void onPlace(World *world, const BlockPos &pos);
-    virtual void onBreak(World *world, const BlockPos &pos);
-    virtual void tick(World *world, const BlockPos &pos);
+    virtual void onPlace(Level *level, const BlockPos &pos);
+    virtual void onBreak(Level *level, const BlockPos &pos);
+    virtual void tick(Level *level, const BlockPos &pos);
 
     void setTexture(Direction *direction, Texture *texture);
     Texture *getTexture(Direction *direction) const;
+    void setTexturePath(Direction *direction, const std::string &path);
+    const std::string &getTexturePath(Direction *direction) const;
 
     void setTintColormap(const std::string &colormapName);
     void setTintColormap(Direction *direction, const std::string &colormapName);
     bool hasTintColormap(Direction *direction) const;
     const std::string &getTintColormap(Direction *direction) const;
 
-    uint32_t resolveTint(Direction *direction, World *world, const Chunk *chunk, int localX,
+    uint32_t resolveTint(Direction *direction, Level *level, const Chunk *chunk, int localX,
                          int localZ) const;
 
     const std::string &getName() const;
 
     bool isSolid() const;
+    void setSelectable(bool selectable);
+    bool isSelectable() const;
 
     void setAABB(const AABB &aabb);
     const AABB &getAABB() const;
@@ -75,6 +79,8 @@ public:
 
     void setUVRect(Direction *direction, float u0, float v0, float u1, float v1);
     UVRect getUVRect(Direction *direction) const;
+    void setAtlasUVRect(Direction *direction, float u0, float v0, float u1, float v1);
+    UVRect getAtlasUVRect(Direction *direction) const;
 
     void setWallMountedTransform(float tiltDegrees, float wallInset);
     bool hasWallMountedTransform() const;
@@ -83,9 +89,11 @@ public:
 
 protected:
     std::unordered_map<Direction *, Texture *> m_textures;
+    std::unordered_map<Direction *, std::string> m_texturePaths;
     std::unordered_map<Direction *, std::string> m_tintColormaps;
     std::string m_name;
     bool m_solid;
+    bool m_selectable;
     AABB m_aabb;
     AABB m_interactionAabb;
     bool m_hasInteractionAabb;
@@ -96,6 +104,7 @@ protected:
     uint8_t m_lightB;
     RenderShape m_renderShape;
     std::unordered_map<Direction *, UVRect> m_uvRects;
+    std::unordered_map<Direction *, UVRect> m_atlasUvRects;
     bool m_hasWallMountedTransform;
     float m_wallMountedTiltDegrees;
     float m_wallMountedInset;

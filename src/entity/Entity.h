@@ -5,20 +5,20 @@
 #include "../utils/AABB.h"
 #include "../utils/UUID.h"
 #include "../utils/math/Vec3.h"
-#include "../world/World.h"
+#include "../world/Level.h"
 #include "../world/models/Model.h"
 
 class Entity
 {
 public:
-    explicit Entity(World *world);
+    explicit Entity(Level *level);
     virtual ~Entity();
 
     virtual uint64_t getType();
 
     virtual void tick();
 
-    World *getWorld() const;
+    Level *getLevel() const;
 
     void setPosition(const Vec3 &position);
     const Vec3 &getPosition() const;
@@ -63,7 +63,7 @@ public:
     void updateAABB();
     void applyPhysics(double deltaTime);
 
-    World *m_world;
+    Level *m_level;
 
     int m_totalTickCount;
 

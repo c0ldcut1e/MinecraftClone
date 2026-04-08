@@ -20,9 +20,14 @@ public:
     void addLayer(UILayer *layer);
     void removeLayer(UILayer *layer);
 
+    void setVisible(bool visible);
+    void toggleVisible();
+    bool isVisible() const;
+
     const std::string &getName() const;
 
 private:
     std::string m_name;
     std::vector<UILayer *> m_layers;
+    bool m_visible;
 };

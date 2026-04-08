@@ -5,7 +5,7 @@
 class LivingEntity : public Entity
 {
 public:
-    explicit LivingEntity(World *world);
+    explicit LivingEntity(Level *level);
     ~LivingEntity() override;
 
     uint64_t getType() override;

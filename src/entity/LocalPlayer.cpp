@@ -5,12 +5,12 @@
 #include <GLFW/glfw3.h>
 
 #include "../core/Minecraft.h"
-#include "../world/WorldRenderer.h"
+#include "../world/LevelRenderer.h"
 #include "../world/block/Block.h"
 #include "../world/lighting/LightEngine.h"
 
-LocalPlayer::LocalPlayer(World *world, const std::wstring &name, Camera *camera)
-    : Player(world, name), m_camera(camera), m_mouseSensitivity(0.08f), m_jumpHeld(false)
+LocalPlayer::LocalPlayer(Level *level, const std::wstring &name, Camera *camera)
+    : Player(level, name), m_camera(camera), m_mouseSensitivity(0.08f), m_jumpHeld(false)
 {}
 
 uint64_t LocalPlayer::getType() { return TYPE; }
@@ -29,27 +29,27 @@ void LocalPlayer::tick()
 
 void LocalPlayer::onKeyPressed(int key)
 {
-    if (key == GLFW_KEY_W)
+    if (key == SDL_SCANCODE_W)
     {
         setMoveForward(true);
     }
-    if (key == GLFW_KEY_S)
+    if (key == SDL_SCANCODE_S)
     {
         setMoveBackward(true);
     }
-    if (key == GLFW_KEY_A)
+    if (key == SDL_SCANCODE_A)
     {
         setMoveLeft(true);
     }
-    if (key == GLFW_KEY_D)
+    if (key == SDL_SCANCODE_D)
     {
         setMoveRight(true);
     }
-    if (key == GLFW_KEY_SPACE)
+    if (key == SDL_SCANCODE_SPACE)
     {
         m_jumpHeld = true;
     }
-    if (key == GLFW_KEY_F)
+    if (key == SDL_SCANCODE_F)
     {
         setFlying(!m_flying);
     }
@@ -57,23 +57,23 @@ void LocalPlayer::onKeyPressed(int key)
 
 void LocalPlayer::onKeyReleased(int key)
 {
-    if (key == GLFW_KEY_W)
+    if (key == SDL_SCANCODE_W)
     {
         setMoveForward(false);
     }
-    if (key == GLFW_KEY_S)
+    if (key == SDL_SCANCODE_S)
     {
         setMoveBackward(false);
     }
-    if (key == GLFW_KEY_A)
+    if (key == SDL_SCANCODE_A)
     {
         setMoveLeft(false);
     }
-    if (key == GLFW_KEY_D)
+    if (key == SDL_SCANCODE_D)
     {
         setMoveRight(false);
     }
-    if (key == GLFW_KEY_SPACE)
+    if (key == SDL_SCANCODE_SPACE)
     {
         m_jumpHeld = false;
     }
@@ -106,21 +106,30 @@ void LocalPlayer::onMouseMoved(double dx, double dy)
 
 void LocalPlayer::onMouseButtonPressed(int button)
 {
-    if (button == GLFW_MOUSE_BUTTON_LEFT)
+    if (button == SDL_BUTTON_LEFT)
     {
         handleLMB();
     }
-    if (button == GLFW_MOUSE_BUTTON_RIGHT)
+    if (button == SDL_BUTTON_RIGHT)
     {
         handleRMB();
     }
+}
+
+void LocalPlayer::clearInputs()
+{
+    setMoveForward(false);
+    setMoveBackward(false);
+    setMoveLeft(false);
+    setMoveRight(false);
+    m_jumpHeld = false;
 }
 
 void LocalPlayer::handleLMB()
 {
     Vec3 origin    = m_position.add(Vec3(0.0, 1.62, 0.0));
     Vec3 direction = m_front.normalize();
-    HitResult *hit = m_world->clip(origin, direction, 6.0f);
+    HitResult *hit = m_level->clip(origin, direction, 6.0f);
     if (hit->isBlock())
     {
         destroyBlock(hit->getBlockPos());
@@ -133,7 +142,7 @@ void LocalPlayer::handleRMB()
 {
     Vec3 origin    = m_position.add(Vec3(0.0, 1.62, 0.0));
     Vec3 direction = m_front.normalize();
-    HitResult *hit = m_world->clip(origin, direction, 6.0f);
+    HitResult *hit = m_level->clip(origin, direction, 6.0f);
     if (hit->isBlock())
     {
         placeBlock(hit->getBlockPos(), hit->getBlockFace(), Block::byName("torch"));
@@ -142,7 +151,7 @@ void LocalPlayer::handleRMB()
     delete hit;
 }
 
-void LocalPlayer::destroyBlock(const BlockPos &pos) { m_world->setBlock(pos, Block::byId(0)); }
+void LocalPlayer::destroyBlock(const BlockPos &pos) { m_level->setBlock(pos, Block::byId(0)); }
 
 void LocalPlayer::placeBlock(const BlockPos &pos, Direction *face, Block *block)
 {
@@ -176,7 +185,7 @@ void LocalPlayer::placeBlock(const BlockPos &pos, Direction *face, Block *block)
                   Vec3(placePos.x + 1.0f, placePos.y + 1.0f, placePos.z + 1.0f));
     if (!blockBox.intersects(getAABB()))
     {
-        m_world->setBlock(placePos, block, face);
+        m_level->setBlock(placePos, block, face);
     }
 }
 

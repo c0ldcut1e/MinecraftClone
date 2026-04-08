@@ -70,6 +70,16 @@ void Shader::setVec3(const char *name, float x, float y, float z) const
     RenderCommand::setUniform3f(getLocation(name), x, y, z);
 }
 
+void Shader::setVec4(const char *name, float x, float y, float z, float w) const
+{
+    RenderCommand::setUniform4f(getLocation(name), x, y, z, w);
+}
+
+void Shader::setVec4Array(const char *name, int count, const float *data) const
+{
+    RenderCommand::setUniform4fv(getLocation(name), count, data);
+}
+
 void Shader::setMat4(const char *name, const double *data) const
 {
     float matrix[16];

@@ -7,6 +7,7 @@ class Texture
 {
 public:
     explicit Texture(const char *path);
+    Texture(int width, int height, const uint8_t *pixels, bool clampToEdge);
     ~Texture();
 
     void bind(uint32_t slot) const;
@@ -16,6 +17,7 @@ public:
 
     int getPixelWidth() const;
     int getPixelHeight() const;
+    const std::vector<uint8_t> &getPixels() const;
 
 private:
     uint32_t m_id;

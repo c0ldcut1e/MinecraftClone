@@ -1,19 +1,21 @@
 #include "ChunkMesher.h"
 
 #include <cmath>
+#include <functional>
 #include <shared_mutex>
 #include <unordered_map>
 #include <vector>
 
 #include "../../utils/Direction.h"
 #include "../../utils/math/Mth.h"
+#include "../LevelSource.h"
 #include "../block/Block.h"
 #include "../lighting/LightEngine.h"
-#include "../source/WorldSource.h"
 
 struct MaskCell
 {
     Texture *texture;
+    Block::UVRect atlasRect;
     uint32_t tint;
     uint16_t rawLight;
     bool filled;
@@ -27,18 +29,38 @@ struct VertexLight
     float b;
 };
 
-static constexpr int BUILD_CACHE_X    = Chunk::SIZE_X + 2;
-static constexpr int BUILD_CACHE_Y    = Chunk::SIZE_Y + 2;
-static constexpr int BUILD_CACHE_Z    = Chunk::SIZE_Z + 2;
-static constexpr int BUILD_CACHE_SIZE = BUILD_CACHE_X * BUILD_CACHE_Y * BUILD_CACHE_Z;
+struct MeshBucket
+{
+    std::vector<float> vertices;
+    std::vector<float> atlasRects;
+    std::vector<uint16_t> rawLights;
+    std::vector<float> shades;
+    std::vector<uint32_t> tints;
+};
+
+struct WallMountedVertex
+{
+    float x;
+    float y;
+    float z;
+};
+
+static constexpr int BUILD_CACHE_X     = Chunk::SIZE_X + 2;
+static constexpr int BUILD_CACHE_Y     = Chunk::SIZE_Y + 2;
+static constexpr int BUILD_CACHE_Z     = Chunk::SIZE_Z + 2;
+static constexpr int BUILD_CACHE_SIZE  = BUILD_CACHE_X * BUILD_CACHE_Y * BUILD_CACHE_Z;
+static constexpr int SMOOTH_CACHE_X    = Chunk::SIZE_X + 1;
+static constexpr int SMOOTH_CACHE_Y    = Chunk::SIZE_Y + 1;
+static constexpr int SMOOTH_CACHE_Z    = Chunk::SIZE_Z + 1;
+static constexpr int SMOOTH_CACHE_SIZE = 6 * SMOOTH_CACHE_X * SMOOTH_CACHE_Y * SMOOTH_CACHE_Z;
 
 struct BuildData
 {
-    BuildData(World *world, const Chunk *chunk, bool cacheRawLight)
-        : world(world), chunk(chunk), chunkPos(chunk->getPos()),
-          baseX(chunkPos.x * Chunk::SIZE_X), baseY(chunkPos.y * Chunk::SIZE_Y),
-          baseZ(chunkPos.z * Chunk::SIZE_Z), cacheRawLight(cacheRawLight), rawLights(),
-          rawLoaded(), solids()
+    BuildData(Level *level, const Chunk *chunk, bool cacheRawLight)
+        : level(level), chunk(chunk), chunkPos(chunk->getPos()), baseX(chunkPos.x * Chunk::SIZE_X),
+          baseY(chunkPos.y * Chunk::SIZE_Y), baseZ(chunkPos.z * Chunk::SIZE_Z),
+          cacheRawLight(cacheRawLight), rawLights(), rawLoaded(), solids(), smoothLightSums(),
+          smoothLightMeta()
     {
         for (int dz = -1; dz <= 1; dz++)
         {
@@ -52,9 +74,8 @@ struct BuildData
                     }
                     else
                     {
-                        chunks[dx + 1][dy + 1][dz + 1] =
-                                world->getChunk(ChunkPos(chunkPos.x + dx, chunkPos.y + dy,
-                                                         chunkPos.z + dz));
+                        chunks[dx + 1][dy + 1][dz + 1] = level->getChunk(
+                                ChunkPos(chunkPos.x + dx, chunkPos.y + dy, chunkPos.z + dz));
                     }
                 }
             }
@@ -66,10 +87,12 @@ struct BuildData
         {
             rawLights.resize(BUILD_CACHE_SIZE);
             rawLoaded.resize(BUILD_CACHE_SIZE);
+            smoothLightSums.resize(SMOOTH_CACHE_SIZE);
+            smoothLightMeta.resize(SMOOTH_CACHE_SIZE);
         }
     }
 
-    World *world;
+    Level *level;
     const Chunk *chunk;
     ChunkPos chunkPos;
     int baseX;
@@ -80,7 +103,31 @@ struct BuildData
     std::vector<uint16_t> rawLights;
     std::vector<uint8_t> rawLoaded;
     std::vector<uint8_t> solids;
+    std::vector<uint32_t> smoothLightSums;
+    std::vector<uint8_t> smoothLightMeta;
 };
+
+typedef std::function<void(int, int, int, int, Texture *, const Block::UVRect &, uint16_t,
+                           uint32_t)>
+        GreedyEmitRect;
+
+typedef std::function<void(Direction *, Texture *, const Block::UVRect &, uint16_t, uint32_t, float,
+                           float, float, float, float, float)>
+        EmitFace;
+
+typedef std::function<void(Direction *, Texture *, const Block::UVRect &, uint16_t, uint32_t, float,
+                           float, float, float, float, float, float, float, float, float, float,
+                           float)>
+        EmitFace4;
+
+typedef std::function<void(Direction *, Texture *, const Block::UVRect &, uint16_t, uint32_t, float,
+                           float, float, float, float, float, float, float, float, float)>
+        EmitFixedUvFace;
+
+typedef std::function<void(Direction *, Texture *, const Block::UVRect &, uint16_t, uint32_t, float,
+                           float, float, float, float, float, float, float, float, float, float,
+                           float, float, float, float, float)>
+        EmitFace4FixedUv;
 
 static constexpr float AO_STRENGTH_MIN   = 0.0f;
 static constexpr float AO_STRENGTH_MAX   = 1.0f;
@@ -123,6 +170,24 @@ static inline float getDirectionalShade(Direction *direction)
     return 1.0f - occlusion * getAoStrength();
 }
 
+static inline float getOldDirectionalShade(Direction *direction)
+{
+    if (direction == Direction::NORTH || direction == Direction::SOUTH)
+    {
+        return 0.8f;
+    }
+    if (direction == Direction::EAST || direction == Direction::WEST)
+    {
+        return 0.6f;
+    }
+    if (direction == Direction::DOWN)
+    {
+        return 0.5f;
+    }
+
+    return 1.0f;
+}
+
 static inline uint16_t packLight(uint8_t r, uint8_t g, uint8_t b)
 {
     if (r > 15)
@@ -152,10 +217,21 @@ static inline uint16_t packRawLight(uint8_t br, uint8_t bg, uint8_t bb, uint8_t 
     return (uint16_t) ((br & 15) | ((bg & 15) << 4) | ((bb & 15) << 8) | ((sky & 15) << 12));
 }
 
+static inline uint32_t packSmoothLightSums(uint8_t br, uint8_t bg, uint8_t bb, uint8_t sky)
+{
+    return (uint32_t) br | ((uint32_t) bg << 6) | ((uint32_t) bb << 12) | ((uint32_t) sky << 18);
+}
+
+static inline uint8_t unpackSmoothLightSum(uint32_t packed, int shift)
+{
+    return (uint8_t) ((packed >> shift) & 63u);
+}
+
 static inline void push(std::vector<float> &vertices, std::vector<uint16_t> &rawLights,
-                        std::vector<float> &shades, std::vector<uint32_t> &tints, float x, float y,
-                        float z, float u, float v, float r, float g, float b, uint16_t rawLight,
-                        float shadeMul, uint32_t tint)
+                        std::vector<float> &atlasRects, std::vector<float> &shades,
+                        std::vector<uint32_t> &tints, float x, float y, float z, float u, float v,
+                        float r, float g, float b, uint16_t rawLight, float shadeMul, uint32_t tint,
+                        const Block::UVRect &atlasRect)
 {
     vertices.push_back(x);
     vertices.push_back(y);
@@ -166,13 +242,23 @@ static inline void push(std::vector<float> &vertices, std::vector<uint16_t> &raw
     vertices.push_back(g);
     vertices.push_back(b);
 
+    atlasRects.push_back(atlasRect.u0);
+    atlasRects.push_back(atlasRect.v0);
+    atlasRects.push_back(atlasRect.u1);
+    atlasRects.push_back(atlasRect.v1);
+
     rawLights.push_back(rawLight);
     shades.push_back(shadeMul);
     tints.push_back(tint);
 }
 
-static inline void shade(Direction *direction, uint8_t lr, uint8_t lg, uint8_t lb, float *r,
-                         float *g, float *b)
+static inline bool sameUVRect(const Block::UVRect &a, const Block::UVRect &b)
+{
+    return a.u0 == b.u0 && a.v0 == b.v0 && a.u1 == b.u1 && a.v1 == b.v1;
+}
+
+static inline void shade(uint8_t lr, uint8_t lg, uint8_t lb, float shadeMul, float *r, float *g,
+                         float *b)
 {
     float minLight = 0.03f;
     float baseR    = (float) lr / 15.0f;
@@ -192,73 +278,88 @@ static inline void shade(Direction *direction, uint8_t lr, uint8_t lg, uint8_t l
         baseB = minLight;
     }
 
-    float _shade = getDirectionalShade(direction);
-
-    *r = baseR * _shade;
-    *g = baseG * _shade;
-    *b = baseB * _shade;
+    *r = baseR * shadeMul;
+    *g = baseG * shadeMul;
+    *b = baseB * shadeMul;
 }
 
 static inline void addFace(std::vector<float> &vertices, std::vector<uint16_t> &rawLights,
-                           std::vector<float> &shades, std::vector<uint32_t> &tints, float x1,
-                           float y1, float z1, float x2, float y2, float z2, float x3, float y3,
-                           float z3, float x4, float y4, float z4, float uMax, float vMax, float r,
-                           float g, float b, uint16_t rawLight, float shadeMul, uint32_t tint)
+                           std::vector<float> &atlasRects, std::vector<float> &shades,
+                           std::vector<uint32_t> &tints, float x1, float y1, float z1, float x2,
+                           float y2, float z2, float x3, float y3, float z3, float x4, float y4,
+                           float z4, float uMax, float vMax, float r, float g, float b,
+                           uint16_t rawLight, float shadeMul, uint32_t tint,
+                           const Block::UVRect &atlasRect)
 {
-    push(vertices, rawLights, shades, tints, x1, y1, z1, uMax, vMax, r, g, b, rawLight, shadeMul,
-         tint);
-    push(vertices, rawLights, shades, tints, x2, y2, z2, uMax, 0.0f, r, g, b, rawLight, shadeMul,
-         tint);
-    push(vertices, rawLights, shades, tints, x3, y3, z3, 0.0f, 0.0f, r, g, b, rawLight, shadeMul,
-         tint);
+    push(vertices, rawLights, atlasRects, shades, tints, x1, y1, z1, uMax, vMax, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x2, y2, z2, uMax, 0.0f, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x3, y3, z3, 0.0f, 0.0f, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
 
-    push(vertices, rawLights, shades, tints, x3, y3, z3, 0.0f, 0.0f, r, g, b, rawLight, shadeMul,
-         tint);
-    push(vertices, rawLights, shades, tints, x4, y4, z4, 0.0f, vMax, r, g, b, rawLight, shadeMul,
-         tint);
-    push(vertices, rawLights, shades, tints, x1, y1, z1, uMax, vMax, r, g, b, rawLight, shadeMul,
-         tint);
+    push(vertices, rawLights, atlasRects, shades, tints, x3, y3, z3, 0.0f, 0.0f, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x4, y4, z4, 0.0f, vMax, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x1, y1, z1, uMax, vMax, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
 }
 
 static inline void addFaceUV(std::vector<float> &vertices, std::vector<uint16_t> &rawLights,
-                             std::vector<float> &shades, std::vector<uint32_t> &tints, float x1,
-                             float y1, float z1, float x2, float y2, float z2, float x3, float y3,
-                             float z3, float x4, float y4, float z4, float u0, float v0, float u1,
-                             float v1, float r, float g, float b, uint16_t rawLight, float shadeMul,
-                             uint32_t tint)
+                             std::vector<float> &atlasRects, std::vector<float> &shades,
+                             std::vector<uint32_t> &tints, float x1, float y1, float z1, float x2,
+                             float y2, float z2, float x3, float y3, float z3, float x4, float y4,
+                             float z4, float u0, float v0, float u1, float v1, float r, float g,
+                             float b, uint16_t rawLight, float shadeMul, uint32_t tint,
+                             const Block::UVRect &atlasRect)
 {
-    push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, r, g, b, rawLight, shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x2, y2, z2, u1, v0, r, g, b, rawLight, shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, r, g, b, rawLight, shadeMul, tint);
+    push(vertices, rawLights, atlasRects, shades, tints, x1, y1, z1, u1, v1, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x2, y2, z2, u1, v0, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x3, y3, z3, u0, v0, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
 
-    push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, r, g, b, rawLight, shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, r, g, b, rawLight, shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, r, g, b, rawLight, shadeMul, tint);
+    push(vertices, rawLights, atlasRects, shades, tints, x3, y3, z3, u0, v0, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x4, y4, z4, u0, v1, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x1, y1, z1, u1, v1, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
 }
 
 static inline void addFace4UV(std::vector<float> &vertices, std::vector<uint16_t> &rawLights,
-                              std::vector<float> &shades, std::vector<uint32_t> &tints, float x1,
-                              float y1, float z1, float x2, float y2, float z2, float x3, float y3,
-                              float z3, float x4, float y4, float z4, float u0, float v0, float u1,
-                              float v1, float r, float g, float b, uint16_t rawLight,
-                              float shadeMul, uint32_t tint)
+                              std::vector<float> &atlasRects, std::vector<float> &shades,
+                              std::vector<uint32_t> &tints, float x1, float y1, float z1, float x2,
+                              float y2, float z2, float x3, float y3, float z3, float x4, float y4,
+                              float z4, float u0, float v0, float u1, float v1, float r, float g,
+                              float b, uint16_t rawLight, float shadeMul, uint32_t tint,
+                              const Block::UVRect &atlasRect)
 {
-    push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, r, g, b, rawLight, shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x2, y2, z2, u1, v0, r, g, b, rawLight, shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, r, g, b, rawLight, shadeMul, tint);
+    push(vertices, rawLights, atlasRects, shades, tints, x1, y1, z1, u1, v1, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x2, y2, z2, u1, v0, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x3, y3, z3, u0, v0, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
 
-    push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, r, g, b, rawLight, shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, r, g, b, rawLight, shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, r, g, b, rawLight, shadeMul, tint);
+    push(vertices, rawLights, atlasRects, shades, tints, x3, y3, z3, u0, v0, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x4, y4, z4, u0, v1, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x1, y1, z1, u1, v1, r, g, b, rawLight,
+         shadeMul, tint, atlasRect);
 }
 
 static inline void addFaceSmooth(std::vector<float> &vertices, std::vector<uint16_t> &rawLights,
-                                 std::vector<float> &shades, std::vector<uint32_t> &tints, float x1,
-                                 float y1, float z1, float x2, float y2, float z2, float x3,
-                                 float y3, float z3, float x4, float y4, float z4, float uMax,
-                                 float vMax, const VertexLight &l1, const VertexLight &l2,
+                                 std::vector<float> &atlasRects, std::vector<float> &shades,
+                                 std::vector<uint32_t> &tints, float x1, float y1, float z1,
+                                 float x2, float y2, float z2, float x3, float y3, float z3,
+                                 float x4, float y4, float z4, float uMax, float vMax,
+                                 const VertexLight &l1, const VertexLight &l2,
                                  const VertexLight &l3, const VertexLight &l4, float shadeMul,
-                                 uint32_t tint)
+                                 uint32_t tint, const Block::UVRect &atlasRect)
 {
     float b1    = l1.r + l1.g + l1.b;
     float b2    = l2.r + l2.g + l2.b;
@@ -268,44 +369,45 @@ static inline void addFaceSmooth(std::vector<float> &vertices, std::vector<uint1
 
     if (diag13)
     {
-        push(vertices, rawLights, shades, tints, x1, y1, z1, uMax, vMax, l1.r, l1.g, l1.b,
-             l1.rawLight, shadeMul, tint);
-        push(vertices, rawLights, shades, tints, x2, y2, z2, uMax, 0.0f, l2.r, l2.g, l2.b,
-             l2.rawLight, shadeMul, tint);
-        push(vertices, rawLights, shades, tints, x3, y3, z3, 0.0f, 0.0f, l3.r, l3.g, l3.b,
-             l3.rawLight, shadeMul, tint);
+        push(vertices, rawLights, atlasRects, shades, tints, x1, y1, z1, uMax, vMax, l1.r, l1.g,
+             l1.b, l1.rawLight, shadeMul, tint, atlasRect);
+        push(vertices, rawLights, atlasRects, shades, tints, x2, y2, z2, uMax, 0.0f, l2.r, l2.g,
+             l2.b, l2.rawLight, shadeMul, tint, atlasRect);
+        push(vertices, rawLights, atlasRects, shades, tints, x3, y3, z3, 0.0f, 0.0f, l3.r, l3.g,
+             l3.b, l3.rawLight, shadeMul, tint, atlasRect);
 
-        push(vertices, rawLights, shades, tints, x3, y3, z3, 0.0f, 0.0f, l3.r, l3.g, l3.b,
-             l3.rawLight, shadeMul, tint);
-        push(vertices, rawLights, shades, tints, x4, y4, z4, 0.0f, vMax, l4.r, l4.g, l4.b,
-             l4.rawLight, shadeMul, tint);
-        push(vertices, rawLights, shades, tints, x1, y1, z1, uMax, vMax, l1.r, l1.g, l1.b,
-             l1.rawLight, shadeMul, tint);
+        push(vertices, rawLights, atlasRects, shades, tints, x3, y3, z3, 0.0f, 0.0f, l3.r, l3.g,
+             l3.b, l3.rawLight, shadeMul, tint, atlasRect);
+        push(vertices, rawLights, atlasRects, shades, tints, x4, y4, z4, 0.0f, vMax, l4.r, l4.g,
+             l4.b, l4.rawLight, shadeMul, tint, atlasRect);
+        push(vertices, rawLights, atlasRects, shades, tints, x1, y1, z1, uMax, vMax, l1.r, l1.g,
+             l1.b, l1.rawLight, shadeMul, tint, atlasRect);
         return;
     }
 
-    push(vertices, rawLights, shades, tints, x2, y2, z2, uMax, 0.0f, l2.r, l2.g, l2.b, l2.rawLight,
-         shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x3, y3, z3, 0.0f, 0.0f, l3.r, l3.g, l3.b, l3.rawLight,
-         shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x4, y4, z4, 0.0f, vMax, l4.r, l4.g, l4.b, l4.rawLight,
-         shadeMul, tint);
+    push(vertices, rawLights, atlasRects, shades, tints, x2, y2, z2, uMax, 0.0f, l2.r, l2.g, l2.b,
+         l2.rawLight, shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x3, y3, z3, 0.0f, 0.0f, l3.r, l3.g, l3.b,
+         l3.rawLight, shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x4, y4, z4, 0.0f, vMax, l4.r, l4.g, l4.b,
+         l4.rawLight, shadeMul, tint, atlasRect);
 
-    push(vertices, rawLights, shades, tints, x4, y4, z4, 0.0f, vMax, l4.r, l4.g, l4.b, l4.rawLight,
-         shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x1, y1, z1, uMax, vMax, l1.r, l1.g, l1.b, l1.rawLight,
-         shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x2, y2, z2, uMax, 0.0f, l2.r, l2.g, l2.b, l2.rawLight,
-         shadeMul, tint);
+    push(vertices, rawLights, atlasRects, shades, tints, x4, y4, z4, 0.0f, vMax, l4.r, l4.g, l4.b,
+         l4.rawLight, shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x1, y1, z1, uMax, vMax, l1.r, l1.g, l1.b,
+         l1.rawLight, shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x2, y2, z2, uMax, 0.0f, l2.r, l2.g, l2.b,
+         l2.rawLight, shadeMul, tint, atlasRect);
 }
 
 static inline void addFaceUVSmooth(std::vector<float> &vertices, std::vector<uint16_t> &rawLights,
-                                   std::vector<float> &shades, std::vector<uint32_t> &tints,
-                                   float x1, float y1, float z1, float x2, float y2, float z2,
-                                   float x3, float y3, float z3, float x4, float y4, float z4,
-                                   float u0, float v0, float u1, float v1, const VertexLight &l1,
-                                   const VertexLight &l2, const VertexLight &l3,
-                                   const VertexLight &l4, float shadeMul, uint32_t tint)
+                                   std::vector<float> &atlasRects, std::vector<float> &shades,
+                                   std::vector<uint32_t> &tints, float x1, float y1, float z1,
+                                   float x2, float y2, float z2, float x3, float y3, float z3,
+                                   float x4, float y4, float z4, float u0, float v0, float u1,
+                                   float v1, const VertexLight &l1, const VertexLight &l2,
+                                   const VertexLight &l3, const VertexLight &l4, float shadeMul,
+                                   uint32_t tint, const Block::UVRect &atlasRect)
 {
     float b1    = l1.r + l1.g + l1.b;
     float b2    = l2.r + l2.g + l2.b;
@@ -315,44 +417,45 @@ static inline void addFaceUVSmooth(std::vector<float> &vertices, std::vector<uin
 
     if (diag13)
     {
-        push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b, l1.rawLight,
-             shadeMul, tint);
-        push(vertices, rawLights, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b, l2.rawLight,
-             shadeMul, tint);
-        push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b, l3.rawLight,
-             shadeMul, tint);
+        push(vertices, rawLights, atlasRects, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b,
+             l1.rawLight, shadeMul, tint, atlasRect);
+        push(vertices, rawLights, atlasRects, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b,
+             l2.rawLight, shadeMul, tint, atlasRect);
+        push(vertices, rawLights, atlasRects, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b,
+             l3.rawLight, shadeMul, tint, atlasRect);
 
-        push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b, l3.rawLight,
-             shadeMul, tint);
-        push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b, l4.rawLight,
-             shadeMul, tint);
-        push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b, l1.rawLight,
-             shadeMul, tint);
+        push(vertices, rawLights, atlasRects, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b,
+             l3.rawLight, shadeMul, tint, atlasRect);
+        push(vertices, rawLights, atlasRects, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b,
+             l4.rawLight, shadeMul, tint, atlasRect);
+        push(vertices, rawLights, atlasRects, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b,
+             l1.rawLight, shadeMul, tint, atlasRect);
         return;
     }
 
-    push(vertices, rawLights, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b, l2.rawLight,
-         shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b, l3.rawLight,
-         shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b, l4.rawLight,
-         shadeMul, tint);
+    push(vertices, rawLights, atlasRects, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b,
+         l2.rawLight, shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b,
+         l3.rawLight, shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b,
+         l4.rawLight, shadeMul, tint, atlasRect);
 
-    push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b, l4.rawLight,
-         shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b, l1.rawLight,
-         shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b, l2.rawLight,
-         shadeMul, tint);
+    push(vertices, rawLights, atlasRects, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b,
+         l4.rawLight, shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b,
+         l1.rawLight, shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b,
+         l2.rawLight, shadeMul, tint, atlasRect);
 }
 
 static inline void addFace4UVSmooth(std::vector<float> &vertices, std::vector<uint16_t> &rawLights,
-                                    std::vector<float> &shades, std::vector<uint32_t> &tints,
-                                    float x1, float y1, float z1, float x2, float y2, float z2,
-                                    float x3, float y3, float z3, float x4, float y4, float z4,
-                                    float u0, float v0, float u1, float v1, const VertexLight &l1,
-                                    const VertexLight &l2, const VertexLight &l3,
-                                    const VertexLight &l4, float shadeMul, uint32_t tint)
+                                    std::vector<float> &atlasRects, std::vector<float> &shades,
+                                    std::vector<uint32_t> &tints, float x1, float y1, float z1,
+                                    float x2, float y2, float z2, float x3, float y3, float z3,
+                                    float x4, float y4, float z4, float u0, float v0, float u1,
+                                    float v1, const VertexLight &l1, const VertexLight &l2,
+                                    const VertexLight &l3, const VertexLight &l4, float shadeMul,
+                                    uint32_t tint, const Block::UVRect &atlasRect)
 {
     float b1    = l1.r + l1.g + l1.b;
     float b2    = l2.r + l2.g + l2.b;
@@ -362,35 +465,35 @@ static inline void addFace4UVSmooth(std::vector<float> &vertices, std::vector<ui
 
     if (diag13)
     {
-        push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b, l1.rawLight,
-             shadeMul, tint);
-        push(vertices, rawLights, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b, l2.rawLight,
-             shadeMul, tint);
-        push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b, l3.rawLight,
-             shadeMul, tint);
+        push(vertices, rawLights, atlasRects, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b,
+             l1.rawLight, shadeMul, tint, atlasRect);
+        push(vertices, rawLights, atlasRects, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b,
+             l2.rawLight, shadeMul, tint, atlasRect);
+        push(vertices, rawLights, atlasRects, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b,
+             l3.rawLight, shadeMul, tint, atlasRect);
 
-        push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b, l3.rawLight,
-             shadeMul, tint);
-        push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b, l4.rawLight,
-             shadeMul, tint);
-        push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b, l1.rawLight,
-             shadeMul, tint);
+        push(vertices, rawLights, atlasRects, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b,
+             l3.rawLight, shadeMul, tint, atlasRect);
+        push(vertices, rawLights, atlasRects, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b,
+             l4.rawLight, shadeMul, tint, atlasRect);
+        push(vertices, rawLights, atlasRects, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b,
+             l1.rawLight, shadeMul, tint, atlasRect);
         return;
     }
 
-    push(vertices, rawLights, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b, l2.rawLight,
-         shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b, l3.rawLight,
-         shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b, l4.rawLight,
-         shadeMul, tint);
+    push(vertices, rawLights, atlasRects, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b,
+         l2.rawLight, shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x3, y3, z3, u0, v0, l3.r, l3.g, l3.b,
+         l3.rawLight, shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b,
+         l4.rawLight, shadeMul, tint, atlasRect);
 
-    push(vertices, rawLights, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b, l4.rawLight,
-         shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b, l1.rawLight,
-         shadeMul, tint);
-    push(vertices, rawLights, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b, l2.rawLight,
-         shadeMul, tint);
+    push(vertices, rawLights, atlasRects, shades, tints, x4, y4, z4, u0, v1, l4.r, l4.g, l4.b,
+         l4.rawLight, shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x1, y1, z1, u1, v1, l1.r, l1.g, l1.b,
+         l1.rawLight, shadeMul, tint, atlasRect);
+    push(vertices, rawLights, atlasRects, shades, tints, x2, y2, z2, u1, v0, l2.r, l2.g, l2.b,
+         l2.rawLight, shadeMul, tint, atlasRect);
 }
 
 static inline Direction *decodeDirection(uint8_t id)
@@ -422,9 +525,9 @@ static inline Direction *decodeDirection(uint8_t id)
     return nullptr;
 }
 
-static inline uint16_t sampleLightKey(World *world, const Chunk *chunk, int wx, int wy, int wz)
+static inline uint16_t sampleLightKey(Level *level, const Chunk *chunk, int wx, int wy, int wz)
 {
-    WorldSource source(world);
+    LevelSource source(level);
 
     int cx = Mth::floorDiv(wx, Chunk::SIZE_X);
     int cy = Mth::floorDiv(wy, Chunk::SIZE_Y);
@@ -455,10 +558,10 @@ static inline uint16_t sampleLightKey(World *world, const Chunk *chunk, int wx, 
     return packRawLight(br, bg, bb, sky);
 }
 
-static inline bool sampleLightKeyIfLoaded(World *world, const Chunk *chunk, int wx, int wy, int wz,
+static inline bool sampleLightKeyIfLoaded(Level *level, const Chunk *chunk, int wx, int wy, int wz,
                                           uint16_t *outRawLight)
 {
-    WorldSource source(world);
+    LevelSource source(level);
 
     int cx = Mth::floorDiv(wx, Chunk::SIZE_X);
     int cy = Mth::floorDiv(wy, Chunk::SIZE_Y);
@@ -526,16 +629,24 @@ static inline void decodeFaceBasis(Direction *direction, int *nx, int *ny, int *
     *vz = 1;
 }
 
-static inline float getShadeMul(Direction *direction) { return getDirectionalShade(direction); }
+static inline float getShadeMul(Direction *direction, bool smoothLighting)
+{
+    if (!smoothLighting)
+    {
+        return getOldDirectionalShade(direction);
+    }
 
-static inline void colorFromRawLight(World *world, Direction *direction, uint16_t rawLight,
-                                     uint32_t tint, float *r, float *g, float *b)
+    return getDirectionalShade(direction);
+}
+
+static inline void colorFromRawLight(Level *level, uint16_t rawLight, uint32_t tint, float shadeMul,
+                                     float *r, float *g, float *b)
 {
     uint8_t br    = (uint8_t) (rawLight & 15);
     uint8_t bg    = (uint8_t) ((rawLight >> 4) & 15);
     uint8_t bb    = (uint8_t) ((rawLight >> 8) & 15);
     uint8_t sky   = (uint8_t) ((rawLight >> 12) & 15);
-    uint8_t clamp = world->getSkyLightClamp();
+    uint8_t clamp = level->getSkyLightClamp();
     if (sky > clamp)
     {
         sky = clamp;
@@ -545,14 +656,14 @@ static inline void colorFromRawLight(World *world, Direction *direction, uint16_
     uint8_t lg = bg > sky ? bg : sky;
     uint8_t lb = bb > sky ? bb : sky;
 
-    shade(direction, lr, lg, lb, r, g, b);
+    shade(lr, lg, lb, shadeMul, r, g, b);
 
     *r *= (float) ((tint >> 16) & 0xFF) / 255.0f;
     *g *= (float) ((tint >> 8) & 0xFF) / 255.0f;
     *b *= (float) (tint & 0xFF) / 255.0f;
 }
 
-static inline uint16_t sampleSmoothRawLight(World *world, const Chunk *chunk, Direction *direction,
+static inline uint16_t sampleSmoothRawLight(Level *level, const Chunk *chunk, Direction *direction,
                                             uint16_t fallbackRawLight, float x, float y, float z)
 {
     int nx;
@@ -598,12 +709,12 @@ static inline uint16_t sampleSmoothRawLight(World *world, const Chunk *chunk, Di
     uint16_t s2 = fallbackRawLight;
     uint16_t s3 = fallbackRawLight;
 
-    (void) sampleLightKeyIfLoaded(world, chunk, bx + nx, by + ny, bz + nz, &s0);
-    (void) sampleLightKeyIfLoaded(world, chunk, bx + nx + su * ux, by + ny + su * uy,
+    (void) sampleLightKeyIfLoaded(level, chunk, bx + nx, by + ny, bz + nz, &s0);
+    (void) sampleLightKeyIfLoaded(level, chunk, bx + nx + su * ux, by + ny + su * uy,
                                   bz + nz + su * uz, &s1);
-    (void) sampleLightKeyIfLoaded(world, chunk, bx + nx + sv * vx, by + ny + sv * vy,
+    (void) sampleLightKeyIfLoaded(level, chunk, bx + nx + sv * vx, by + ny + sv * vy,
                                   bz + nz + sv * vz, &s2);
-    (void) sampleLightKeyIfLoaded(world, chunk, bx + nx + su * ux + sv * vx,
+    (void) sampleLightKeyIfLoaded(level, chunk, bx + nx + su * ux + sv * vx,
                                   by + ny + su * uy + sv * vy, bz + nz + su * uz + sv * vz, &s3);
 
     float br = (float) ((s0 & 15) + (s1 & 15) + (s2 & 15) + (s3 & 15)) * 0.25f;
@@ -622,7 +733,7 @@ static inline uint16_t sampleSmoothRawLight(World *world, const Chunk *chunk, Di
     return packRawLight(outBr, outBg, outBb, outSk);
 }
 
-static inline VertexLight buildVertexLight(World *world, const Chunk *chunk, Direction *direction,
+static inline VertexLight buildVertexLight(Level *level, const Chunk *chunk, Direction *direction,
                                            bool smoothLighting, uint16_t rawLightFallback,
                                            uint32_t tint, float x, float y, float z)
 {
@@ -631,19 +742,19 @@ static inline VertexLight buildVertexLight(World *world, const Chunk *chunk, Dir
 
     if (smoothLighting)
     {
-        light.rawLight = sampleSmoothRawLight(world, chunk, direction, rawLightFallback, x, y, z);
+        light.rawLight = sampleSmoothRawLight(level, chunk, direction, rawLightFallback, x, y, z);
     }
 
     uint32_t tintForLighting = getTintMode(tint) == TINT_MODE_MASKED ? 0xFFFFFFu : tint;
-    colorFromRawLight(world, direction, light.rawLight, tintForLighting, &light.r, &light.g,
-                      &light.b);
+    colorFromRawLight(level, light.rawLight, tintForLighting, getDirectionalShade(direction),
+                      &light.r, &light.g, &light.b);
 
     return light;
 }
 
-static inline Block *getBlockWorld(World *world, const Chunk *chunk, const BlockPos &pos)
+static inline Block *getBlockLevel(Level *level, const Chunk *chunk, const BlockPos &pos)
 {
-    WorldSource source(world);
+    LevelSource source(level);
 
     if (pos.y < 0 || pos.y >= Chunk::SIZE_Y)
     {
@@ -689,17 +800,17 @@ static inline Block *getBlockWorld(World *world, const Chunk *chunk, const Block
     return Block::byId(_chunk->getBlockId(lx, pos.y, lz));
 }
 
-static inline bool isSolidWorld(World *world, const Chunk *chunk, const BlockPos &pos)
+static inline bool isSolidLevel(Level *level, const Chunk *chunk, const BlockPos &pos)
 {
     if (pos.y < 0 || pos.y >= Chunk::SIZE_Y)
     {
         return false;
     }
 
-    Block *block = getBlockWorld(world, chunk, pos);
+    Block *block = getBlockLevel(level, chunk, pos);
     if (!block)
     {
-        return true;
+        return level->areEmptyChunksSolid();
     }
     return block->isSolid();
 }
@@ -714,6 +825,44 @@ static inline bool isInsideBuildCache(int x, int y, int z)
     return x >= -1 && x <= Chunk::SIZE_X && y >= -1 && y <= Chunk::SIZE_Y && z >= -1 &&
            z <= Chunk::SIZE_Z;
 }
+
+static inline int directionToSmoothCacheLayer(Direction *direction)
+{
+    if (direction == Direction::NORTH)
+    {
+        return 0;
+    }
+    if (direction == Direction::SOUTH)
+    {
+        return 1;
+    }
+    if (direction == Direction::WEST)
+    {
+        return 2;
+    }
+    if (direction == Direction::EAST)
+    {
+        return 3;
+    }
+    if (direction == Direction::DOWN)
+    {
+        return 4;
+    }
+    if (direction == Direction::UP)
+    {
+        return 5;
+    }
+
+    return -1;
+}
+
+static inline int getSmoothCacheIndex(int layer, int x, int y, int z)
+{
+    int vertexIndex = x + SMOOTH_CACHE_X * (y + SMOOTH_CACHE_Y * z);
+    return vertexIndex + layer * SMOOTH_CACHE_X * SMOOTH_CACHE_Y * SMOOTH_CACHE_Z;
+}
+
+static inline bool isNearlyIntegral(float value) { return fabsf(value - roundf(value)) <= 0.001f; }
 
 static inline const Chunk *getBuildChunk2D(const BuildData &buildData, int *x, int *z)
 {
@@ -799,8 +948,8 @@ static void buildSolidCache(BuildData *buildData)
 
                 if (y >= 0 && y < Chunk::SIZE_Y)
                 {
-                    int lx = x;
-                    int lz = z;
+                    int lx             = x;
+                    int lz             = z;
                     const Chunk *chunk = getBuildChunk2D(*buildData, &lx, &lz);
 
                     solid = 1;
@@ -829,7 +978,7 @@ static void buildRawLightCache(BuildData *buildData)
                 int ly = y;
                 int lz = z;
 
-                size_t index = (size_t) getBuildCacheIndex(x, y, z);
+                size_t index       = (size_t) getBuildCacheIndex(x, y, z);
                 const Chunk *chunk = getBuildChunk3D(*buildData, &lx, &ly, &lz);
                 if (!chunk)
                 {
@@ -843,7 +992,8 @@ static void buildRawLightCache(BuildData *buildData)
                 uint8_t bb;
                 chunk->getBlockLight(lx, ly, lz, &br, &bg, &bb);
 
-                buildData->rawLights[index] = packRawLight(br, bg, bb, chunk->getSkyLight(lx, ly, lz));
+                buildData->rawLights[index] =
+                        packRawLight(br, bg, bb, chunk->getSkyLight(lx, ly, lz));
                 buildData->rawLoaded[index] = 1;
             }
         }
@@ -863,7 +1013,7 @@ static inline uint16_t sampleLightKey(const BuildData &buildData, int wx, int wy
         }
     }
 
-    return sampleLightKey(buildData.world, buildData.chunk, wx, wy, wz);
+    return sampleLightKey(buildData.level, buildData.chunk, wx, wy, wz);
 }
 
 static inline bool sampleLightKeyIfLoaded(const BuildData &buildData, int wx, int wy, int wz,
@@ -882,7 +1032,40 @@ static inline bool sampleLightKeyIfLoaded(const BuildData &buildData, int wx, in
         }
     }
 
-    return sampleLightKeyIfLoaded(buildData.world, buildData.chunk, wx, wy, wz, outRawLight);
+    return sampleLightKeyIfLoaded(buildData.level, buildData.chunk, wx, wy, wz, outRawLight);
+}
+
+static inline void accumulateSmoothLightSample(const BuildData &buildData, int wx, int wy, int wz,
+                                               uint8_t *sumBr, uint8_t *sumBg, uint8_t *sumBb,
+                                               uint8_t *sumSk, uint8_t *missingCount)
+{
+    uint16_t sample = 0;
+    if (!sampleLightKeyIfLoaded(buildData, wx, wy, wz, &sample))
+    {
+        (*missingCount)++;
+        return;
+    }
+
+    *sumBr = (uint8_t) (*sumBr + (sample & 15));
+    *sumBg = (uint8_t) (*sumBg + ((sample >> 4) & 15));
+    *sumBb = (uint8_t) (*sumBb + ((sample >> 8) & 15));
+    *sumSk = (uint8_t) (*sumSk + ((sample >> 12) & 15));
+}
+
+static inline uint16_t resolveSmoothRawLight(uint32_t packedSums, uint8_t missingCount,
+                                             uint16_t fallbackRawLight)
+{
+    int sumBr = (int) unpackSmoothLightSum(packedSums, 0) +
+                (int) (fallbackRawLight & 15) * (int) missingCount;
+    int sumBg = (int) unpackSmoothLightSum(packedSums, 6) +
+                (int) ((fallbackRawLight >> 4) & 15) * (int) missingCount;
+    int sumBb = (int) unpackSmoothLightSum(packedSums, 12) +
+                (int) ((fallbackRawLight >> 8) & 15) * (int) missingCount;
+    int sumSk = (int) unpackSmoothLightSum(packedSums, 18) +
+                (int) ((fallbackRawLight >> 12) & 15) * (int) missingCount;
+
+    return packRawLight((uint8_t) ((sumBr + 2) >> 2), (uint8_t) ((sumBg + 2) >> 2),
+                        (uint8_t) ((sumBb + 2) >> 2), (uint8_t) ((sumSk + 2) >> 2));
 }
 
 static inline uint16_t sampleSmoothRawLight(const BuildData &buildData, Direction *direction,
@@ -955,7 +1138,108 @@ static inline uint16_t sampleSmoothRawLight(const BuildData &buildData, Directio
     return packRawLight(outBr, outBg, outBb, outSk);
 }
 
-static inline VertexLight buildVertexLight(const BuildData &buildData, Direction *direction,
+static inline bool sampleSmoothRawLightCached(BuildData &buildData, Direction *direction,
+                                              uint16_t fallbackRawLight, float x, float y, float z,
+                                              uint16_t *outRawLight)
+{
+    if (!buildData.cacheRawLight || buildData.smoothLightSums.empty() ||
+        buildData.smoothLightMeta.empty())
+    {
+        return false;
+    }
+
+    if (!isNearlyIntegral(x) || !isNearlyIntegral(y) || !isNearlyIntegral(z))
+    {
+        return false;
+    }
+
+    int layer = directionToSmoothCacheLayer(direction);
+    if (layer < 0)
+    {
+        return false;
+    }
+
+    int localX = (int) lroundf(x) - buildData.baseX;
+    int localY = (int) lroundf(y) - buildData.baseY;
+    int localZ = (int) lroundf(z) - buildData.baseZ;
+
+    if (localX < 0 || localX > Chunk::SIZE_X || localY < 0 || localY > Chunk::SIZE_Y ||
+        localZ < 0 || localZ > Chunk::SIZE_Z)
+    {
+        return false;
+    }
+
+    size_t index = (size_t) getSmoothCacheIndex(layer, localX, localY, localZ);
+    uint8_t meta = buildData.smoothLightMeta[index];
+    if ((meta & 0x80u) == 0)
+    {
+        int nx;
+        int ny;
+        int nz;
+        int ux;
+        int uy;
+        int uz;
+        int vx;
+        int vy;
+        int vz;
+        decodeFaceBasis(direction, &nx, &ny, &nz, &ux, &uy, &uz, &vx, &vy, &vz);
+
+        int bx = (int) floorf(x - 0.5f * (float) nx);
+        int by = (int) floorf(y - 0.5f * (float) ny);
+        int bz = (int) floorf(z - 0.5f * (float) nz);
+
+        float cx = (float) bx + 0.5f;
+        float cy = (float) by + 0.5f;
+        float cz = (float) bz + 0.5f;
+
+        float du = 0.0f;
+        if (ux != 0)
+            du = x - cx;
+        else if (uy != 0)
+            du = y - cy;
+        else
+            du = z - cz;
+
+        float dv = 0.0f;
+        if (vx != 0)
+            dv = x - cx;
+        else if (vy != 0)
+            dv = y - cy;
+        else
+            dv = z - cz;
+
+        int su = du >= 0.0f ? 1 : -1;
+        int sv = dv >= 0.0f ? 1 : -1;
+
+        uint8_t sumBr        = 0;
+        uint8_t sumBg        = 0;
+        uint8_t sumBb        = 0;
+        uint8_t sumSk        = 0;
+        uint8_t missingCount = 0;
+
+        accumulateSmoothLightSample(buildData, bx + nx, by + ny, bz + nz, &sumBr, &sumBg, &sumBb,
+                                    &sumSk, &missingCount);
+        accumulateSmoothLightSample(buildData, bx + nx + su * ux, by + ny + su * uy,
+                                    bz + nz + su * uz, &sumBr, &sumBg, &sumBb, &sumSk,
+                                    &missingCount);
+        accumulateSmoothLightSample(buildData, bx + nx + sv * vx, by + ny + sv * vy,
+                                    bz + nz + sv * vz, &sumBr, &sumBg, &sumBb, &sumSk,
+                                    &missingCount);
+        accumulateSmoothLightSample(buildData, bx + nx + su * ux + sv * vx,
+                                    by + ny + su * uy + sv * vy, bz + nz + su * uz + sv * vz,
+                                    &sumBr, &sumBg, &sumBb, &sumSk, &missingCount);
+
+        buildData.smoothLightSums[index] = packSmoothLightSums(sumBr, sumBg, sumBb, sumSk);
+        buildData.smoothLightMeta[index] = (uint8_t) (0x80u | (missingCount & 0x7u));
+        meta                             = buildData.smoothLightMeta[index];
+    }
+
+    *outRawLight = resolveSmoothRawLight(buildData.smoothLightSums[index], (uint8_t) (meta & 0x7u),
+                                         fallbackRawLight);
+    return true;
+}
+
+static inline VertexLight buildVertexLight(BuildData &buildData, Direction *direction,
                                            bool smoothLighting, uint16_t rawLightFallback,
                                            uint32_t tint, float x, float y, float z)
 {
@@ -964,28 +1248,33 @@ static inline VertexLight buildVertexLight(const BuildData &buildData, Direction
 
     if (smoothLighting)
     {
-        light.rawLight = sampleSmoothRawLight(buildData, direction, rawLightFallback, x, y, z);
+        if (!sampleSmoothRawLightCached(buildData, direction, rawLightFallback, x, y, z,
+                                        &light.rawLight))
+        {
+            light.rawLight = sampleSmoothRawLight(buildData, direction, rawLightFallback, x, y, z);
+        }
     }
 
     uint32_t tintForLighting = getTintMode(tint) == TINT_MODE_MASKED ? 0xFFFFFFu : tint;
-    colorFromRawLight(buildData.world, direction, light.rawLight, tintForLighting, &light.r,
-                      &light.g, &light.b);
+    colorFromRawLight(buildData.level, light.rawLight, tintForLighting,
+                      getDirectionalShade(direction), &light.r, &light.g, &light.b);
 
     return light;
 }
 
-static inline bool isSolidWorld(const BuildData &buildData, const BlockPos &pos)
+static inline bool isSolidLevel(const BuildData &buildData, const BlockPos &pos)
 {
     if (isInsideBuildCache(pos.x, pos.y, pos.z))
     {
         return buildData.solids[(size_t) getBuildCacheIndex(pos.x, pos.y, pos.z)] != 0;
     }
 
-    return isSolidWorld(buildData.world, buildData.chunk, pos);
+    return isSolidLevel(buildData.level, buildData.chunk, pos);
 }
 
+template<typename EmitRectFunc>
 static void greedy2D(std::vector<MaskCell> &mask, int width, int height, bool useGreedy,
-                     auto &&emitRect)
+                     EmitRectFunc emitRect)
 {
     for (int j = 0; j < height; j++)
     {
@@ -1003,6 +1292,7 @@ static void greedy2D(std::vector<MaskCell> &mask, int width, int height, bool us
                 {
                     MaskCell _cell = mask[(size_t) (i + rWidth) + (size_t) width * (size_t) j];
                     if (!_cell.filled || _cell.texture != cell.texture ||
+                        !sameUVRect(_cell.atlasRect, cell.atlasRect) ||
                         _cell.rawLight != cell.rawLight || _cell.tint != cell.tint)
                     {
                         break;
@@ -1020,6 +1310,7 @@ static void greedy2D(std::vector<MaskCell> &mask, int width, int height, bool us
                         MaskCell _cell =
                                 mask[(size_t) (i + k) + (size_t) width * (size_t) (j + rHeight)];
                         if (!_cell.filled || _cell.texture != cell.texture ||
+                            !sameUVRect(_cell.atlasRect, cell.atlasRect) ||
                             _cell.rawLight != cell.rawLight || _cell.tint != cell.tint)
                         {
                             ok = false;
@@ -1033,7 +1324,8 @@ static void greedy2D(std::vector<MaskCell> &mask, int width, int height, bool us
                     }
                 }
 
-                emitRect(i, j, rWidth, rHeight, cell.texture, cell.rawLight, cell.tint);
+                emitRect(i, j, rWidth, rHeight, cell.texture, cell.atlasRect, cell.rawLight,
+                         cell.tint);
 
                 for (int y = 0; y < rHeight; y++)
                 {
@@ -1042,10 +1334,11 @@ static void greedy2D(std::vector<MaskCell> &mask, int width, int height, bool us
                         {
                             MaskCell &_cell =
                                     mask[(size_t) (i + x) + (size_t) width * (size_t) (j + y)];
-                            _cell.filled   = false;
-                            _cell.texture  = nullptr;
-                            _cell.rawLight = 0;
-                            _cell.tint     = 0xFFFFFF;
+                            _cell.filled    = false;
+                            _cell.texture   = nullptr;
+                            _cell.atlasRect = {0.0f, 0.0f, 1.0f, 1.0f};
+                            _cell.rawLight  = 0;
+                            _cell.tint      = 0xFFFFFF;
                         }
                     }
                 }
@@ -1053,20 +1346,11 @@ static void greedy2D(std::vector<MaskCell> &mask, int width, int height, bool us
         }
     }
 }
-
-void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLighting,
+void ChunkMesher::buildMeshes(Level *level, const Chunk *chunk, bool smoothLighting,
                               bool grassSideOverlay, std::vector<MeshBuildResult> *outMeshes)
 {
-    struct Bucket
-    {
-        std::vector<float> vertices;
-        std::vector<uint16_t> rawLights;
-        std::vector<float> shades;
-        std::vector<uint32_t> tints;
-    };
-
-    std::unordered_map<Texture *, Bucket> buckets;
-    BuildData buildData(world, chunk, smoothLighting);
+    std::unordered_map<Texture *, MeshBucket> buckets;
+    BuildData buildData(level, chunk, smoothLighting);
     buildSolidCache(&buildData);
     if (smoothLighting)
     {
@@ -1079,8 +1363,9 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
     int baseZ         = chunkPos.z * Chunk::SIZE_Z;
     Block *grassBlock = Block::byName("grass");
 
-    auto emit = [&](Direction *direction, Texture *texture, uint16_t rawLight, uint32_t tint,
-                    float x1, float y1, float z1, float x2, float y2, float z2) {
+    EmitFace emit = [&](Direction *direction, Texture *texture, const Block::UVRect &atlasRect,
+                        uint16_t rawLight, uint32_t tint, float x1, float y1, float z1, float x2,
+                        float y2, float z2) {
         if (!texture)
         {
             return;
@@ -1104,368 +1389,410 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
             vMax = fabsf(z2 - z1);
         }
 
-        float shadeMul = getShadeMul(direction);
+        float shadeMul = getShadeMul(direction, smoothLighting);
+        float worldX1  = x1 + (float) baseX;
+        float worldY1  = y1 + (float) baseY;
+        float worldZ1  = z1 + (float) baseZ;
+        float worldX2  = x2 + (float) baseX;
+        float worldY2  = y2 + (float) baseY;
+        float worldZ2  = z2 + (float) baseZ;
 
-        Bucket &bucket = buckets[texture];
+        MeshBucket &bucket = buckets[texture];
         if (!smoothLighting)
         {
             float r;
             float g;
             float b;
             uint32_t tintForLighting = getTintMode(tint) == TINT_MODE_MASKED ? 0xFFFFFFu : tint;
-            colorFromRawLight(world, direction, rawLight, tintForLighting, &r, &g, &b);
+            colorFromRawLight(level, rawLight, tintForLighting, shadeMul, &r, &g, &b);
 
             if (direction == Direction::NORTH)
             {
-                addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1,
-                        x1, y2, z1, x2, y2, z1, x2, y1, z1, uMax, vMax, r, g, b, rawLight, shadeMul,
-                        tint);
+                addFace(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                        bucket.tints, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, uMax, vMax, r,
+                        g, b, rawLight, shadeMul, tint, atlasRect);
             }
             else if (direction == Direction::SOUTH)
             {
-                addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1, z2,
-                        x2, y2, z2, x1, y2, z2, x1, y1, z2, uMax, vMax, r, g, b, rawLight, shadeMul,
-                        tint);
+                addFace(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                        bucket.tints, x2, y1, z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, uMax, vMax, r,
+                        g, b, rawLight, shadeMul, tint, atlasRect);
             }
             else if (direction == Direction::UP)
             {
-                addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y2, z1,
-                        x1, y2, z2, x2, y2, z2, x2, y2, z1, uMax, vMax, r, g, b, rawLight, shadeMul,
-                        tint);
+                addFace(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                        bucket.tints, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, uMax, vMax, r,
+                        g, b, rawLight, shadeMul, tint, atlasRect);
             }
             else if (direction == Direction::DOWN)
             {
-                addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z2,
-                        x1, y1, z1, x2, y1, z1, x2, y1, z2, uMax, vMax, r, g, b, rawLight, shadeMul,
-                        tint);
+                addFace(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                        bucket.tints, x1, y1, z2, x1, y1, z1, x2, y1, z1, x2, y1, z2, uMax, vMax, r,
+                        g, b, rawLight, shadeMul, tint, atlasRect);
             }
             else if (direction == Direction::EAST)
             {
-                addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1, z1,
-                        x2, y2, z1, x2, y2, z2, x2, y1, z2, uMax, vMax, r, g, b, rawLight, shadeMul,
-                        tint);
+                addFace(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                        bucket.tints, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, uMax, vMax, r,
+                        g, b, rawLight, shadeMul, tint, atlasRect);
             }
             else if (direction == Direction::WEST)
             {
-                addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z2,
-                        x1, y2, z2, x1, y2, z1, x1, y1, z1, uMax, vMax, r, g, b, rawLight, shadeMul,
-                        tint);
+                addFace(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                        bucket.tints, x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, uMax, vMax, r,
+                        g, b, rawLight, shadeMul, tint, atlasRect);
             }
             return;
         }
 
         if (direction == Direction::NORTH)
         {
-            VertexLight l1 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z1);
-            VertexLight l2 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z1);
-            VertexLight l3 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z1);
-            VertexLight l4 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z1);
-            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
-                          z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, uMax, vMax, l1, l2, l3, l4,
-                          shadeMul, tint);
+            VertexLight l1 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY1, worldZ1);
+            VertexLight l2 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY2, worldZ1);
+            VertexLight l3 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY2, worldZ1);
+            VertexLight l4 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY1, worldZ1);
+            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                          bucket.tints, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, uMax, vMax,
+                          l1, l2, l3, l4, shadeMul, tint, atlasRect);
         }
         else if (direction == Direction::SOUTH)
         {
-            VertexLight l1 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z2);
-            VertexLight l2 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z2);
-            VertexLight l3 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z2);
-            VertexLight l4 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z2);
-            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1,
-                          z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, uMax, vMax, l1, l2, l3, l4,
-                          shadeMul, tint);
+            VertexLight l1 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY1, worldZ2);
+            VertexLight l2 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY2, worldZ2);
+            VertexLight l3 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY2, worldZ2);
+            VertexLight l4 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY1, worldZ2);
+            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                          bucket.tints, x2, y1, z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, uMax, vMax,
+                          l1, l2, l3, l4, shadeMul, tint, atlasRect);
         }
         else if (direction == Direction::UP)
         {
-            VertexLight l1 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z1);
-            VertexLight l2 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z2);
-            VertexLight l3 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z2);
-            VertexLight l4 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z1);
-            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y2,
-                          z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, uMax, vMax, l1, l2, l3, l4,
-                          shadeMul, tint);
+            VertexLight l1 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY2, worldZ1);
+            VertexLight l2 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY2, worldZ2);
+            VertexLight l3 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY2, worldZ2);
+            VertexLight l4 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY2, worldZ1);
+            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                          bucket.tints, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, uMax, vMax,
+                          l1, l2, l3, l4, shadeMul, tint, atlasRect);
         }
         else if (direction == Direction::DOWN)
         {
-            VertexLight l1 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z2);
-            VertexLight l2 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z1);
-            VertexLight l3 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z1);
-            VertexLight l4 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z2);
-            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
-                          z2, x1, y1, z1, x2, y1, z1, x2, y1, z2, uMax, vMax, l1, l2, l3, l4,
-                          shadeMul, tint);
+            VertexLight l1 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY1, worldZ2);
+            VertexLight l2 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY1, worldZ1);
+            VertexLight l3 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY1, worldZ1);
+            VertexLight l4 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY1, worldZ2);
+            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                          bucket.tints, x1, y1, z2, x1, y1, z1, x2, y1, z1, x2, y1, z2, uMax, vMax,
+                          l1, l2, l3, l4, shadeMul, tint, atlasRect);
         }
         else if (direction == Direction::EAST)
         {
-            VertexLight l1 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z1);
-            VertexLight l2 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z1);
-            VertexLight l3 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z2);
-            VertexLight l4 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z2);
-            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1,
-                          z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, uMax, vMax, l1, l2, l3, l4,
-                          shadeMul, tint);
+            VertexLight l1 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY1, worldZ1);
+            VertexLight l2 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY2, worldZ1);
+            VertexLight l3 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY2, worldZ2);
+            VertexLight l4 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY1, worldZ2);
+            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                          bucket.tints, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, uMax, vMax,
+                          l1, l2, l3, l4, shadeMul, tint, atlasRect);
         }
         else if (direction == Direction::WEST)
         {
-            VertexLight l1 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z2);
-            VertexLight l2 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z2);
-            VertexLight l3 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z1);
-            VertexLight l4 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z1);
-            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
-                          z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, uMax, vMax, l1, l2, l3, l4,
-                          shadeMul, tint);
+            VertexLight l1 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY1, worldZ2);
+            VertexLight l2 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY2, worldZ2);
+            VertexLight l3 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY2, worldZ1);
+            VertexLight l4 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY1, worldZ1);
+            addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                          bucket.tints, x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, uMax, vMax,
+                          l1, l2, l3, l4, shadeMul, tint, atlasRect);
         }
     };
 
-    auto emitFace4 = [&](Direction *direction, Texture *texture, uint16_t rawLight, uint32_t tint,
-                         float x1, float y1, float z1, float x2, float y2, float z2, float x3,
-                         float y3, float z3, float x4, float y4, float z4) {
+    EmitFace4 emitFace4 = [&](Direction *direction, Texture *texture,
+                              const Block::UVRect &atlasRect, uint16_t rawLight, uint32_t tint,
+                              float x1, float y1, float z1, float x2, float y2, float z2, float x3,
+                              float y3, float z3, float x4, float y4, float z4) {
         if (!texture)
         {
             return;
         }
 
-        float shadeMul = getShadeMul(direction);
+        float shadeMul = getShadeMul(direction, smoothLighting);
+        float worldX1  = x1 + (float) baseX;
+        float worldY1  = y1 + (float) baseY;
+        float worldZ1  = z1 + (float) baseZ;
+        float worldX2  = x2 + (float) baseX;
+        float worldY2  = y2 + (float) baseY;
+        float worldZ2  = z2 + (float) baseZ;
+        float worldX3  = x3 + (float) baseX;
+        float worldY3  = y3 + (float) baseY;
+        float worldZ3  = z3 + (float) baseZ;
+        float worldX4  = x4 + (float) baseX;
+        float worldY4  = y4 + (float) baseY;
+        float worldZ4  = z4 + (float) baseZ;
 
-        Bucket &bucket = buckets[texture];
-        bool useSmooth = false;
+        MeshBucket &bucket = buckets[texture];
+        bool useSmooth     = false;
         if (!useSmooth)
         {
             float r;
             float g;
             float b;
             uint32_t tintForLighting = getTintMode(tint) == TINT_MODE_MASKED ? 0xFFFFFFu : tint;
-            colorFromRawLight(world, direction, rawLight, tintForLighting, &r, &g, &b);
+            colorFromRawLight(level, rawLight, tintForLighting, shadeMul, &r, &g, &b);
 
-            addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1, x2,
-                    y2, z2, x3, y3, z3, x4, y4, z4, 1.0f, 1.0f, r, g, b, rawLight, shadeMul, tint);
-            addFace(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x4, y4, z4, x3,
-                    y3, z3, x2, y2, z2, x1, y1, z1, 1.0f, 1.0f, r, g, b, rawLight, shadeMul, tint);
+            addFace(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                    bucket.tints, x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4, 1.0f, 1.0f, r, g,
+                    b, rawLight, shadeMul, tint, atlasRect);
+            addFace(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                    bucket.tints, x4, y4, z4, x3, y3, z3, x2, y2, z2, x1, y1, z1, 1.0f, 1.0f, r, g,
+                    b, rawLight, shadeMul, tint, atlasRect);
             return;
         }
 
-        VertexLight l1 =
-                buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z1);
-        VertexLight l2 =
-                buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z2);
-        VertexLight l3 =
-                buildVertexLight(buildData, direction, true, rawLight, tint, x3, y3, z3);
-        VertexLight l4 =
-                buildVertexLight(buildData, direction, true, rawLight, tint, x4, y4, z4);
+        VertexLight l1 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                          worldY1, worldZ1);
+        VertexLight l2 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                          worldY2, worldZ2);
+        VertexLight l3 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX3,
+                                          worldY3, worldZ3);
+        VertexLight l4 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX4,
+                                          worldY4, worldZ4);
 
-        addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1,
-                      x2, y2, z2, x3, y3, z3, x4, y4, z4, 1.0f, 1.0f, l1, l2, l3, l4, shadeMul,
-                      tint);
-        addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x4, y4, z4,
-                      x3, y3, z3, x2, y2, z2, x1, y1, z1, 1.0f, 1.0f, l4, l3, l2, l1, shadeMul,
-                      tint);
+        addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                      bucket.tints, x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4, 1.0f, 1.0f, l1,
+                      l2, l3, l4, shadeMul, tint, atlasRect);
+        addFaceSmooth(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                      bucket.tints, x4, y4, z4, x3, y3, z3, x2, y2, z2, x1, y1, z1, 1.0f, 1.0f, l4,
+                      l3, l2, l1, shadeMul, tint, atlasRect);
     };
 
-    auto emitFixedUV = [&](Direction *direction, Texture *texture, uint16_t rawLight, uint32_t tint,
-                           float x1, float y1, float z1, float x2, float y2, float z2, float u0,
-                           float v0, float u1, float v1) {
+    EmitFixedUvFace emitFixedUV = [&](Direction *direction, Texture *texture,
+                                      const Block::UVRect &atlasRect, uint16_t rawLight,
+                                      uint32_t tint, float x1, float y1, float z1, float x2,
+                                      float y2, float z2, float u0, float v0, float u1, float v1) {
         if (!texture)
         {
             return;
         }
 
-        float shadeMul = getShadeMul(direction);
+        float shadeMul = getShadeMul(direction, smoothLighting);
+        float worldX1  = x1 + (float) baseX;
+        float worldY1  = y1 + (float) baseY;
+        float worldZ1  = z1 + (float) baseZ;
+        float worldX2  = x2 + (float) baseX;
+        float worldY2  = y2 + (float) baseY;
+        float worldZ2  = z2 + (float) baseZ;
 
-        Bucket &bucket = buckets[texture];
+        MeshBucket &bucket = buckets[texture];
         if (!smoothLighting)
         {
             float r;
             float g;
             float b;
             uint32_t tintForLighting = getTintMode(tint) == TINT_MODE_MASKED ? 0xFFFFFFu : tint;
-            colorFromRawLight(world, direction, rawLight, tintForLighting, &r, &g, &b);
+            colorFromRawLight(level, rawLight, tintForLighting, shadeMul, &r, &g, &b);
 
             if (direction == Direction::NORTH)
             {
-                addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
-                          z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, u0, v0, u1, v1, r, g, b, rawLight,
-                          shadeMul, tint);
+                addFaceUV(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                          bucket.tints, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, u0, v0, u1,
+                          v1, r, g, b, rawLight, shadeMul, tint, atlasRect);
             }
             else if (direction == Direction::SOUTH)
             {
-                addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1,
-                          z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, u0, v0, u1, v1, r, g, b, rawLight,
-                          shadeMul, tint);
+                addFaceUV(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                          bucket.tints, x2, y1, z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, u0, v0, u1,
+                          v1, r, g, b, rawLight, shadeMul, tint, atlasRect);
             }
             else if (direction == Direction::UP)
             {
-                addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y2,
-                          z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, u0, v0, u1, v1, r, g, b, rawLight,
-                          shadeMul, tint);
+                addFaceUV(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                          bucket.tints, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, u0, v0, u1,
+                          v1, r, g, b, rawLight, shadeMul, tint, atlasRect);
             }
             else if (direction == Direction::DOWN)
             {
-                addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
-                          z2, x1, y1, z1, x2, y1, z1, x2, y1, z2, u0, v0, u1, v1, r, g, b, rawLight,
-                          shadeMul, tint);
+                addFaceUV(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                          bucket.tints, x1, y1, z2, x1, y1, z1, x2, y1, z1, x2, y1, z2, u0, v0, u1,
+                          v1, r, g, b, rawLight, shadeMul, tint, atlasRect);
             }
             else if (direction == Direction::EAST)
             {
-                addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1,
-                          z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, u0, v0, u1, v1, r, g, b, rawLight,
-                          shadeMul, tint);
+                addFaceUV(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                          bucket.tints, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, u0, v0, u1,
+                          v1, r, g, b, rawLight, shadeMul, tint, atlasRect);
             }
             else if (direction == Direction::WEST)
             {
-                addFaceUV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
-                          z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, u0, v0, u1, v1, r, g, b, rawLight,
-                          shadeMul, tint);
+                addFaceUV(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                          bucket.tints, x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, u0, v0, u1,
+                          v1, r, g, b, rawLight, shadeMul, tint, atlasRect);
             }
             return;
         }
 
         if (direction == Direction::NORTH)
         {
-            VertexLight l1 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z1);
-            VertexLight l2 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z1);
-            VertexLight l3 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z1);
-            VertexLight l4 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z1);
-            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
-                            z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, u0, v0, u1, v1, l1, l2, l3, l4,
-                            shadeMul, tint);
+            VertexLight l1 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY1, worldZ1);
+            VertexLight l2 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY2, worldZ1);
+            VertexLight l3 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY2, worldZ1);
+            VertexLight l4 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY1, worldZ1);
+            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                            bucket.tints, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, u0, v0,
+                            u1, v1, l1, l2, l3, l4, shadeMul, tint, atlasRect);
         }
         else if (direction == Direction::SOUTH)
         {
-            VertexLight l1 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z2);
-            VertexLight l2 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z2);
-            VertexLight l3 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z2);
-            VertexLight l4 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z2);
-            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1,
-                            z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, u0, v0, u1, v1, l1, l2, l3, l4,
-                            shadeMul, tint);
+            VertexLight l1 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY1, worldZ2);
+            VertexLight l2 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY2, worldZ2);
+            VertexLight l3 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY2, worldZ2);
+            VertexLight l4 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY1, worldZ2);
+            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                            bucket.tints, x2, y1, z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, u0, v0,
+                            u1, v1, l1, l2, l3, l4, shadeMul, tint, atlasRect);
         }
         else if (direction == Direction::UP)
         {
-            VertexLight l1 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z1);
-            VertexLight l2 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z2);
-            VertexLight l3 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z2);
-            VertexLight l4 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z1);
-            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y2,
-                            z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, u0, v0, u1, v1, l1, l2, l3, l4,
-                            shadeMul, tint);
+            VertexLight l1 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY2, worldZ1);
+            VertexLight l2 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY2, worldZ2);
+            VertexLight l3 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY2, worldZ2);
+            VertexLight l4 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY2, worldZ1);
+            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                            bucket.tints, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, u0, v0,
+                            u1, v1, l1, l2, l3, l4, shadeMul, tint, atlasRect);
         }
         else if (direction == Direction::DOWN)
         {
-            VertexLight l1 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z2);
-            VertexLight l2 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z1);
-            VertexLight l3 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z1);
-            VertexLight l4 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z2);
-            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
-                            z2, x1, y1, z1, x2, y1, z1, x2, y1, z2, u0, v0, u1, v1, l1, l2, l3, l4,
-                            shadeMul, tint);
+            VertexLight l1 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY1, worldZ2);
+            VertexLight l2 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY1, worldZ1);
+            VertexLight l3 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY1, worldZ1);
+            VertexLight l4 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY1, worldZ2);
+            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                            bucket.tints, x1, y1, z2, x1, y1, z1, x2, y1, z1, x2, y1, z2, u0, v0,
+                            u1, v1, l1, l2, l3, l4, shadeMul, tint, atlasRect);
         }
         else if (direction == Direction::EAST)
         {
-            VertexLight l1 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z1);
-            VertexLight l2 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z1);
-            VertexLight l3 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z2);
-            VertexLight l4 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x2, y1, z2);
-            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x2, y1,
-                            z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, u0, v0, u1, v1, l1, l2, l3, l4,
-                            shadeMul, tint);
+            VertexLight l1 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY1, worldZ1);
+            VertexLight l2 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY2, worldZ1);
+            VertexLight l3 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY2, worldZ2);
+            VertexLight l4 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                              worldY1, worldZ2);
+            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                            bucket.tints, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, u0, v0,
+                            u1, v1, l1, l2, l3, l4, shadeMul, tint, atlasRect);
         }
         else if (direction == Direction::WEST)
         {
-            VertexLight l1 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z2);
-            VertexLight l2 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z2);
-            VertexLight l3 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y2, z1);
-            VertexLight l4 =
-                    buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z1);
-            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1,
-                            z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, u0, v0, u1, v1, l1, l2, l3, l4,
-                            shadeMul, tint);
+            VertexLight l1 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY1, worldZ2);
+            VertexLight l2 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY2, worldZ2);
+            VertexLight l3 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY2, worldZ1);
+            VertexLight l4 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                              worldY1, worldZ1);
+            addFaceUVSmooth(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                            bucket.tints, x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, u0, v0,
+                            u1, v1, l1, l2, l3, l4, shadeMul, tint, atlasRect);
         }
     };
 
-    auto emitFace4FixedUV = [&](Direction *direction, Texture *texture, uint16_t rawLight,
-                                uint32_t tint, float x1, float y1, float z1, float x2, float y2,
-                                float z2, float x3, float y3, float z3, float x4, float y4,
-                                float z4, float u0, float v0, float u1, float v1) {
+    EmitFace4FixedUv emitFace4FixedUV = [&](Direction *direction, Texture *texture,
+                                            const Block::UVRect &atlasRect, uint16_t rawLight,
+                                            uint32_t tint, float x1, float y1, float z1, float x2,
+                                            float y2, float z2, float x3, float y3, float z3,
+                                            float x4, float y4, float z4, float u0, float v0,
+                                            float u1, float v1) {
         if (!texture)
         {
             return;
         }
 
-        float shadeMul = getShadeMul(direction);
+        float shadeMul = getShadeMul(direction, smoothLighting);
+        float worldX1  = x1 + (float) baseX;
+        float worldY1  = y1 + (float) baseY;
+        float worldZ1  = z1 + (float) baseZ;
+        float worldX2  = x2 + (float) baseX;
+        float worldY2  = y2 + (float) baseY;
+        float worldZ2  = z2 + (float) baseZ;
+        float worldX3  = x3 + (float) baseX;
+        float worldY3  = y3 + (float) baseY;
+        float worldZ3  = z3 + (float) baseZ;
+        float worldX4  = x4 + (float) baseX;
+        float worldY4  = y4 + (float) baseY;
+        float worldZ4  = z4 + (float) baseZ;
 
-        Bucket &bucket = buckets[texture];
-        bool useSmooth = false;
+        MeshBucket &bucket = buckets[texture];
+        bool useSmooth     = false;
         if (!useSmooth)
         {
             float r;
             float g;
             float b;
             uint32_t tintForLighting = getTintMode(tint) == TINT_MODE_MASKED ? 0xFFFFFFu : tint;
-            colorFromRawLight(world, direction, rawLight, tintForLighting, &r, &g, &b);
+            colorFromRawLight(level, rawLight, tintForLighting, shadeMul, &r, &g, &b);
 
-            addFace4UV(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1,
-                       x2, y2, z2, x3, y3, z3, x4, y4, z4, u0, v0, u1, v1, r, g, b, rawLight,
-                       shadeMul, tint);
+            addFace4UV(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                       bucket.tints, x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4, u0, v0, u1, v1,
+                       r, g, b, rawLight, shadeMul, tint, atlasRect);
             return;
         }
 
-        VertexLight l1 =
-                buildVertexLight(buildData, direction, true, rawLight, tint, x1, y1, z1);
-        VertexLight l2 =
-                buildVertexLight(buildData, direction, true, rawLight, tint, x2, y2, z2);
-        VertexLight l3 =
-                buildVertexLight(buildData, direction, true, rawLight, tint, x3, y3, z3);
-        VertexLight l4 =
-                buildVertexLight(buildData, direction, true, rawLight, tint, x4, y4, z4);
-        addFace4UVSmooth(bucket.vertices, bucket.rawLights, bucket.shades, bucket.tints, x1, y1, z1,
-                         x2, y2, z2, x3, y3, z3, x4, y4, z4, u0, v0, u1, v1, l1, l2, l3, l4,
-                         shadeMul, tint);
+        VertexLight l1 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX1,
+                                          worldY1, worldZ1);
+        VertexLight l2 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX2,
+                                          worldY2, worldZ2);
+        VertexLight l3 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX3,
+                                          worldY3, worldZ3);
+        VertexLight l4 = buildVertexLight(buildData, direction, true, rawLight, tint, worldX4,
+                                          worldY4, worldZ4);
+        addFace4UVSmooth(bucket.vertices, bucket.rawLights, bucket.atlasRects, bucket.shades,
+                         bucket.tints, x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4, u0, v0, u1,
+                         v1, l1, l2, l3, l4, shadeMul, tint, atlasRect);
     };
 
     {
@@ -1478,8 +1805,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
             {
                 for (int z = 0; z < Chunk::SIZE_Z; z++)
                 {
-                    bool a = isSolidWorld(buildData, BlockPos(x - 1, y, z));
-                    bool b = isSolidWorld(buildData, BlockPos(x, y, z));
+                    bool a = isSolidLevel(buildData, BlockPos(x - 1, y, z));
+                    bool b = isSolidLevel(buildData, BlockPos(x, y, z));
 
                     MaskCell &cell = mask[(size_t) z + (size_t) Chunk::SIZE_Z * (size_t) y];
                     cell.filled    = false;
@@ -1493,15 +1820,16 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
                         Texture *texture = block ? block->getTexture(Direction::EAST) : nullptr;
                         if (texture)
                         {
-                            cell.filled  = true;
-                            cell.texture = texture;
-                            cell.rawLight = sampleLightKey(buildData, baseX + x, baseY + y,
-                                                           baseZ + z);
-                            cell.tint = block->resolveTint(Direction::EAST, world, chunk, x - 1, z);
+                            cell.filled    = true;
+                            cell.texture   = texture;
+                            cell.atlasRect = block->getAtlasUVRect(Direction::EAST);
+                            cell.rawLight =
+                                    sampleLightKey(buildData, baseX + x, baseY + y, baseZ + z);
+                            cell.tint = block->resolveTint(Direction::EAST, level, chunk, x - 1, z);
                             if (grassSideOverlay && block == grassBlock)
                             {
                                 uint32_t foliageTint =
-                                        block->resolveTint(Direction::UP, world, chunk, x - 1, z);
+                                        block->resolveTint(Direction::UP, level, chunk, x - 1, z);
                                 cell.tint = packTintMode(foliageTint, TINT_MODE_MASKED);
                             }
                         }
@@ -1510,14 +1838,15 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
             }
 
             greedy2D(mask, Chunk::SIZE_Z, Chunk::SIZE_Y, !smoothLighting,
-                     [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t rawLight,
-                         uint32_t tint) {
-                         float X  = (float) (baseX + x);
-                         float y1 = (float) (baseY + j);
-                         float y2 = (float) (baseY + (j + rHeight));
-                         float z1 = (float) (baseZ + i);
-                         float z2 = (float) (baseZ + (i + rWidth));
-                         emit(Direction::EAST, texture, rawLight, tint, X, y1, z1, X, y2, z2);
+                     [&](int i, int j, int rWidth, int rHeight, Texture *texture,
+                         const Block::UVRect &atlasRect, uint16_t rawLight, uint32_t tint) {
+                         float X  = (float) x;
+                         float y1 = (float) j;
+                         float y2 = (float) (j + rHeight);
+                         float z1 = (float) i;
+                         float z2 = (float) (i + rWidth);
+                         emit(Direction::EAST, texture, atlasRect, rawLight, tint, X, y1, z1, X, y2,
+                              z2);
                      });
         }
 
@@ -1527,12 +1856,13 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
             {
                 for (int z = 0; z < Chunk::SIZE_Z; z++)
                 {
-                    bool a = isSolidWorld(buildData, BlockPos(x - 1, y, z));
-                    bool b = isSolidWorld(buildData, BlockPos(x, y, z));
+                    bool a = isSolidLevel(buildData, BlockPos(x - 1, y, z));
+                    bool b = isSolidLevel(buildData, BlockPos(x, y, z));
 
                     MaskCell &cell = mask[(size_t) z + (size_t) Chunk::SIZE_Z * (size_t) y];
                     cell.filled    = false;
                     cell.texture   = nullptr;
+                    cell.atlasRect = {0.0f, 0.0f, 1.0f, 1.0f};
                     cell.rawLight  = 0;
                     cell.tint      = 0xFFFFFF;
 
@@ -1542,15 +1872,16 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
                         Texture *texture = block ? block->getTexture(Direction::WEST) : nullptr;
                         if (texture)
                         {
-                            cell.filled   = true;
-                            cell.texture  = texture;
-                            cell.rawLight = sampleLightKey(buildData, baseX + x - 1, baseY + y,
-                                                           baseZ + z);
-                            cell.tint     = block->resolveTint(Direction::WEST, world, chunk, x, z);
+                            cell.filled    = true;
+                            cell.texture   = texture;
+                            cell.atlasRect = block->getAtlasUVRect(Direction::WEST);
+                            cell.rawLight =
+                                    sampleLightKey(buildData, baseX + x - 1, baseY + y, baseZ + z);
+                            cell.tint = block->resolveTint(Direction::WEST, level, chunk, x, z);
                             if (grassSideOverlay && block == grassBlock)
                             {
                                 uint32_t foliageTint =
-                                        block->resolveTint(Direction::UP, world, chunk, x, z);
+                                        block->resolveTint(Direction::UP, level, chunk, x, z);
                                 cell.tint = packTintMode(foliageTint, TINT_MODE_MASKED);
                             }
                         }
@@ -1559,14 +1890,15 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
             }
 
             greedy2D(mask, Chunk::SIZE_Z, Chunk::SIZE_Y, !smoothLighting,
-                     [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t rawLight,
-                         uint32_t tint) {
-                         float X  = (float) (baseX + x);
-                         float y1 = (float) (baseY + j);
-                         float y2 = (float) (baseY + (j + rHeight));
-                         float z1 = (float) (baseZ + i);
-                         float z2 = (float) (baseZ + (i + rWidth));
-                         emit(Direction::WEST, texture, rawLight, tint, X, y1, z1, X, y2, z2);
+                     [&](int i, int j, int rWidth, int rHeight, Texture *texture,
+                         const Block::UVRect &atlasRect, uint16_t rawLight, uint32_t tint) {
+                         float X  = (float) x;
+                         float y1 = (float) j;
+                         float y2 = (float) (j + rHeight);
+                         float z1 = (float) i;
+                         float z2 = (float) (i + rWidth);
+                         emit(Direction::WEST, texture, atlasRect, rawLight, tint, X, y1, z1, X, y2,
+                              z2);
                      });
         }
     }
@@ -1581,12 +1913,13 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
             {
                 for (int x = 0; x < Chunk::SIZE_X; x++)
                 {
-                    bool a = isSolidWorld(buildData, BlockPos(x, y, z - 1));
-                    bool b = isSolidWorld(buildData, BlockPos(x, y, z));
+                    bool a = isSolidLevel(buildData, BlockPos(x, y, z - 1));
+                    bool b = isSolidLevel(buildData, BlockPos(x, y, z));
 
                     MaskCell &cell = mask[(size_t) x + (size_t) Chunk::SIZE_X * (size_t) y];
                     cell.filled    = false;
                     cell.texture   = nullptr;
+                    cell.atlasRect = {0.0f, 0.0f, 1.0f, 1.0f};
                     cell.rawLight  = 0;
                     cell.tint      = 0xFFFFFF;
 
@@ -1596,16 +1929,17 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
                         Texture *texture = block ? block->getTexture(Direction::SOUTH) : nullptr;
                         if (texture)
                         {
-                            cell.filled  = true;
-                            cell.texture = texture;
-                            cell.rawLight = sampleLightKey(buildData, baseX + x, baseY + y,
-                                                           baseZ + z);
+                            cell.filled    = true;
+                            cell.texture   = texture;
+                            cell.atlasRect = block->getAtlasUVRect(Direction::SOUTH);
+                            cell.rawLight =
+                                    sampleLightKey(buildData, baseX + x, baseY + y, baseZ + z);
                             cell.tint =
-                                    block->resolveTint(Direction::SOUTH, world, chunk, x, z - 1);
+                                    block->resolveTint(Direction::SOUTH, level, chunk, x, z - 1);
                             if (grassSideOverlay && block == grassBlock)
                             {
                                 uint32_t foliageTint =
-                                        block->resolveTint(Direction::UP, world, chunk, x, z - 1);
+                                        block->resolveTint(Direction::UP, level, chunk, x, z - 1);
                                 cell.tint = packTintMode(foliageTint, TINT_MODE_MASKED);
                             }
                         }
@@ -1614,14 +1948,15 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
             }
 
             greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Y, !smoothLighting,
-                     [&](int i, int j, int rWidth, int rHeight, Texture *texture, uint16_t rawLight,
-                         uint32_t tint) {
-                         float Z  = (float) (baseZ + z);
-                         float x1 = (float) (baseX + i);
-                         float x2 = (float) (baseX + (i + rWidth));
-                         float y1 = (float) (baseY + j);
-                         float y2 = (float) (baseY + (j + rHeight));
-                         emit(Direction::SOUTH, texture, rawLight, tint, x1, y1, Z, x2, y2, Z);
+                     [&](int i, int j, int rWidth, int rHeight, Texture *texture,
+                         const Block::UVRect &atlasRect, uint16_t rawLight, uint32_t tint) {
+                         float Z  = (float) z;
+                         float x1 = (float) i;
+                         float x2 = (float) (i + rWidth);
+                         float y1 = (float) j;
+                         float y2 = (float) (j + rHeight);
+                         emit(Direction::SOUTH, texture, atlasRect, rawLight, tint, x1, y1, Z, x2,
+                              y2, Z);
                      });
         }
 
@@ -1631,12 +1966,13 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
             {
                 for (int x = 0; x < Chunk::SIZE_X; x++)
                 {
-                    bool a = isSolidWorld(buildData, BlockPos(x, y, z - 1));
-                    bool b = isSolidWorld(buildData, BlockPos(x, y, z));
+                    bool a = isSolidLevel(buildData, BlockPos(x, y, z - 1));
+                    bool b = isSolidLevel(buildData, BlockPos(x, y, z));
 
                     MaskCell &cell = mask[(size_t) x + (size_t) Chunk::SIZE_X * (size_t) y];
                     cell.filled    = false;
                     cell.texture   = nullptr;
+                    cell.atlasRect = {0.0f, 0.0f, 1.0f, 1.0f};
                     cell.rawLight  = 0;
                     cell.tint      = 0xFFFFFF;
 
@@ -1646,15 +1982,16 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
                         Texture *texture = block ? block->getTexture(Direction::NORTH) : nullptr;
                         if (texture)
                         {
-                            cell.filled   = true;
-                            cell.texture  = texture;
-                            cell.rawLight = sampleLightKey(buildData, baseX + x, baseY + y,
-                                                           baseZ + z - 1);
-                            cell.tint = block->resolveTint(Direction::NORTH, world, chunk, x, z);
+                            cell.filled    = true;
+                            cell.texture   = texture;
+                            cell.atlasRect = block->getAtlasUVRect(Direction::NORTH);
+                            cell.rawLight =
+                                    sampleLightKey(buildData, baseX + x, baseY + y, baseZ + z - 1);
+                            cell.tint = block->resolveTint(Direction::NORTH, level, chunk, x, z);
                             if (grassSideOverlay && block == grassBlock)
                             {
                                 uint32_t foliageTint =
-                                        block->resolveTint(Direction::UP, world, chunk, x, z);
+                                        block->resolveTint(Direction::UP, level, chunk, x, z);
                                 cell.tint = packTintMode(foliageTint, TINT_MODE_MASKED);
                             }
                         }
@@ -1665,13 +2002,14 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
 
                 greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Y, !smoothLighting,
                          [&](int i, int j, int rWidth, int rHeight, Texture *texture,
-                             uint16_t rawLight, uint32_t tint) {
-                             float Z  = (float) (baseZ + z);
-                             float x1 = (float) (baseX + i);
-                             float x2 = (float) (baseX + (i + rWidth));
-                             float y1 = (float) (baseY + j);
-                             float y2 = (float) (baseY + (j + rHeight));
-                             emit(Direction::NORTH, texture, rawLight, tint, x1, y1, Z, x2, y2, Z);
+                             const Block::UVRect &atlasRect, uint16_t rawLight, uint32_t tint) {
+                             float Z  = (float) z;
+                             float x1 = (float) i;
+                             float x2 = (float) (i + rWidth);
+                             float y1 = (float) j;
+                             float y2 = (float) (j + rHeight);
+                             emit(Direction::NORTH, texture, atlasRect, rawLight, tint, x1, y1, Z,
+                                  x2, y2, Z);
                          });
             }
         }
@@ -1686,12 +2024,13 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
                 {
                     for (int x = 0; x < Chunk::SIZE_X; x++)
                     {
-                        bool a = isSolidWorld(buildData, BlockPos(x, y - 1, z));
-                        bool b = isSolidWorld(buildData, BlockPos(x, y, z));
+                        bool a = isSolidLevel(buildData, BlockPos(x, y - 1, z));
+                        bool b = isSolidLevel(buildData, BlockPos(x, y, z));
 
                         MaskCell &cell = mask[(size_t) x + (size_t) Chunk::SIZE_X * (size_t) z];
                         cell.filled    = false;
                         cell.texture   = nullptr;
+                        cell.atlasRect = {0.0f, 0.0f, 1.0f, 1.0f};
                         cell.rawLight  = 0;
                         cell.tint      = 0xFFFFFF;
 
@@ -1701,11 +2040,12 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
                             Texture *texture = block ? block->getTexture(Direction::UP) : nullptr;
                             if (texture)
                             {
-                                cell.filled   = true;
-                                cell.texture  = texture;
-                                cell.rawLight = sampleLightKey(buildData, baseX + x, baseY + y,
-                                                               baseZ + z);
-                                cell.tint = block->resolveTint(Direction::UP, world, chunk, x, z);
+                                cell.filled    = true;
+                                cell.texture   = texture;
+                                cell.atlasRect = block->getAtlasUVRect(Direction::UP);
+                                cell.rawLight =
+                                        sampleLightKey(buildData, baseX + x, baseY + y, baseZ + z);
+                                cell.tint = block->resolveTint(Direction::UP, level, chunk, x, z);
                             }
                         }
                     }
@@ -1713,13 +2053,14 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
 
                 greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Z, !smoothLighting,
                          [&](int i, int j, int rWidth, int rHeight, Texture *texture,
-                             uint16_t rawLight, uint32_t tint) {
-                             float Y  = (float) (baseY + y);
-                             float x1 = (float) (baseX + i);
-                             float x2 = (float) (baseX + (i + rWidth));
-                             float z1 = (float) (baseZ + j);
-                             float z2 = (float) (baseZ + (j + rHeight));
-                             emit(Direction::UP, texture, rawLight, tint, x1, Y, z1, x2, Y, z2);
+                             const Block::UVRect &atlasRect, uint16_t rawLight, uint32_t tint) {
+                             float Y  = (float) y;
+                             float x1 = (float) i;
+                             float x2 = (float) (i + rWidth);
+                             float z1 = (float) j;
+                             float z2 = (float) (j + rHeight);
+                             emit(Direction::UP, texture, atlasRect, rawLight, tint, x1, Y, z1, x2,
+                                  Y, z2);
                          });
             }
 
@@ -1729,12 +2070,13 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
                 {
                     for (int x = 0; x < Chunk::SIZE_X; x++)
                     {
-                        bool a = isSolidWorld(buildData, BlockPos(x, y - 1, z));
-                        bool b = isSolidWorld(buildData, BlockPos(x, y, z));
+                        bool a = isSolidLevel(buildData, BlockPos(x, y - 1, z));
+                        bool b = isSolidLevel(buildData, BlockPos(x, y, z));
 
                         MaskCell &cell = mask[(size_t) x + (size_t) Chunk::SIZE_X * (size_t) z];
                         cell.filled    = false;
                         cell.texture   = nullptr;
+                        cell.atlasRect = {0.0f, 0.0f, 1.0f, 1.0f};
                         cell.rawLight  = 0;
                         cell.tint      = 0xFFFFFF;
 
@@ -1744,11 +2086,12 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
                             Texture *texture = block ? block->getTexture(Direction::DOWN) : nullptr;
                             if (texture)
                             {
-                                cell.filled   = true;
-                                cell.texture  = texture;
-                                cell.rawLight = sampleLightKey(buildData, baseX + x,
-                                                               baseY + y - 1, baseZ + z);
-                                cell.tint = block->resolveTint(Direction::DOWN, world, chunk, x, z);
+                                cell.filled    = true;
+                                cell.texture   = texture;
+                                cell.atlasRect = block->getAtlasUVRect(Direction::DOWN);
+                                cell.rawLight  = sampleLightKey(buildData, baseX + x, baseY + y - 1,
+                                                                baseZ + z);
+                                cell.tint = block->resolveTint(Direction::DOWN, level, chunk, x, z);
                             }
                         }
                     }
@@ -1756,13 +2099,14 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
 
                 greedy2D(mask, Chunk::SIZE_X, Chunk::SIZE_Z, !smoothLighting,
                          [&](int i, int j, int rWidth, int rHeight, Texture *texture,
-                             uint16_t rawLight, uint32_t tint) {
-                             float Y  = (float) (baseY + y);
-                             float x1 = (float) (baseX + i);
-                             float x2 = (float) (baseX + (i + rWidth));
-                             float z1 = (float) (baseZ + j);
-                             float z2 = (float) (baseZ + (j + rHeight));
-                             emit(Direction::DOWN, texture, rawLight, tint, x1, Y, z1, x2, Y, z2);
+                             const Block::UVRect &atlasRect, uint16_t rawLight, uint32_t tint) {
+                             float Y  = (float) y;
+                             float x1 = (float) i;
+                             float x2 = (float) (i + rWidth);
+                             float z1 = (float) j;
+                             float z2 = (float) (j + rHeight);
+                             emit(Direction::DOWN, texture, atlasRect, rawLight, tint, x1, Y, z1,
+                                  x2, Y, z2);
                          });
             }
         }
@@ -1790,20 +2134,22 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
                     if (!texture)
                         continue;
 
-                    float wx = (float) (baseX + x);
-                    float wy = (float) (baseY + y);
-                    float wz = (float) (baseZ + z);
+                    Block::UVRect atlasUp = block->getAtlasUVRect(Direction::UP);
 
-                    uint16_t rawLight = sampleLightKey(buildData, (int) wx, (int) wy, (int) wz);
+                    float wx = (float) x;
+                    float wy = (float) y;
+                    float wz = (float) z;
+
+                    uint16_t rawLight = sampleLightKey(buildData, baseX + x, baseY + y, baseZ + z);
                     uint32_t tint     = 0xFFFFFF;
 
                     if (renderType == Block::RenderShape::CROSS)
                     {
-                        emitFace4(Direction::NORTH, texture, rawLight, tint, wx, wy, wz, wx,
-                                  wy + 1.0f, wz, wx + 1.0f, wy + 1.0f, wz + 1.0f, wx + 1.0f, wy,
+                        emitFace4(Direction::NORTH, texture, atlasUp, rawLight, tint, wx, wy, wz,
+                                  wx, wy + 1.0f, wz, wx + 1.0f, wy + 1.0f, wz + 1.0f, wx + 1.0f, wy,
                                   wz + 1.0f);
-                        emitFace4(Direction::EAST, texture, rawLight, tint, wx + 1.0f, wy, wz,
-                                  wx + 1.0f, wy + 1.0f, wz, wx, wy + 1.0f, wz + 1.0f, wx, wy,
+                        emitFace4(Direction::EAST, texture, atlasUp, rawLight, tint, wx + 1.0f, wy,
+                                  wz, wx + 1.0f, wy + 1.0f, wz, wx, wy + 1.0f, wz + 1.0f, wx, wy,
                                   wz + 1.0f);
                     }
                     else
@@ -1818,12 +2164,17 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
                         float y2 = wy + bb.getMax().y;
                         float z2 = wz + bb.getMax().z;
 
-                        Block::UVRect uvNorth = block->getUVRect(Direction::NORTH);
-                        Block::UVRect uvSouth = block->getUVRect(Direction::SOUTH);
-                        Block::UVRect uvWest  = block->getUVRect(Direction::WEST);
-                        Block::UVRect uvEast  = block->getUVRect(Direction::EAST);
-                        Block::UVRect uvDown  = block->getUVRect(Direction::DOWN);
-                        Block::UVRect uvUp    = block->getUVRect(Direction::UP);
+                        Block::UVRect uvNorth    = block->getUVRect(Direction::NORTH);
+                        Block::UVRect uvSouth    = block->getUVRect(Direction::SOUTH);
+                        Block::UVRect uvWest     = block->getUVRect(Direction::WEST);
+                        Block::UVRect uvEast     = block->getUVRect(Direction::EAST);
+                        Block::UVRect uvDown     = block->getUVRect(Direction::DOWN);
+                        Block::UVRect uvUp       = block->getUVRect(Direction::UP);
+                        Block::UVRect atlasNorth = block->getAtlasUVRect(Direction::NORTH);
+                        Block::UVRect atlasSouth = block->getAtlasUVRect(Direction::SOUTH);
+                        Block::UVRect atlasWest  = block->getAtlasUVRect(Direction::WEST);
+                        Block::UVRect atlasEast  = block->getAtlasUVRect(Direction::EAST);
+                        Block::UVRect atlasDown  = block->getAtlasUVRect(Direction::DOWN);
 
                         Texture *textureUp    = texture;
                         Texture *textureNorth = block->getTexture(Direction::NORTH);
@@ -1863,59 +2214,53 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
                         {
                             if (uvNorth.u0 != uvNorth.u1 && uvNorth.v0 != uvNorth.v1)
                             {
-                                emitFixedUV(Direction::NORTH, textureNorth, rawLight, tint, x1, y1,
-                                            z1, x2, y2, z1, uvNorth.u0, uvNorth.v0, uvNorth.u1,
-                                            uvNorth.v1);
+                                emitFixedUV(Direction::NORTH, textureNorth, atlasNorth, rawLight,
+                                            tint, x1, y1, z1, x2, y2, z1, uvNorth.u0, uvNorth.v0,
+                                            uvNorth.u1, uvNorth.v1);
                             }
                             if (uvSouth.u0 != uvSouth.u1 && uvSouth.v0 != uvSouth.v1)
                             {
-                                emitFixedUV(Direction::SOUTH, textureSouth, rawLight, tint, x1, y1,
-                                            z2, x2, y2, z2, uvSouth.u0, uvSouth.v0, uvSouth.u1,
-                                            uvSouth.v1);
+                                emitFixedUV(Direction::SOUTH, textureSouth, atlasSouth, rawLight,
+                                            tint, x1, y1, z2, x2, y2, z2, uvSouth.u0, uvSouth.v0,
+                                            uvSouth.u1, uvSouth.v1);
                             }
                             if (uvWest.u0 != uvWest.u1 && uvWest.v0 != uvWest.v1)
                             {
-                                emitFixedUV(Direction::WEST, textureWest, rawLight, tint, x1, y1,
-                                            z1, x1, y2, z2, uvWest.u0, uvWest.v0, uvWest.u1,
+                                emitFixedUV(Direction::WEST, textureWest, atlasWest, rawLight, tint,
+                                            x1, y1, z1, x1, y2, z2, uvWest.u0, uvWest.v0, uvWest.u1,
                                             uvWest.v1);
                             }
                             if (uvEast.u0 != uvEast.u1 && uvEast.v0 != uvEast.v1)
                             {
-                                emitFixedUV(Direction::EAST, textureEast, rawLight, tint, x2, y1,
-                                            z1, x2, y2, z2, uvEast.u0, uvEast.v0, uvEast.u1,
+                                emitFixedUV(Direction::EAST, textureEast, atlasEast, rawLight, tint,
+                                            x2, y1, z1, x2, y2, z2, uvEast.u0, uvEast.v0, uvEast.u1,
                                             uvEast.v1);
                             }
                             if (uvDown.u0 != uvDown.u1 && uvDown.v0 != uvDown.v1)
                             {
-                                emitFixedUV(Direction::DOWN, textureDown, rawLight, tint, x1, y1,
-                                            z1, x2, y1, z2, uvDown.u0, uvDown.v0, uvDown.u1,
+                                emitFixedUV(Direction::DOWN, textureDown, atlasDown, rawLight, tint,
+                                            x1, y1, z1, x2, y1, z2, uvDown.u0, uvDown.v0, uvDown.u1,
                                             uvDown.v1);
                             }
                             if (uvUp.u0 != uvUp.u1 && uvUp.v0 != uvUp.v1)
                             {
-                                emitFixedUV(Direction::UP, textureUp, rawLight, tint, x1, y2, z1,
-                                            x2, y2, z2, uvUp.u0, uvUp.v0, uvUp.u1, uvUp.v1);
+                                emitFixedUV(Direction::UP, textureUp, atlasUp, rawLight, tint, x1,
+                                            y2, z1, x2, y2, z2, uvUp.u0, uvUp.v0, uvUp.u1, uvUp.v1);
                             }
                         }
                         else
                         {
-                            struct Vertex
-                            {
-                                float x;
-                                float y;
-                                float z;
-                            };
+                            WallMountedVertex v0{x1, y1, z1};
+                            WallMountedVertex v1{x2, y1, z1};
+                            WallMountedVertex v2{x2, y2, z1};
+                            WallMountedVertex v3{x1, y2, z1};
+                            WallMountedVertex v4{x1, y1, z2};
+                            WallMountedVertex v5{x2, y1, z2};
+                            WallMountedVertex v6{x2, y2, z2};
+                            WallMountedVertex v7{x1, y2, z2};
 
-                            Vertex v0{x1, y1, z1};
-                            Vertex v1{x2, y1, z1};
-                            Vertex v2{x2, y2, z1};
-                            Vertex v3{x1, y2, z1};
-                            Vertex v4{x1, y1, z2};
-                            Vertex v5{x2, y1, z2};
-                            Vertex v6{x2, y2, z2};
-                            Vertex v7{x1, y2, z2};
-
-                            Vertex *vertices[8] = {&v0, &v1, &v2, &v3, &v4, &v5, &v6, &v7};
+                            WallMountedVertex *vertices[8] = {&v0, &v1, &v2, &v3,
+                                                              &v4, &v5, &v6, &v7};
 
                             float angle =
                                     block->getWallMountedTiltDegrees() * (float) M_PI / 180.0f;
@@ -1991,44 +2336,44 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
 
                             if (uvNorth.u0 != uvNorth.u1 && uvNorth.v0 != uvNorth.v1)
                             {
-                                emitFace4FixedUV(Direction::NORTH, textureNorth, rawLight, tint,
-                                                 v0.x, v0.y, v0.z, v3.x, v3.y, v3.z, v2.x, v2.y,
-                                                 v2.z, v1.x, v1.y, v1.z, uvNorth.u0, uvNorth.v0,
-                                                 uvNorth.u1, uvNorth.v1);
+                                emitFace4FixedUV(Direction::NORTH, textureNorth, atlasNorth,
+                                                 rawLight, tint, v0.x, v0.y, v0.z, v3.x, v3.y, v3.z,
+                                                 v2.x, v2.y, v2.z, v1.x, v1.y, v1.z, uvNorth.u0,
+                                                 uvNorth.v0, uvNorth.u1, uvNorth.v1);
                             }
                             if (uvSouth.u0 != uvSouth.u1 && uvSouth.v0 != uvSouth.v1)
                             {
-                                emitFace4FixedUV(Direction::SOUTH, textureSouth, rawLight, tint,
-                                                 v5.x, v5.y, v5.z, v6.x, v6.y, v6.z, v7.x, v7.y,
-                                                 v7.z, v4.x, v4.y, v4.z, uvSouth.u0, uvSouth.v0,
-                                                 uvSouth.u1, uvSouth.v1);
+                                emitFace4FixedUV(Direction::SOUTH, textureSouth, atlasSouth,
+                                                 rawLight, tint, v5.x, v5.y, v5.z, v6.x, v6.y, v6.z,
+                                                 v7.x, v7.y, v7.z, v4.x, v4.y, v4.z, uvSouth.u0,
+                                                 uvSouth.v0, uvSouth.u1, uvSouth.v1);
                             }
                             if (uvWest.u0 != uvWest.u1 && uvWest.v0 != uvWest.v1)
                             {
-                                emitFace4FixedUV(Direction::WEST, textureWest, rawLight, tint, v4.x,
-                                                 v4.y, v4.z, v7.x, v7.y, v7.z, v3.x, v3.y, v3.z,
-                                                 v0.x, v0.y, v0.z, uvWest.u0, uvWest.v0, uvWest.u1,
-                                                 uvWest.v1);
+                                emitFace4FixedUV(Direction::WEST, textureWest, atlasWest, rawLight,
+                                                 tint, v4.x, v4.y, v4.z, v7.x, v7.y, v7.z, v3.x,
+                                                 v3.y, v3.z, v0.x, v0.y, v0.z, uvWest.u0, uvWest.v0,
+                                                 uvWest.u1, uvWest.v1);
                             }
                             if (uvEast.u0 != uvEast.u1 && uvEast.v0 != uvEast.v1)
                             {
-                                emitFace4FixedUV(Direction::EAST, textureEast, rawLight, tint, v1.x,
-                                                 v1.y, v1.z, v2.x, v2.y, v2.z, v6.x, v6.y, v6.z,
-                                                 v5.x, v5.y, v5.z, uvEast.u0, uvEast.v0, uvEast.u1,
-                                                 uvEast.v1);
+                                emitFace4FixedUV(Direction::EAST, textureEast, atlasEast, rawLight,
+                                                 tint, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, v6.x,
+                                                 v6.y, v6.z, v5.x, v5.y, v5.z, uvEast.u0, uvEast.v0,
+                                                 uvEast.u1, uvEast.v1);
                             }
                             if (uvDown.u0 != uvDown.u1 && uvDown.v0 != uvDown.v1)
                             {
-                                emitFace4FixedUV(Direction::DOWN, textureDown, rawLight, tint, v4.x,
-                                                 v4.y, v4.z, v0.x, v0.y, v0.z, v1.x, v1.y, v1.z,
-                                                 v5.x, v5.y, v5.z, uvDown.u0, uvDown.v0, uvDown.u1,
-                                                 uvDown.v1);
+                                emitFace4FixedUV(Direction::DOWN, textureDown, atlasDown, rawLight,
+                                                 tint, v4.x, v4.y, v4.z, v0.x, v0.y, v0.z, v1.x,
+                                                 v1.y, v1.z, v5.x, v5.y, v5.z, uvDown.u0, uvDown.v0,
+                                                 uvDown.u1, uvDown.v1);
                             }
                             if (uvUp.u0 != uvUp.u1 && uvUp.v0 != uvUp.v1)
                             {
-                                emitFace4FixedUV(Direction::UP, textureUp, rawLight, tint, v3.x,
-                                                 v3.y, v3.z, v7.x, v7.y, v7.z, v6.x, v6.y, v6.z,
-                                                 v2.x, v2.y, v2.z, uvUp.u0, uvUp.v0, uvUp.u1,
+                                emitFace4FixedUV(Direction::UP, textureUp, atlasUp, rawLight, tint,
+                                                 v3.x, v3.y, v3.z, v7.x, v7.y, v7.z, v6.x, v6.y,
+                                                 v6.z, v2.x, v2.y, v2.z, uvUp.u0, uvUp.v0, uvUp.u1,
                                                  uvUp.v1);
                             }
                         }
@@ -2040,7 +2385,8 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
         outMeshes->clear();
         outMeshes->reserve(buckets.size());
 
-        for (auto it = buckets.begin(); it != buckets.end(); ++it)
+        std::unordered_map<Texture *, MeshBucket>::iterator it;
+        for (it = buckets.begin(); it != buckets.end(); ++it)
         {
             if (!it->first)
             {
@@ -2052,11 +2398,12 @@ void ChunkMesher::buildMeshes(World *world, const Chunk *chunk, bool smoothLight
             }
 
             MeshBuildResult result;
-            result.texture   = it->first;
-            result.vertices  = std::move(it->second.vertices);
-            result.rawLights = std::move(it->second.rawLights);
-            result.shades    = std::move(it->second.shades);
-            result.tints     = std::move(it->second.tints);
+            result.texture    = it->first;
+            result.vertices   = std::move(it->second.vertices);
+            result.atlasRects = std::move(it->second.atlasRects);
+            result.rawLights  = std::move(it->second.rawLights);
+            result.shades     = std::move(it->second.shades);
+            result.tints      = std::move(it->second.tints);
             outMeshes->push_back(std::move(result));
         }
     }

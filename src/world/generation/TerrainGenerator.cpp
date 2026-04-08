@@ -104,14 +104,14 @@ TerrainGenerator::TerrainGenerator(uint32_t seed) : m_seed(seed), m_random(seed)
     m_rock.SetFrequency(9.0f);
 }
 
-void TerrainGenerator::generate(World &world, const ChunkPos &center)
+void TerrainGenerator::generate(Level &level, const ChunkPos &center)
 {
     ChunkPos pos(center.x, 0, center.z);
-    Chunk *chunk = world.getChunk(pos);
+    Chunk *chunk = level.getChunk(pos);
     if (!chunk)
     {
-        world.createChunk(pos);
-        chunk = world.getChunk(pos);
+        level.createChunk(pos);
+        chunk = level.getChunk(pos);
     }
 
     if (chunk)
@@ -189,8 +189,8 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos)
     {
         for (int x = 0; x < Chunk::SIZE_X; x++)
         {
-            int worldX = chunkPos.x * Chunk::SIZE_X + x;
-            int worldZ = chunkPos.z * Chunk::SIZE_Z + z;
+            int levelX = chunkPos.x * Chunk::SIZE_X + x;
+            int levelZ = chunkPos.z * Chunk::SIZE_Z + z;
 
             int gx0  = x / CELL_XZ;
             int gz0  = z / CELL_XZ;
@@ -201,7 +201,7 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos)
 
             int height = heightMap[x + z * Chunk::SIZE_X];
 
-            Biome *biome = getBiomeAt(worldX, worldZ);
+            Biome *biome = getBiomeAt(levelX, levelZ);
             if (!biome)
                 biome = Biome::byName("plains");
 
@@ -260,8 +260,8 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos)
                 if (y < bedrockCeil)
                 {
                     float bt        = (float) y / (float) bedrockCeil;
-                    float rockNoise = m_rock.GetNoise((float) worldX * 0.2f, (float) y * 2.0f,
-                                                      (float) worldZ * 0.2f);
+                    float rockNoise = m_rock.GetNoise((float) levelX * 0.2f, (float) y * 2.0f,
+                                                      (float) levelZ * 0.2f);
                     rockNoise       = (rockNoise + 1.0f) * 0.5f;
                     if (rockNoise < 1.0f - bt * bt)
                     {
@@ -280,7 +280,7 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos)
                 }
                 else
                 {
-                    float rock = m_rock.GetNoise((float) worldX, (float) y, (float) worldZ);
+                    float rock = m_rock.GetNoise((float) levelX, (float) y, (float) levelZ);
                     rock       = (rock + 1.0f) * 0.5f;
                     if (rock > 0.62f)
                     {
@@ -325,12 +325,12 @@ void TerrainGenerator::generateChunk(Chunk &chunk, const ChunkPos &chunkPos)
     }
 }
 
-int TerrainGenerator::getHeightAt(int worldX, int worldZ)
+int TerrainGenerator::getHeightAt(int levelX, int levelZ)
 {
-    int chunkX = worldX >> 4;
-    int chunkZ = worldZ >> 4;
-    int lx     = worldX & 15;
-    int lz     = worldZ & 15;
+    int chunkX = levelX >> 4;
+    int chunkZ = levelZ >> 4;
+    int lx     = levelX & 15;
+    int lz     = levelZ & 15;
 
     float grid[GRID_X * GRID_Y * GRID_Z];
     buildDensityGrid(grid, chunkX, chunkZ);
@@ -378,10 +378,10 @@ int TerrainGenerator::getHeightAt(int worldX, int worldZ)
     return 0;
 }
 
-Biome *TerrainGenerator::getBiomeAt(int worldX, int worldZ) const
+Biome *TerrainGenerator::getBiomeAt(int levelX, int levelZ) const
 {
-    float temp     = m_temperature.GetNoise((float) worldX, (float) worldZ);
-    float humidity = m_humidity.GetNoise((float) worldX, (float) worldZ);
+    float temp     = m_temperature.GetNoise((float) levelX, (float) levelZ);
+    float humidity = m_humidity.GetNoise((float) levelX, (float) levelZ);
     temp           = (temp + 1.0f) * 0.5f;
     humidity       = (humidity + 1.0f) * 0.5f;
     if (temp > 0.55f)
@@ -395,29 +395,29 @@ void TerrainGenerator::buildDensityGrid(float *grid, int chunkX, int chunkZ)
 {
     for (int gx = 0; gx < GRID_X; gx++)
     {
-        int worldX = chunkX * Chunk::SIZE_X + gx * CELL_XZ;
+        int levelX = chunkX * Chunk::SIZE_X + gx * CELL_XZ;
 
-        double nxBase  = (double) worldX / (double) COORD_SCALE;
-        double nxMain  = (double) worldX / ((double) COORD_SCALE / 80.0);
-        double nxDepth = (double) worldX / (double) DEPTH_SCALE;
+        double nxBase  = (double) levelX / (double) COORD_SCALE;
+        double nxMain  = (double) levelX / ((double) COORD_SCALE / 80.0);
+        double nxDepth = (double) levelX / (double) DEPTH_SCALE;
 
         for (int gz = 0; gz < GRID_Z; gz++)
         {
-            int worldZ = chunkZ * Chunk::SIZE_Z + gz * CELL_XZ;
+            int levelZ = chunkZ * Chunk::SIZE_Z + gz * CELL_XZ;
 
-            double nzBase  = (double) worldZ / (double) COORD_SCALE;
-            double nzMain  = (double) worldZ / ((double) COORD_SCALE / 80.0);
-            double nzDepth = (double) worldZ / (double) DEPTH_SCALE;
+            double nzBase  = (double) levelZ / (double) COORD_SCALE;
+            double nzMain  = (double) levelZ / ((double) COORD_SCALE / 80.0);
+            double nzDepth = (double) levelZ / (double) DEPTH_SCALE;
 
             float depthRaw = m_depthNoise.GetNoise((float) nxDepth, (float) nzDepth);
             depthRaw       = Mth::clamp(depthRaw, -1.0f, 1.0f);
 
             for (int gy = 0; gy < GRID_Y; gy++)
             {
-                double worldY = (double) (gy * CELL_Y);
+                double levelY = (double) (gy * CELL_Y);
 
-                double nyBase = worldY / (double) HEIGHT_SCALE;
-                double nyMain = worldY / ((double) HEIGHT_SCALE / 160.0);
+                double nyBase = levelY / (double) HEIGHT_SCALE;
+                double nyMain = levelY / ((double) HEIGHT_SCALE / 160.0);
 
                 float lower =
                         m_lowerNoise.GetNoise((float) nxBase, (float) nyBase, (float) nzBase) *
@@ -563,24 +563,24 @@ void TerrainGenerator::carveCaveTunnel(Chunk &chunk, Random &caveRandom, const C
             break;
         }
 
-        double chunkWorldMinX = (double) (chunkPos.x * Chunk::SIZE_X);
-        double chunkWorldMinZ = (double) (chunkPos.z * Chunk::SIZE_Z);
-        double chunkWorldMaxX = chunkWorldMinX + (double) Chunk::SIZE_X;
-        double chunkWorldMaxZ = chunkWorldMinZ + (double) Chunk::SIZE_Z;
+        double chunkLevelMinX = (double) (chunkPos.x * Chunk::SIZE_X);
+        double chunkLevelMinZ = (double) (chunkPos.z * Chunk::SIZE_Z);
+        double chunkLevelMaxX = chunkLevelMinX + (double) Chunk::SIZE_X;
+        double chunkLevelMaxZ = chunkLevelMinZ + (double) Chunk::SIZE_Z;
 
-        if (positionX < chunkWorldMinX - 48.0)
+        if (positionX < chunkLevelMinX - 48.0)
         {
             break;
         }
-        if (positionZ < chunkWorldMinZ - 48.0)
+        if (positionZ < chunkLevelMinZ - 48.0)
         {
             break;
         }
-        if (positionX > chunkWorldMaxX + 48.0)
+        if (positionX > chunkLevelMaxX + 48.0)
         {
             break;
         }
-        if (positionZ > chunkWorldMaxZ + 48.0)
+        if (positionZ > chunkLevelMaxZ + 48.0)
         {
             break;
         }

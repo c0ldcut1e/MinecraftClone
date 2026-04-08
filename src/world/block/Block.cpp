@@ -2,12 +2,13 @@
 #include "BlockRegistry.h"
 
 #include "../../rendering/ColormapManager.h"
-#include "../World.h"
+#include "../Level.h"
 #include "../biome/Biome.h"
 #include "../chunk/Chunk.h"
 
 Block::Block()
-    : m_name(""), m_solid(false), m_aabb(Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0)),
+    : m_name(""), m_solid(false), m_selectable(true),
+      m_aabb(Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0)),
       m_interactionAabb(Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0)), m_hasInteractionAabb(false),
       m_interactionAttachmentOffset(0.0f), m_lightEmission(0), m_lightR(0), m_lightG(0),
       m_lightB(0), m_renderShape(RenderShape::CUBE), m_hasWallMountedTransform(false),
@@ -15,7 +16,7 @@ Block::Block()
 {}
 
 Block::Block(const std::string &name, bool solid, const std::string &texturePath)
-    : m_name(name), m_solid(solid),
+    : m_name(name), m_solid(solid), m_selectable(true),
       m_aabb(Vec3(0.0, 0.0, 0.0), solid ? Vec3(1.0, 1.0, 1.0) : Vec3(0.0, 0.0, 0.0)),
       m_lightEmission(0), m_lightR(0), m_lightG(0), m_lightB(0), m_renderShape(RenderShape::CUBE),
       m_hasWallMountedTransform(false), m_wallMountedTiltDegrees(0.0f), m_wallMountedInset(0.0f)
@@ -32,6 +33,12 @@ Block::Block(const std::string &name, bool solid, const std::string &texturePath
         setTexture(Direction::SOUTH, textureRepo->get(texturePath).get());
         setTexture(Direction::EAST, textureRepo->get(texturePath).get());
         setTexture(Direction::WEST, textureRepo->get(texturePath).get());
+        setTexturePath(Direction::UP, texturePath);
+        setTexturePath(Direction::DOWN, texturePath);
+        setTexturePath(Direction::NORTH, texturePath);
+        setTexturePath(Direction::SOUTH, texturePath);
+        setTexturePath(Direction::EAST, texturePath);
+        setTexturePath(Direction::WEST, texturePath);
     }
 }
 
@@ -39,21 +46,21 @@ Block *Block::byId(uint32_t id) { return BlockRegistry::get()->byId(id); }
 
 Block *Block::byName(const std::string &name) { return byId(BlockRegistry::get()->getId(name)); }
 
-void Block::onPlace(World *world, const BlockPos &pos)
+void Block::onPlace(Level *level, const BlockPos &pos)
 {
-    (void) world;
+    (void) level;
     (void) pos;
 }
 
-void Block::onBreak(World *world, const BlockPos &pos)
+void Block::onBreak(Level *level, const BlockPos &pos)
 {
-    (void) world;
+    (void) level;
     (void) pos;
 }
 
-void Block::tick(World *world, const BlockPos &pos)
+void Block::tick(Level *level, const BlockPos &pos)
 {
-    (void) world;
+    (void) level;
     (void) pos;
 }
 
@@ -61,10 +68,27 @@ void Block::setTexture(Direction *direction, Texture *texture) { m_textures[dire
 
 Texture *Block::getTexture(Direction *direction) const
 {
-    auto it = m_textures.find(direction);
+    std::unordered_map<Direction *, Texture *>::const_iterator it = m_textures.find(direction);
     if (it == m_textures.end())
     {
         return nullptr;
+    }
+    return it->second;
+}
+
+void Block::setTexturePath(Direction *direction, const std::string &path)
+{
+    m_texturePaths[direction] = path;
+}
+
+const std::string &Block::getTexturePath(Direction *direction) const
+{
+    std::unordered_map<Direction *, std::string>::const_iterator it =
+            m_texturePaths.find(direction);
+    static const std::string empty;
+    if (it == m_texturePaths.end())
+    {
+        return empty;
     }
     return it->second;
 }
@@ -91,7 +115,8 @@ bool Block::hasTintColormap(Direction *direction) const
 
 const std::string &Block::getTintColormap(Direction *direction) const
 {
-    auto it = m_tintColormaps.find(direction);
+    std::unordered_map<Direction *, std::string>::const_iterator it =
+            m_tintColormaps.find(direction);
     static const std::string empty;
     if (it == m_tintColormaps.end())
     {
@@ -100,7 +125,7 @@ const std::string &Block::getTintColormap(Direction *direction) const
     return it->second;
 }
 
-uint32_t Block::resolveTint(Direction *direction, World *world, const Chunk *chunk, int localX,
+uint32_t Block::resolveTint(Direction *direction, Level *level, const Chunk *chunk, int localX,
                             int localZ) const
 {
     if (!hasTintColormap(direction))
@@ -148,7 +173,7 @@ uint32_t Block::resolveTint(Direction *direction, World *world, const Chunk *chu
                 ChunkPos pos = chunk->getPos();
                 pos.x += chunkOffsetX;
                 pos.z += chunkOffsetZ;
-                target = world->getChunk(pos);
+                target = level->getChunk(pos);
                 if (!target)
                 {
                     continue;
@@ -184,6 +209,10 @@ uint32_t Block::resolveTint(Direction *direction, World *world, const Chunk *chu
 const std::string &Block::getName() const { return m_name; }
 
 bool Block::isSolid() const { return m_solid; }
+
+void Block::setSelectable(bool selectable) { m_selectable = selectable; }
+
+bool Block::isSelectable() const { return m_selectable; }
 
 void Block::setAABB(const AABB &aabb) { m_aabb = aabb; }
 
@@ -265,8 +294,24 @@ void Block::setUVRect(Direction *direction, float u0, float v0, float u1, float 
 
 Block::UVRect Block::getUVRect(Direction *direction) const
 {
-    auto it = m_uvRects.find(direction);
+    std::unordered_map<Direction *, UVRect>::const_iterator it = m_uvRects.find(direction);
     if (it == m_uvRects.end())
+    {
+        return {0.0f, 0.0f, 1.0f, 1.0f};
+    }
+    return it->second;
+}
+
+void Block::setAtlasUVRect(Direction *direction, float u0, float v0, float u1, float v1)
+{
+    m_atlasUvRects[direction] = {u0, v0, u1, v1};
+}
+
+Block::UVRect Block::getAtlasUVRect(Direction *direction) const
+{
+    std::unordered_map<Direction *, UVRect>::const_iterator it =
+            m_atlasUvRects.find(direction);
+    if (it == m_atlasUvRects.end())
     {
         return {0.0f, 0.0f, 1.0f, 1.0f};
     }

@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include "../World.h"
+#include "../Level.h"
 #include "../chunk/ChunkPos.h"
 
 class LightEngine
@@ -26,22 +26,22 @@ public:
         uint8_t level;
     };
 
-    static void rebuild(World *world);
-    static void rebuildChunk(World *world, const ChunkPos &pos);
-    static void updateFrom(World *world, const BlockPos &worldPos);
+    static void rebuild(Level *level);
+    static void rebuildChunk(Level *level, const ChunkPos &pos);
+    static void updateFrom(Level *level, const BlockPos &levelPos);
 
-    static void setBlockLight(World *world, const BlockPos &worldPos, uint8_t r, uint8_t g,
+    static void setBlockLight(Level *level, const BlockPos &levelPos, uint8_t r, uint8_t g,
                               uint8_t b);
-    static void getBlockLight(World *world, const BlockPos &worldPos, uint8_t *r, uint8_t *g,
+    static void getBlockLight(Level *level, const BlockPos &levelPos, uint8_t *r, uint8_t *g,
                               uint8_t *b);
 
-    static void setSkyLight(World *world, const BlockPos &worldPos, uint8_t level);
-    static uint8_t getSkyLight(World *world, const BlockPos &worldPos);
+    static void setSkyLight(Level *level, const BlockPos &levelPos, uint8_t lightLevel);
+    static uint8_t getSkyLight(Level *level, const BlockPos &levelPos);
 
-    static void getLightLevel(World *world, const BlockPos &worldPos, uint8_t *r, uint8_t *g,
+    static void getLightLevel(Level *level, const BlockPos &levelPos, uint8_t *r, uint8_t *g,
                               uint8_t *b);
 
 private:
-    static void propagateSkyLight(World *world, const ChunkPos &pos);
-    static void propagateBlockLight(World *world, const ChunkPos &pos);
+    static void propagateSkyLight(Level *level, const ChunkPos &pos);
+    static void propagateBlockLight(Level *level, const ChunkPos &pos);
 };

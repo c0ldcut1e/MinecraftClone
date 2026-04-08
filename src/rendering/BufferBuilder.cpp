@@ -6,7 +6,7 @@
 #include "RenderCommand.h"
 
 BufferBuilder::BufferBuilder(uint16_t type)
-    : m_vao(0), m_vbo(0), m_mode(GL_TRIANGLES), m_texture(nullptr),
+    : m_vao(0), m_vbo(0), m_mode(GL_TRIANGLES), m_texture(nullptr), m_alphaCutoff(-1.0f),
       m_shader("shaders/buffer_builder.vert", "shaders/buffer_builder.frag"), m_type(type),
       m_view(Mat4::identity()), m_projection(Mat4::identity()),
       m_screenProjection(Mat4::orthographic(0.0, 1920.0, 1080.0, 0.0, -1.0, 1.0))
@@ -77,6 +77,8 @@ void BufferBuilder::bindTexture(Texture *texture) { m_texture = texture; }
 
 void BufferBuilder::unbindTexture() { m_texture = nullptr; }
 
+void BufferBuilder::setAlphaCutoff(float cutoff) { m_alphaCutoff = cutoff; }
+
 void BufferBuilder::setViewProjection(const Mat4 &view, const Mat4 &projection)
 {
     m_view       = view;
@@ -89,8 +91,6 @@ void BufferBuilder::end()
 {
     if (m_vertices.empty())
         return;
-
-    GlStateManager::disableCull();
 
     RenderCommand::bindVertexArray(m_vao);
     RenderCommand::bindArrayBuffer(m_vbo);
@@ -114,6 +114,7 @@ void BufferBuilder::end()
     m_shader.setMat4("u_projection", finalProjection.data);
     m_shader.setMat4("u_model", finalModel.data);
     m_shader.setInt("u_texture", 0);
+    m_shader.setFloat("u_alphaCutoff", m_alphaCutoff);
 
     if (m_texture)
     {
@@ -126,6 +127,4 @@ void BufferBuilder::end()
     }
 
     RenderCommand::renderArrays(m_mode, 0, (int) m_vertices.size());
-
-    GlStateManager::enableCull();
 }

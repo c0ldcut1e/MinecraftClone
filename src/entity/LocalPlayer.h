@@ -7,7 +7,7 @@
 class LocalPlayer : public Player
 {
 public:
-    LocalPlayer(World *world, const std::wstring &name, Camera *camera);
+    LocalPlayer(Level *level, const std::wstring &name, Camera *camera);
 
     uint64_t getType() override;
 
@@ -18,6 +18,7 @@ public:
     void onKeyReleased(int key);
     void onMouseMoved(double dx, double dy);
     void onMouseButtonPressed(int button);
+    void clearInputs();
 
     static constexpr uint64_t TYPE = 0x3000000000000001;
 

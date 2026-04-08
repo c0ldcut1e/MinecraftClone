@@ -33,7 +33,7 @@ float reconstructViewDistance(float depthSample) {
 
 void main()
 {
-    vec4 sceneColor  = texture(u_colorTexture, v_uv);
+    vec4 sceneColor = texture(u_colorTexture, v_uv);
     float depthSample = texture(u_depthTexture, v_uv).r;
     if (u_fogEnabled == 0 || depthSample >= 1.0 || u_fogStrength <= 0.0001) {
         FragColor = sceneColor;
@@ -53,6 +53,8 @@ void main()
     fogColor.g *= br * 0.94 + 0.06;
     fogColor.b *= br * 0.91 + 0.09;
 
-    vec3 rgb = mix(sceneColor.rgb, fogColor, fogValue);
-    FragColor = vec4(rgb, sceneColor.a);
+    float reveal = clamp(sceneColor.a, 0.0, 1.0);
+    float fadeFog = fogValue * reveal;
+    vec3 rgb = mix(sceneColor.rgb, fogColor, fadeFog);
+    FragColor = vec4(rgb, 1.0);
 }

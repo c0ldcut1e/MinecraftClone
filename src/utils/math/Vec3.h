@@ -18,6 +18,7 @@ public:
 
     double length() const;
     double lengthSquared() const;
+    double distanceSquared(const Vec3 &other) const;
 
     double x;
     double y;

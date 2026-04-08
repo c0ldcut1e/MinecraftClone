@@ -1,6 +1,6 @@
 #include "LivingEntity.h"
 
-LivingEntity::LivingEntity(World *world) : Entity(world) {}
+LivingEntity::LivingEntity(Level *level) : Entity(level) {}
 
 LivingEntity::~LivingEntity() {}
 

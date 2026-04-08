@@ -1,6 +1,6 @@
 #include "Tesselator.h"
 
-Tesselator::Tesselator() : m_screenBuilder(0), m_worldBuilder(1) {}
+Tesselator::Tesselator() : m_screenBuilder(0), m_levelBuilder(1) {}
 
 Tesselator *Tesselator::getInstance()
 {
@@ -10,4 +10,4 @@ Tesselator *Tesselator::getInstance()
 
 BufferBuilder *Tesselator::getBuilderForScreen() { return &m_screenBuilder; }
 
-BufferBuilder *Tesselator::getBuilderForWorld() { return &m_worldBuilder; }
+BufferBuilder *Tesselator::getBuilderForLevel() { return &m_levelBuilder; }

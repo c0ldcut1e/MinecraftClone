@@ -8,5 +8,5 @@ public:
     TestEntityRenderer()           = default;
     ~TestEntityRenderer() override = default;
 
-    void render(const Entity *entity, float partialTicks) const override;
+    void render(const Entity *entity, float partialTicks, uint32_t lightColor) const override;
 };

@@ -1,11 +1,19 @@
 #include "Framebuffer.h"
 
+#include <stdexcept>
+
 #include <glad/glad.h>
 
 #include "RenderCommand.h"
 
 Framebuffer::Framebuffer(int width, int height)
-    : m_fbo(0), m_colorTexture(0), m_depthTexture(0), m_width(0), m_height(0)
+    : Framebuffer(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE)
+{}
+
+Framebuffer::Framebuffer(int width, int height, uint32_t colorInternalFormat, uint32_t colorFormat,
+                         uint32_t colorType)
+    : m_fbo(0), m_colorTexture(0), m_depthTexture(0), m_colorInternalFormat(colorInternalFormat),
+      m_colorFormat(colorFormat), m_colorType(colorType), m_width(0), m_height(0)
 {
     create(width, height);
 }
@@ -27,6 +35,8 @@ void Framebuffer::bind() const { RenderCommand::bindFramebuffer(GL_FRAMEBUFFER, 
 
 void Framebuffer::unbind() const { RenderCommand::bindFramebuffer(GL_FRAMEBUFFER, 0); }
 
+uint32_t Framebuffer::getId() const { return m_fbo; }
+
 uint32_t Framebuffer::getColorTexture() const { return m_colorTexture; }
 
 uint32_t Framebuffer::getDepthTexture() const { return m_depthTexture; }
@@ -46,7 +56,8 @@ void Framebuffer::create(int width, int height)
     m_colorTexture = RenderCommand::createTexture();
     RenderCommand::activeTexture(0);
     RenderCommand::bindTexture2D(m_colorTexture);
-    RenderCommand::uploadTexture2D(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    RenderCommand::uploadTexture2D(width, height, m_colorInternalFormat, m_colorFormat, m_colorType,
+                                   nullptr);
     RenderCommand::setTextureParameteri(GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     RenderCommand::setTextureParameteri(GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -64,6 +75,11 @@ void Framebuffer::create(int width, int height)
     RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     RenderCommand::framebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
                                         m_depthTexture, 0);
+
+    if (RenderCommand::checkFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    {
+        throw std::runtime_error("framebuffer incomplete");
+    }
 
     RenderCommand::bindFramebuffer(GL_FRAMEBUFFER, 0);
 }

@@ -1,9 +1,9 @@
 #pragma once
 
-class WorldTime;
+class DimensionTime;
 
 class LightSource
 {
 public:
-    static float sampleSkyLightClamp(const WorldTime &worldTime);
+    static float sampleSkyLightClamp(const DimensionTime &dimensionTime);
 };

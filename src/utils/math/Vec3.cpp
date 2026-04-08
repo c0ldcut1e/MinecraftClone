@@ -34,3 +34,8 @@ Vec3 Vec3::normalize() const
 double Vec3::length() const { return sqrt(x * x + y * y + z * z); }
 
 double Vec3::lengthSquared() const { return x * x + y * y + z * z; }
+
+double Vec3::distanceSquared(const Vec3 &other) const
+{
+    return sub(other).lengthSquared();
+}

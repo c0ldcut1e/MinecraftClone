@@ -20,6 +20,7 @@ public:
 
     void bindTexture(Texture *texture);
     void unbindTexture();
+    void setAlphaCutoff(float cutoff);
 
     void setViewProjection(const Mat4 &view, const Mat4 &projection);
     void setScreenProjection(const Mat4 &projection);
@@ -55,6 +56,7 @@ private:
     float m_currentColor[4];
 
     Texture *m_texture;
+    float m_alphaCutoff;
 
     Shader m_shader;
     uint16_t m_type;

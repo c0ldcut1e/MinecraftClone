@@ -24,7 +24,7 @@ public:
     Font &operator=(const Font &) = delete;
 
     void setScreenProjection(const Mat4 &projection);
-    void setWorldViewProjection(const Mat4 &view, const Mat4 &projection);
+    void setLevelViewProjection(const Mat4 &view, const Mat4 &projection);
 
     void setNearest(bool nearest);
     void setShadowOffset(float x, float y, float z);
@@ -34,8 +34,8 @@ public:
     void render(std::wstring_view text, float x, float y, float scale, uint32_t argb);
     void renderShadow(std::wstring_view text, float x, float y, float scale, uint32_t argb);
 
-    void worldRender(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb);
-    void worldRenderShadow(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb);
+    void levelRender(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb);
+    void levelRenderShadow(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb);
 
 private:
     struct Glyph
@@ -56,8 +56,8 @@ private:
     FT_Face m_face;
 
     Mat4 m_screenProjection;
-    Mat4 m_worldView;
-    Mat4 m_worldProjection;
+    Mat4 m_levelView;
+    Mat4 m_levelProjection;
 
     uint32_t m_vao;
     uint32_t m_vbo;

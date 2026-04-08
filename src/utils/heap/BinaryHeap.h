@@ -5,7 +5,8 @@
 #include <functional>
 #include <vector>
 
-template <typename T, typename Compare = std::less<T>> class BinaryHeap
+template<typename T, typename Compare = std::less<T>>
+class BinaryHeap
 {
 public:
     explicit BinaryHeap(const Compare &compare = Compare()) : m_data(), m_compare(compare) {}

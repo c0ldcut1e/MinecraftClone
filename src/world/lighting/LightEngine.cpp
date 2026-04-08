@@ -70,9 +70,9 @@ struct FastQueue
 struct LightChunkCache
 {
     std::unordered_map<ChunkPos, Chunk *, ChunkPosHash> m_map;
-    World *m_world;
+    Level *m_level;
 
-    explicit LightChunkCache(World *world) : m_world(world) { m_map.reserve(64); }
+    explicit LightChunkCache(Level *level) : m_level(level) { m_map.reserve(64); }
 
     Chunk *get(const ChunkPos &p)
     {
@@ -81,7 +81,7 @@ struct LightChunkCache
         {
             return it->second;
         }
-        Chunk *chunk = m_world->getChunk(p);
+        Chunk *chunk = m_level->getChunk(p);
         m_map[p]     = chunk;
         return chunk;
     }
@@ -91,14 +91,14 @@ static inline int chunkCoord(int w, int size) { return Mth::floorDiv(w, size); }
 
 static inline int localCoord(int w, int size) { return Mth::floorMod(w, size); }
 
-void LightEngine::rebuildChunk(World *world, const ChunkPos &pos)
+void LightEngine::rebuildChunk(Level *level, const ChunkPos &pos)
 {
-    if (!world)
+    if (!level)
     {
         return;
     }
 
-    Chunk *chunk = world->getChunk(pos);
+    Chunk *chunk = level->getChunk(pos);
     if (!chunk)
     {
         return;
@@ -116,19 +116,19 @@ void LightEngine::rebuildChunk(World *world, const ChunkPos &pos)
         }
     }
 
-    propagateSkyLight(world, pos);
-    propagateBlockLight(world, pos);
+    propagateSkyLight(level, pos);
+    propagateBlockLight(level, pos);
 }
 
-void LightEngine::propagateSkyLight(World *world, const ChunkPos &pos)
+void LightEngine::propagateSkyLight(Level *level, const ChunkPos &pos)
 {
-    Chunk *chunk = world->getChunk(pos);
+    Chunk *chunk = level->getChunk(pos);
     if (!chunk)
     {
         return;
     }
 
-    LightChunkCache cache(world);
+    LightChunkCache cache(level);
     cache.m_map[pos] = chunk;
 
     FastQueue<SkyLightNode> lightQueue;
@@ -225,13 +225,13 @@ void LightEngine::propagateSkyLight(World *world, const ChunkPos &pos)
     }
 }
 
-void LightEngine::propagateBlockLight(World *world, const ChunkPos &pos)
+void LightEngine::propagateBlockLight(Level *level, const ChunkPos &pos)
 {
-    Chunk *chunk = world->getChunk(pos);
+    Chunk *chunk = level->getChunk(pos);
     if (!chunk)
         return;
 
-    LightChunkCache cache(world);
+    LightChunkCache cache(level);
     cache.m_map[pos] = chunk;
 
     FastQueue<LightNode> lightQueue;
@@ -346,14 +346,14 @@ void LightEngine::propagateBlockLight(World *world, const ChunkPos &pos)
     }
 }
 
-void LightEngine::rebuild(World *world)
+void LightEngine::rebuild(Level *level)
 {
-    if (!world)
+    if (!level)
     {
         return;
     }
 
-    const auto &chunks = world->getChunks();
+    const auto &chunks = level->getChunks();
     for (const auto &[pos, chunk] : chunks)
     {
         if (!chunk)
@@ -362,22 +362,22 @@ void LightEngine::rebuild(World *world)
         }
 
         ChunkPos chunkPos(pos.x, pos.y, pos.z);
-        rebuildChunk(world, chunkPos);
+        rebuildChunk(level, chunkPos);
     }
 }
 
-void LightEngine::updateFrom(World *world, const BlockPos &worldPos)
+void LightEngine::updateFrom(Level *level, const BlockPos &levelPos)
 {
-    if (!world)
+    if (!level)
     {
         return;
     }
-    if (worldPos.y < 0 || worldPos.y >= Chunk::SIZE_Y)
+    if (levelPos.y < 0 || levelPos.y >= Chunk::SIZE_Y)
     {
         return;
     }
 
-    LightChunkCache cache(world);
+    LightChunkCache cache(level);
     std::unordered_set<ChunkPos, ChunkPosHash> dirtyChunks;
 
     FastQueue<LightRemovalNode> skyRemovalQueue;
@@ -390,8 +390,8 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos)
     blockRemovalQueue.reserve(512);
     blockAddQueue.reserve(512);
 
-    int cx = chunkCoord(worldPos.x, Chunk::SIZE_X);
-    int cz = chunkCoord(worldPos.z, Chunk::SIZE_Z);
+    int cx = chunkCoord(levelPos.x, Chunk::SIZE_X);
+    int cz = chunkCoord(levelPos.z, Chunk::SIZE_Z);
     ChunkPos baseChunkPos(cx, 0, cz);
     dirtyChunks.insert(baseChunkPos);
 
@@ -401,9 +401,9 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos)
         Chunk *chunk = cache.get(baseChunkPos);
         if (chunk)
         {
-            int lx       = localCoord(worldPos.x, Chunk::SIZE_X);
-            int lz       = localCoord(worldPos.z, Chunk::SIZE_Z);
-            changedBlock = Block::byId(chunk->getBlockId(lx, worldPos.y, lz));
+            int lx       = localCoord(levelPos.x, Chunk::SIZE_X);
+            int lz       = localCoord(levelPos.z, Chunk::SIZE_Z);
+            changedBlock = Block::byId(chunk->getBlockId(lx, levelPos.y, lz));
         }
     }
 
@@ -411,16 +411,16 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos)
         Chunk *chunk = cache.get(baseChunkPos);
         if (chunk)
         {
-            int lx = localCoord(worldPos.x, Chunk::SIZE_X);
-            int lz = localCoord(worldPos.z, Chunk::SIZE_Z);
+            int lx = localCoord(levelPos.x, Chunk::SIZE_X);
+            int lz = localCoord(levelPos.z, Chunk::SIZE_Z);
 
-            for (int y = worldPos.y; y < Chunk::SIZE_Y; y++)
+            for (int y = levelPos.y; y < Chunk::SIZE_Y; y++)
             {
                 uint8_t oldLevel = chunk->getSkyLight(lx, y, lz);
                 if (oldLevel > 0)
                 {
                     chunk->setSkyLight(lx, y, lz, 0);
-                    skyRemovalQueue.push({worldPos.x, y, worldPos.z, oldLevel});
+                    skyRemovalQueue.push({levelPos.x, y, levelPos.z, oldLevel});
                 }
             }
         }
@@ -492,8 +492,8 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos)
         Chunk *chunk = cache.get(baseChunkPos);
         if (chunk)
         {
-            int lx = localCoord(worldPos.x, Chunk::SIZE_X);
-            int lz = localCoord(worldPos.z, Chunk::SIZE_Z);
+            int lx = localCoord(levelPos.x, Chunk::SIZE_X);
+            int lz = localCoord(levelPos.z, Chunk::SIZE_Z);
 
             for (int y = Chunk::SIZE_Y - 1; y >= 0; y--)
             {
@@ -507,7 +507,7 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos)
                 if (currentLevel < 15)
                 {
                     chunk->setSkyLight(lx, y, lz, 15);
-                    skyAddQueue.push({worldPos.x, y, worldPos.z, 15});
+                    skyAddQueue.push({levelPos.x, y, levelPos.z, 15});
                 }
             }
         }
@@ -515,9 +515,9 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos)
 
     for (int i = 0; i < 6; i++)
     {
-        int nx = worldPos.x + DIRECTIONS[i][0];
-        int ny = worldPos.y + DIRECTIONS[i][1];
-        int nz = worldPos.z + DIRECTIONS[i][2];
+        int nx = levelPos.x + DIRECTIONS[i][0];
+        int ny = levelPos.y + DIRECTIONS[i][1];
+        int nz = levelPos.z + DIRECTIONS[i][2];
 
         if (ny < 0 || ny >= Chunk::SIZE_Y)
         {
@@ -620,17 +620,17 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos)
         Chunk *chunk = cache.get(baseChunkPos);
         if (chunk)
         {
-            int lx = localCoord(worldPos.x, Chunk::SIZE_X);
-            int lz = localCoord(worldPos.z, Chunk::SIZE_Z);
+            int lx = localCoord(levelPos.x, Chunk::SIZE_X);
+            int lz = localCoord(levelPos.z, Chunk::SIZE_Z);
             uint8_t oldR;
             uint8_t oldG;
             uint8_t oldB;
-            chunk->getBlockLight(lx, worldPos.y, lz, &oldR, &oldG, &oldB);
+            chunk->getBlockLight(lx, levelPos.y, lz, &oldR, &oldG, &oldB);
 
             if (oldR > 0 || oldG > 0 || oldB > 0)
             {
-                chunk->setBlockLight(lx, worldPos.y, lz, 0, 0, 0);
-                blockRemovalQueue.push({worldPos.x, worldPos.y, worldPos.z, oldR, oldG, oldB});
+                chunk->setBlockLight(lx, levelPos.y, lz, 0, 0, 0);
+                blockRemovalQueue.push({levelPos.x, levelPos.y, levelPos.z, oldR, oldG, oldB});
             }
         }
     }
@@ -727,21 +727,21 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos)
         Chunk *chunk = cache.get(baseChunkPos);
         if (chunk)
         {
-            int lx = localCoord(worldPos.x, Chunk::SIZE_X);
-            int lz = localCoord(worldPos.z, Chunk::SIZE_Z);
-            chunk->setBlockLight(lx, worldPos.y, lz, finalR, finalG, finalB);
+            int lx = localCoord(levelPos.x, Chunk::SIZE_X);
+            int lz = localCoord(levelPos.z, Chunk::SIZE_Z);
+            chunk->setBlockLight(lx, levelPos.y, lz, finalR, finalG, finalB);
         }
 
-        blockAddQueue.push({worldPos.x, worldPos.y, worldPos.z, finalR, finalG, finalB});
+        blockAddQueue.push({levelPos.x, levelPos.y, levelPos.z, finalR, finalG, finalB});
     }
 
     if (changedBlock && !changedBlock->isSolid())
     {
         for (int i = 0; i < 6; i++)
         {
-            int nx = worldPos.x + DIRECTIONS[i][0];
-            int ny = worldPos.y + DIRECTIONS[i][1];
-            int nz = worldPos.z + DIRECTIONS[i][2];
+            int nx = levelPos.x + DIRECTIONS[i][0];
+            int ny = levelPos.y + DIRECTIONS[i][1];
+            int nz = levelPos.z + DIRECTIONS[i][2];
             if (ny < 0 || ny >= Chunk::SIZE_Y)
             {
                 continue;
@@ -854,13 +854,13 @@ void LightEngine::updateFrom(World *world, const BlockPos &worldPos)
         }
     }
 
-    for (const ChunkPos &chunkPos : dirtyChunks) world->markChunkDirtyUrgent(chunkPos);
+    for (const ChunkPos &chunkPos : dirtyChunks) level->markChunkDirtyUrgent(chunkPos);
 }
 
-void LightEngine::getBlockLight(World *world, const BlockPos &worldPos, uint8_t *r, uint8_t *g,
+void LightEngine::getBlockLight(Level *level, const BlockPos &levelPos, uint8_t *r, uint8_t *g,
                                 uint8_t *b)
 {
-    if (worldPos.y < 0 || worldPos.y >= Chunk::SIZE_Y)
+    if (levelPos.y < 0 || levelPos.y >= Chunk::SIZE_Y)
     {
         *r = 0;
         *g = 0;
@@ -868,11 +868,11 @@ void LightEngine::getBlockLight(World *world, const BlockPos &worldPos, uint8_t 
         return;
     }
 
-    int cx = chunkCoord(worldPos.x, Chunk::SIZE_X);
-    int cz = chunkCoord(worldPos.z, Chunk::SIZE_Z);
+    int cx = chunkCoord(levelPos.x, Chunk::SIZE_X);
+    int cz = chunkCoord(levelPos.z, Chunk::SIZE_Z);
 
     ChunkPos chunkPos(cx, 0, cz);
-    Chunk *chunk = world->getChunk(chunkPos);
+    Chunk *chunk = level->getChunk(chunkPos);
     if (!chunk)
     {
         *r = 0;
@@ -881,81 +881,81 @@ void LightEngine::getBlockLight(World *world, const BlockPos &worldPos, uint8_t 
         return;
     }
 
-    int lx = localCoord(worldPos.x, Chunk::SIZE_X);
-    int lz = localCoord(worldPos.z, Chunk::SIZE_Z);
-    chunk->getBlockLight(lx, worldPos.y, lz, r, g, b);
+    int lx = localCoord(levelPos.x, Chunk::SIZE_X);
+    int lz = localCoord(levelPos.z, Chunk::SIZE_Z);
+    chunk->getBlockLight(lx, levelPos.y, lz, r, g, b);
 }
 
-void LightEngine::setBlockLight(World *world, const BlockPos &worldPos, uint8_t r, uint8_t g,
+void LightEngine::setBlockLight(Level *level, const BlockPos &levelPos, uint8_t r, uint8_t g,
                                 uint8_t b)
 {
-    if (worldPos.y < 0 || worldPos.y >= Chunk::SIZE_Y)
+    if (levelPos.y < 0 || levelPos.y >= Chunk::SIZE_Y)
     {
         return;
     }
 
-    int cx = chunkCoord(worldPos.x, Chunk::SIZE_X);
-    int cz = chunkCoord(worldPos.z, Chunk::SIZE_Z);
+    int cx = chunkCoord(levelPos.x, Chunk::SIZE_X);
+    int cz = chunkCoord(levelPos.z, Chunk::SIZE_Z);
 
     ChunkPos chunkPos(cx, 0, cz);
-    Chunk *chunk = world->getChunk(chunkPos);
+    Chunk *chunk = level->getChunk(chunkPos);
     if (!chunk)
     {
         return;
     }
 
-    int lx = localCoord(worldPos.x, Chunk::SIZE_X);
-    int lz = localCoord(worldPos.z, Chunk::SIZE_Z);
-    chunk->setBlockLight(lx, worldPos.y, lz, r, g, b);
+    int lx = localCoord(levelPos.x, Chunk::SIZE_X);
+    int lz = localCoord(levelPos.z, Chunk::SIZE_Z);
+    chunk->setBlockLight(lx, levelPos.y, lz, r, g, b);
 }
 
-uint8_t LightEngine::getSkyLight(World *world, const BlockPos &worldPos)
+uint8_t LightEngine::getSkyLight(Level *level, const BlockPos &levelPos)
 {
-    if (worldPos.y < 0 || worldPos.y >= Chunk::SIZE_Y)
+    if (levelPos.y < 0 || levelPos.y >= Chunk::SIZE_Y)
     {
         return 0;
     }
 
-    int cx = chunkCoord(worldPos.x, Chunk::SIZE_X);
-    int cz = chunkCoord(worldPos.z, Chunk::SIZE_Z);
+    int cx = chunkCoord(levelPos.x, Chunk::SIZE_X);
+    int cz = chunkCoord(levelPos.z, Chunk::SIZE_Z);
 
     ChunkPos chunkPos(cx, 0, cz);
-    Chunk *chunk = world->getChunk(chunkPos);
+    Chunk *chunk = level->getChunk(chunkPos);
     if (!chunk)
     {
         return 0;
     }
 
-    int lx = localCoord(worldPos.x, Chunk::SIZE_X);
-    int lz = localCoord(worldPos.z, Chunk::SIZE_Z);
-    return chunk->getSkyLight(lx, worldPos.y, lz);
+    int lx = localCoord(levelPos.x, Chunk::SIZE_X);
+    int lz = localCoord(levelPos.z, Chunk::SIZE_Z);
+    return chunk->getSkyLight(lx, levelPos.y, lz);
 }
 
-void LightEngine::setSkyLight(World *world, const BlockPos &worldPos, uint8_t level)
+void LightEngine::setSkyLight(Level *level, const BlockPos &levelPos, uint8_t lightLevel)
 {
-    if (worldPos.y < 0 || worldPos.y >= Chunk::SIZE_Y)
+    if (levelPos.y < 0 || levelPos.y >= Chunk::SIZE_Y)
     {
         return;
     }
 
-    int cx = chunkCoord(worldPos.x, Chunk::SIZE_X);
-    int cz = chunkCoord(worldPos.z, Chunk::SIZE_Z);
+    int cx = chunkCoord(levelPos.x, Chunk::SIZE_X);
+    int cz = chunkCoord(levelPos.z, Chunk::SIZE_Z);
     ChunkPos chunkPos(cx, 0, cz);
-    Chunk *chunk = world->getChunk(chunkPos);
+    Chunk *chunk = level->getChunk(chunkPos);
     if (!chunk)
     {
         return;
     }
 
-    int lx = localCoord(worldPos.x, Chunk::SIZE_X);
-    int lz = localCoord(worldPos.z, Chunk::SIZE_Z);
-    chunk->setSkyLight(lx, worldPos.y, lz, level);
+    int lx = localCoord(levelPos.x, Chunk::SIZE_X);
+    int lz = localCoord(levelPos.z, Chunk::SIZE_Z);
+    chunk->setSkyLight(lx, levelPos.y, lz, lightLevel);
 }
 
-void LightEngine::getLightLevel(World *world, const BlockPos &worldPos, uint8_t *r, uint8_t *g,
+void LightEngine::getLightLevel(Level *level, const BlockPos &levelPos, uint8_t *r, uint8_t *g,
                                 uint8_t *b)
 {
-    if (worldPos.y < 0 || worldPos.y >= Chunk::SIZE_Y)
+    if (levelPos.y < 0 || levelPos.y >= Chunk::SIZE_Y)
     {
         *r = 0;
         *g = 0;
@@ -963,11 +963,11 @@ void LightEngine::getLightLevel(World *world, const BlockPos &worldPos, uint8_t 
         return;
     }
 
-    int cx = chunkCoord(worldPos.x, Chunk::SIZE_X);
-    int cz = chunkCoord(worldPos.z, Chunk::SIZE_Z);
+    int cx = chunkCoord(levelPos.x, Chunk::SIZE_X);
+    int cz = chunkCoord(levelPos.z, Chunk::SIZE_Z);
 
     ChunkPos chunkPos(cx, 0, cz);
-    Chunk *chunk = world->getChunk(chunkPos);
+    Chunk *chunk = level->getChunk(chunkPos);
     if (!chunk)
     {
         *r = 0;
@@ -976,7 +976,7 @@ void LightEngine::getLightLevel(World *world, const BlockPos &worldPos, uint8_t 
         return;
     }
 
-    int lx = localCoord(worldPos.x, Chunk::SIZE_X);
-    int lz = localCoord(worldPos.z, Chunk::SIZE_Z);
-    chunk->getLight(lx, worldPos.y, lz, r, g, b);
+    int lx = localCoord(levelPos.x, Chunk::SIZE_X);
+    int lz = localCoord(levelPos.z, Chunk::SIZE_Z);
+    chunk->getLight(lx, levelPos.y, lz, r, g, b);
 }

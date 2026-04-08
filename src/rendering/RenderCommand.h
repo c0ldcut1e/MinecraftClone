@@ -195,6 +195,8 @@ public:
     static void framebufferTexture2D(uint32_t target, uint32_t attachment, uint32_t textarget,
                                      uint32_t texture, int level);
     static uint32_t checkFramebufferStatus(uint32_t target);
+    static void blitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1, int dstX0, int dstY0,
+                                int dstX1, int dstY1, uint32_t mask, uint32_t filter);
 
     static uint32_t createRenderbuffer();
     static void deleteRenderbuffer(uint32_t id);

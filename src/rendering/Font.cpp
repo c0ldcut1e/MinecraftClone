@@ -46,7 +46,7 @@ static inline void colorToFloats(uint32_t argb, float *r, float *g, float *b, fl
 Font::Font(const char *ttfPath, int pixelHeight)
     : m_shader("shaders/font.vert", "shaders/font.frag"), m_ft(nullptr), m_face(nullptr),
       m_screenProjection(Mat4::orthographic(0.0, 1920.0, 1080.0, 0.0, -1.0, 1.0)),
-      m_worldView(Mat4::identity()), m_worldProjection(Mat4::identity()), m_vao(0), m_vbo(0),
+      m_levelView(Mat4::identity()), m_levelProjection(Mat4::identity()), m_vao(0), m_vbo(0),
       m_nearest(false), m_shadowOffsetX(1.0f), m_shadowOffsetY(1.0f), m_shadowOffsetZ(0.001f)
 {
     if (FT_Init_FreeType(&m_ft) != 0)
@@ -107,10 +107,10 @@ Font::~Font()
 
 void Font::setScreenProjection(const Mat4 &projection) { m_screenProjection = projection; }
 
-void Font::setWorldViewProjection(const Mat4 &view, const Mat4 &projection)
+void Font::setLevelViewProjection(const Mat4 &view, const Mat4 &projection)
 {
-    m_worldView       = view;
-    m_worldProjection = projection;
+    m_levelView       = view;
+    m_levelProjection = projection;
 }
 
 void Font::setNearest(bool nearest)
@@ -270,7 +270,7 @@ void Font::renderShadow(std::wstring_view text, float x, float y, float scale, u
     render(text, x, y, scale, argb);
 }
 
-void Font::worldRender(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb)
+void Font::levelRender(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb)
 {
     if (text.empty())
     {
@@ -292,8 +292,8 @@ void Font::worldRender(std::wstring_view text, const Vec3 &pos, float scale, uin
     GlStateManager::setBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     m_shader.bind();
-    m_shader.setMat4("u_view", m_worldView.data);
-    m_shader.setMat4("u_projection", m_worldProjection.data);
+    m_shader.setMat4("u_view", m_levelView.data);
+    m_shader.setMat4("u_projection", m_levelProjection.data);
     m_shader.setMat4("u_model", GlStateManager::getMatrix().data);
     m_shader.setVec3("u_color", r, g, b);
     m_shader.setFloat("u_alpha", a);
@@ -351,7 +351,7 @@ void Font::worldRender(std::wstring_view text, const Vec3 &pos, float scale, uin
     GlStateManager::setDepthMask(true);
 }
 
-void Font::worldRenderShadow(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb)
+void Font::levelRenderShadow(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb)
 {
     uint32_t shadow = mulColor(argb, 0.25f);
 
@@ -364,8 +364,8 @@ void Font::worldRenderShadow(std::wstring_view text, const Vec3 &pos, float scal
     }
     oz *= scale;
 
-    worldRender(text, Vec3(pos.x + ox, pos.y - oy, pos.z - oz), scale, shadow);
-    worldRender(text, pos, scale, argb);
+    levelRender(text, Vec3(pos.x + ox, pos.y - oy, pos.z - oz), scale, shadow);
+    levelRender(text, pos, scale, argb);
 }
 
 const Font::Glyph &Font::getOrCreateGlyph(uint32_t codepoint)

@@ -8,11 +8,11 @@ public:
     static Tesselator *getInstance();
 
     BufferBuilder *getBuilderForScreen();
-    BufferBuilder *getBuilderForWorld();
+    BufferBuilder *getBuilderForLevel();
 
 private:
     Tesselator();
 
     BufferBuilder m_screenBuilder;
-    BufferBuilder m_worldBuilder;
+    BufferBuilder m_levelBuilder;
 };

@@ -4,10 +4,10 @@
 
 #include "../utils/Time.h"
 
-Entity::Entity(World *world)
-    : m_world(world), m_totalTickCount(-1), m_position(0.0, 0.0, 0.0), m_velocity(0.0, 0.0, 0.0),
+Entity::Entity(Level *level)
+    : m_level(level), m_totalTickCount(-1), m_position(0.0, 0.0, 0.0), m_velocity(0.0, 0.0, 0.0),
       m_moveIntent(0.0, 0.0, 0.0), m_front(0.0, 0.0, -1.0), m_up(0.0, 1.0, 0.0), m_yaw(-90.0f),
-      m_pitch(0.0f), m_gravity(-32.0f), m_jumpVelocity(9.6f), m_maxSpeed(20.0f),
+      m_pitch(0.0f), m_gravity(-32.0f), m_jumpVelocity(9.6f), m_maxSpeed(25.0f),
       m_acceleration(200.0f), m_friction(12.5f), m_onGround(false), m_jumpQueued(false),
       m_noGravity(false), m_noCollision(false), m_flying(false),
       m_boundingBox(Vec3(-0.3, 0.0, -0.3), Vec3(0.3, 1.8, 0.3)), m_aabb(), m_uuid(UUID::random()),
@@ -31,7 +31,7 @@ void Entity::tick()
     m_jumpQueued = false;
 }
 
-World *Entity::getWorld() const { return m_world; }
+Level *Entity::getLevel() const { return m_level; }
 
 void Entity::setPosition(const Vec3 &position) { m_position = position; }
 
@@ -166,7 +166,7 @@ void Entity::applyPhysics(double deltaTime)
 
     Vec3 movement = m_velocity.scale(deltaTime);
 
-    if (m_noCollision || !m_world)
+    if (m_noCollision || !m_level)
     {
         m_position = m_position.add(movement);
         return;
@@ -184,7 +184,7 @@ void Entity::applyPhysics(double deltaTime)
         }
 
         AABB test = m_aabb.translated(Vec3(0.0, step, 0.0));
-        if (m_world->intersectsBlock(test))
+        if (m_level->intersectsBlock(test))
         {
             if (step < 0.0)
             {
@@ -221,7 +221,7 @@ void Entity::applyPhysics(double deltaTime)
         }
 
         AABB test = m_aabb.translated(Vec3(step, 0.0, 0.0));
-        if (m_world->intersectsBlock(test))
+        if (m_level->intersectsBlock(test))
         {
             m_velocity.x = 0.0;
             remainingX   = 0.0;
@@ -243,7 +243,7 @@ void Entity::applyPhysics(double deltaTime)
         }
 
         AABB test = m_aabb.translated(Vec3(0.0, 0.0, step));
-        if (m_world->intersectsBlock(test))
+        if (m_level->intersectsBlock(test))
         {
             m_velocity.z = 0.0;
             remainingZ   = 0.0;

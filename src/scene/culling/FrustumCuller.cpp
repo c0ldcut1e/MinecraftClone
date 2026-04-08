@@ -70,3 +70,19 @@ bool FrustumCuller::testAABB(const AABB &aabb) const
 
     return true;
 }
+
+bool FrustumCuller::testSphere(const Vec3 &center, double radius) const
+{
+    double safeRadius = radius < 0.0 ? 0.0 : radius;
+
+    for (int i = 0; i < FrustumData::PLANE_COUNT; i++)
+    {
+        const FrustumPlane &plane = m_data.planes[i];
+        if (plane.normal.dot(center) + plane.distance < -safeRadius)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}

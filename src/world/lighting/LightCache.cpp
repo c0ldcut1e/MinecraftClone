@@ -1,9 +1,6 @@
 #include "LightCache.h"
 
-LightCache::LightCache() : m_skyLightClamp(-1.0f), m_skyLightLevels()
-{
-    rebuild(15.0f);
-}
+LightCache::LightCache() : m_skyLightClamp(-1.0f), m_skyLightLevels() { rebuild(15.0f); }
 
 void LightCache::rebuild(float skyLightClamp)
 {

@@ -2,13 +2,13 @@
 
 #include <glad/glad.h>
 
-#include <GLFW/glfw3.h>
+#include <SDL2/SDL.h>
 
 #include "../memory/MemoryTracker.h"
 
 bool RenderCommand::initialize()
 {
-    return gladLoadGLLoader((GLADloadproc) glfwGetProcAddress) != 0;
+    return gladLoadGLLoader((GLADloadproc) SDL_GL_GetProcAddress) != 0;
 }
 
 void RenderCommand::enableExperimentalFeatures() {}
@@ -597,6 +597,13 @@ void RenderCommand::framebufferTexture2D(uint32_t target, uint32_t attachment, u
 uint32_t RenderCommand::checkFramebufferStatus(uint32_t target)
 {
     return (uint32_t) glCheckFramebufferStatus((GLenum) target);
+}
+
+void RenderCommand::blitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1, int dstX0,
+                                    int dstY0, int dstX1, int dstY1, uint32_t mask, uint32_t filter)
+{
+    glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, (GLbitfield) mask,
+                      (GLenum) filter);
 }
 
 uint32_t RenderCommand::createRenderbuffer()

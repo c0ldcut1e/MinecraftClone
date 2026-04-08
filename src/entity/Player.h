@@ -5,7 +5,7 @@
 class Player : public LivingEntity
 {
 public:
-    explicit Player(World *world, const std::wstring &name);
+    explicit Player(Level *level, const std::wstring &name);
 
     uint64_t getType() override;
 

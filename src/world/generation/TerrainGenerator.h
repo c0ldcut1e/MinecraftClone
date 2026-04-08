@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "../../utils/Random.h"
-#include "../World.h"
+#include "../Level.h"
 #include "../biome/Biome.h"
 #include "../chunk/Chunk.h"
 
@@ -13,10 +13,10 @@ class TerrainGenerator
 public:
     explicit TerrainGenerator(uint32_t seed);
 
-    void generate(World &world, const ChunkPos &center);
+    void generate(Level &level, const ChunkPos &center);
     void generateChunk(Chunk &chunk, const ChunkPos &pos);
 
-    int getHeightAt(int worldX, int worldZ);
+    int getHeightAt(int levelX, int levelZ);
 
     static constexpr int GRID_X  = 5;
     static constexpr int GRID_Z  = 5;
@@ -25,7 +25,7 @@ public:
     static constexpr int CELL_Y  = 4;
 
 private:
-    Biome *getBiomeAt(int worldX, int worldZ) const;
+    Biome *getBiomeAt(int levelX, int levelZ) const;
     void buildDensityGrid(float *grid, int chunkX, int chunkZ);
 
     void carveCavesFromSourceChunk(Chunk &chunk, const ChunkPos &targetChunkPos, int sourceChunkX,

@@ -68,7 +68,7 @@ ModelPart *Model::findPart(const std::string &name)
     return nullptr;
 }
 
-void Model::render(TextureRepository &textures) const
+void Model::render(TextureRepository &textures, uint32_t color) const
 {
     std::shared_ptr<Texture> texture = textures.get(m_skin.getTexturePath());
     if (!texture.get())
@@ -77,7 +77,7 @@ void Model::render(TextureRepository &textures) const
         return;
     }
 
-    Tesselator::getInstance()->getBuilderForWorld()->bindTexture(texture.get());
+    Tesselator::getInstance()->getBuilderForLevel()->bindTexture(texture.get());
 
     int textureWidth  = m_skin.getTextureWidth();
     int textureHeight = m_skin.getTextureHeight();
@@ -85,16 +85,17 @@ void Model::render(TextureRepository &textures) const
     if (!m_root)
     {
         Logger::logError("Model render root missing");
-        Tesselator::getInstance()->getBuilderForWorld()->unbindTexture();
+        Tesselator::getInstance()->getBuilderForLevel()->unbindTexture();
         return;
     }
 
-    renderPart(m_root.get(), textureWidth, textureHeight);
+    renderPart(m_root.get(), textureWidth, textureHeight, color);
 
-    Tesselator::getInstance()->getBuilderForWorld()->unbindTexture();
+    Tesselator::getInstance()->getBuilderForLevel()->unbindTexture();
 }
 
-void Model::renderPart(const ModelPart *part, int textureWidth, int textureHeight) const
+void Model::renderPart(const ModelPart *part, int textureWidth, int textureHeight,
+                       uint32_t color) const
 {
     GlStateManager::pushMatrix();
 
@@ -110,9 +111,9 @@ void Model::renderPart(const ModelPart *part, int textureWidth, int textureHeigh
 
     for (const ModelPart::Cube &cube : part->getCubes())
     {
-        BufferBuilder *renderer = Tesselator::getInstance()->getBuilderForWorld();
+        BufferBuilder *renderer = Tesselator::getInstance()->getBuilderForLevel();
         renderer->begin(GL_TRIANGLES);
-        renderer->color(0xFFFFFFFF);
+        renderer->color(color);
 
         float x0 = cube.min.x;
         float y0 = cube.min.y;
@@ -198,7 +199,7 @@ void Model::renderPart(const ModelPart *part, int textureWidth, int textureHeigh
 
     for (const auto &kv : part->getChildren())
     {
-        renderPart(kv.second.get(), textureWidth, textureHeight);
+        renderPart(kv.second.get(), textureWidth, textureHeight, color);
     }
 
     GlStateManager::popMatrix();

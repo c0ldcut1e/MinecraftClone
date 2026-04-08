@@ -41,6 +41,31 @@ Texture::Texture(const char *path) : m_id(0), m_pixelWidth(0), m_pixelHeight(0)
     Logger::logInfo("Loaded texture '%s' (ID: %u, %dx%d)", path, m_id, width, height);
 }
 
+Texture::Texture(int width, int height, const uint8_t *pixels, bool clampToEdge)
+    : m_id(0), m_pixelWidth(width), m_pixelHeight(height)
+{
+    if (width <= 0 || height <= 0 || !pixels)
+    {
+        throw std::runtime_error("failed to create texture");
+    }
+
+    m_pixels.resize((size_t) width * (size_t) height * 4);
+    memcpy(m_pixels.data(), pixels, m_pixels.size());
+
+    m_id = RenderCommand::createTexture();
+    RenderCommand::bindTexture2D(m_id);
+
+    RenderCommand::setTextureParameteri(GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    RenderCommand::setTextureParameteri(GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_S,
+                                        clampToEdge ? GL_CLAMP_TO_EDGE : GL_REPEAT);
+    RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_T,
+                                        clampToEdge ? GL_CLAMP_TO_EDGE : GL_REPEAT);
+
+    RenderCommand::uploadTexture2D(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE,
+                                   m_pixels.data());
+}
+
 Texture::~Texture() { RenderCommand::deleteTexture(m_id); }
 
 void Texture::bind(uint32_t slot) const
@@ -87,3 +112,5 @@ uint32_t Texture::getId() const { return m_id; }
 int Texture::getPixelWidth() const { return m_pixelWidth; }
 
 int Texture::getPixelHeight() const { return m_pixelHeight; }
+
+const std::vector<uint8_t> &Texture::getPixels() const { return m_pixels; }

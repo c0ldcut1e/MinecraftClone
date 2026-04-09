@@ -30,8 +30,8 @@ Texture::Texture(const char *path) : m_id(0), m_pixelWidth(0), m_pixelHeight(0)
 
     RenderCommand::setTextureParameteri(GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     RenderCommand::setTextureParameteri(GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_S, GL_REPEAT);
-    RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_T, GL_REPEAT);
+    RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     RenderCommand::uploadTexture2D(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, data);
     RenderCommand::generateMipmap2D();

@@ -11,10 +11,7 @@ public:
 
     void tick() override;
 
-    void setMoveForward(bool value);
-    void setMoveBackward(bool value);
-    void setMoveLeft(bool value);
-    void setMoveRight(bool value);
+    void setMoveInputs(float forward, float strafe);
 
     void setFlying(bool value);
     bool isFlying() const;
@@ -22,8 +19,6 @@ public:
     static constexpr uint64_t TYPE = 0x3000000000000000;
 
 protected:
-    bool m_moveForward;
-    bool m_moveBackward;
-    bool m_moveLeft;
-    bool m_moveRight;
+    float m_moveForwardInput;
+    float m_moveStrafeInput;
 };

@@ -5,11 +5,11 @@
 #include <string>
 #include <vector>
 
-class UIComponent_DebugPanel : public UIComponent
+class UIComponent_DebugMenu : public UIComponent
 {
 public:
-    UIComponent_DebugPanel();
-    ~UIComponent_DebugPanel() override;
+    UIComponent_DebugMenu();
+    ~UIComponent_DebugMenu() override;
 
     void tick() override;
     void render() override;

@@ -4,7 +4,7 @@
 #include "UIComponent_Vignette.h"
 
 UIScene_HUD::UIScene_HUD()
-    : UIScene("SceneHUD"), m_layerRoot(new UILayer("LayerHUD")),
+    : UIScene("Scene_HUD"), m_layerRoot(new UILayer("Layer_HUD")),
       m_crosshair(new UIComponent_Crosshair())
 {
     m_layerRoot->addComponent(m_crosshair);

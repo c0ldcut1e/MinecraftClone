@@ -1,15 +1,21 @@
 #include "Font.h"
 
+#include <algorithm>
+#include <cmath>
 #include <stdexcept>
-#include <vector>
 
 #include <glad/glad.h>
 
-#include <ft2build.h>
-#include FT_FREETYPE_H
-
+#include "../utils/math/Mth.h"
 #include "GlStateManager.h"
 #include "RenderCommand.h"
+
+static constexpr float BITMAP_FONT_SCALE_SNAP_STEPS = 8.0f;
+
+static inline float snapBitmapPixel(float value, bool nearest)
+{
+    return nearest ? std::round(value) : value;
+}
 
 static inline uint32_t mulColor(uint32_t argb, float mul)
 {
@@ -43,23 +49,32 @@ static inline void colorToFloats(uint32_t argb, float *r, float *g, float *b, fl
     *b = (argb & 0xFF) / 255.0f;
 }
 
-Font::Font(const char *ttfPath, int pixelHeight)
-    : m_shader("shaders/font.vert", "shaders/font.frag"), m_ft(nullptr), m_face(nullptr),
+Font::Font(const char *fontPath, int pixelHeight)
+    : m_shader("shaders/font.vert", "shaders/font.frag"),
+      m_atlas(std::make_unique<Texture>(fontPath)),
       m_screenProjection(Mat4::orthographic(0.0, 1920.0, 1080.0, 0.0, -1.0, 1.0)),
       m_levelView(Mat4::identity()), m_levelProjection(Mat4::identity()), m_vao(0), m_vbo(0),
-      m_nearest(false), m_shadowOffsetX(1.0f), m_shadowOffsetY(1.0f), m_shadowOffsetZ(0.001f)
+      m_nearest(true), m_shadowOffsetX(1.0f), m_shadowOffsetY(1.0f), m_shadowOffsetZ(0.001f),
+      m_ascent((float) std::max(pixelHeight - 1, 1)),
+      m_lineHeight((float) std::max(pixelHeight, 1)),
+      m_bitmapScale((float) std::max(pixelHeight, 1) / 8.0f), m_cellPixelWidth(8),
+      m_cellPixelHeight(8), m_glyphColumns(0), m_glyphRows(0), m_fallbackCodepoint((uint32_t) '?')
 {
-    if (FT_Init_FreeType(&m_ft) != 0)
+    if (!m_atlas || m_atlas->getPixelWidth() <= 0 || m_atlas->getPixelHeight() <= 0)
     {
-        throw std::runtime_error("FT_Init_FreeType failed");
-    }
-    if (FT_New_Face(m_ft, ttfPath, 0, &m_face) != 0)
-    {
-        FT_Done_FreeType(m_ft);
-        throw std::runtime_error("FT_New_Face failed (bad path/font?)");
+        throw std::runtime_error("failed to load bitmap font");
     }
 
-    FT_Set_Pixel_Sizes(m_face, 0, (FT_UInt) pixelHeight);
+    m_glyphColumns = m_atlas->getPixelWidth() / m_cellPixelWidth;
+    m_glyphRows    = m_atlas->getPixelHeight() / m_cellPixelHeight;
+    if (m_glyphColumns <= 0 || m_glyphRows <= 0)
+    {
+        throw std::runtime_error("invalid bitmap font atlas size");
+    }
+
+    m_ascent     = (float) (m_cellPixelHeight - 1) * m_bitmapScale;
+    m_lineHeight = (float) m_cellPixelHeight * m_bitmapScale;
+    loadBitmapGlyphs();
 
     m_vao = RenderCommand::createVertexArray();
     m_vbo = RenderCommand::createBuffer();
@@ -78,31 +93,13 @@ Font::Font(const char *ttfPath, int pixelHeight)
 
     m_shader.bind();
     m_shader.setInt("u_font", 0);
+    setNearest(m_nearest);
 }
 
 Font::~Font()
 {
-    for (auto &kv : m_glyphs)
-    {
-        if (kv.second.texture)
-        {
-            RenderCommand::deleteTexture(kv.second.texture);
-        }
-    }
-
-    m_glyphs.clear();
-
     RenderCommand::deleteBuffer(m_vbo);
     RenderCommand::deleteVertexArray(m_vao);
-
-    if (m_face)
-    {
-        FT_Done_Face(m_face);
-    }
-    if (m_ft)
-    {
-        FT_Done_FreeType(m_ft);
-    }
 }
 
 void Font::setScreenProjection(const Mat4 &projection) { m_screenProjection = projection; }
@@ -117,23 +114,18 @@ void Font::setNearest(bool nearest)
 {
     m_nearest = nearest;
 
-    for (auto &kv : m_glyphs)
+    if (!m_atlas)
     {
-        {
-            if (!kv.second.texture)
-            {
-                continue;
-            }
-        }
-
-        RenderCommand::bindTexture2D(kv.second.texture);
-
-        uint32_t filter = m_nearest ? GL_NEAREST : GL_LINEAR;
-        RenderCommand::setTextureParameteri(GL_TEXTURE_MIN_FILTER, filter);
-        RenderCommand::setTextureParameteri(GL_TEXTURE_MAG_FILTER, filter);
-        RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        return;
     }
+
+    RenderCommand::bindTexture2D(m_atlas->getId());
+
+    uint32_t filter = m_nearest ? GL_NEAREST : GL_LINEAR;
+    RenderCommand::setTextureParameteri(GL_TEXTURE_MIN_FILTER, filter);
+    RenderCommand::setTextureParameteri(GL_TEXTURE_MAG_FILTER, filter);
+    RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 }
 
 void Font::setShadowOffset(float x, float y, float z)
@@ -161,30 +153,36 @@ float Font::getWidth(std::wstring_view text, float scale) const
 
         uint32_t cp = (uint32_t) wc;
 
-        auto it            = m_glyphs.find(cp);
-        const Glyph *glyph = nullptr;
-
-        if (it != m_glyphs.end())
-        {
-            glyph = &it->second;
-        }
-        else
-        {
-            glyph = &const_cast<Font *>(this)->getOrCreateGlyph(cp);
-        }
-
-        if (!glyph->texture)
+        const Glyph &glyph = getGlyph(cp);
+        if (glyph.advance <= 0.0f)
         {
             continue;
         }
 
-        width += (float) (glyph->advance >> 6) * scale;
+        width += glyph.advance * m_bitmapScale * scale;
     }
 
     return width;
 }
 
-void Font::render(std::wstring_view text, float x, float y, float scale, uint32_t argb)
+float Font::getAscent(float scale) const { return m_ascent * scale; }
+
+float Font::getLineHeight(float scale) const { return m_lineHeight * scale; }
+
+float Font::snapScale(float scale) const
+{
+    if (m_bitmapScale <= 0.0f)
+    {
+        return scale;
+    }
+
+    float snappedGlyphScale =
+            std::max(1.0f, std::round(scale * m_bitmapScale * BITMAP_FONT_SCALE_SNAP_STEPS) /
+                                   BITMAP_FONT_SCALE_SNAP_STEPS);
+    return snappedGlyphScale / m_bitmapScale;
+}
+
+void Font::draw(std::wstring_view text, float x, float y, float scale, uint32_t argb)
 {
     if (text.empty())
     {
@@ -215,62 +213,67 @@ void Font::render(std::wstring_view text, float x, float y, float scale, uint32_
 
     RenderCommand::bindVertexArray(m_vao);
     RenderCommand::bindArrayBuffer(m_vbo);
+    if (m_atlas)
+    {
+        m_atlas->bind(0);
+    }
 
-    float penX = x;
-    float penY = y;
+    float glyphScale  = scale * m_bitmapScale;
+    float logicalPenX = x;
+    float logicalPenY = y;
 
     for (wchar_t wc : text)
     {
         uint32_t cp = (uint32_t) wc;
         if (cp == (uint32_t) L'\n')
         {
-            penX = x;
-            penY += 32.0f * scale;
+            logicalPenX = x;
+            logicalPenY += m_lineHeight * scale;
             continue;
         }
 
-        const Glyph &ch = getOrCreateGlyph(cp);
-        if (!ch.texture)
+        const Glyph &ch = getGlyph(cp);
+        if (ch.advance <= 0.0f)
         {
             continue;
         }
 
-        float xPos = penX + (float) ch.bearingX * scale;
-        float yPos = penY - (float) ch.bearingY * scale;
-
-        float width  = (float) ch.width * scale;
-        float height = (float) ch.height * scale;
+        float left = snapBitmapPixel(logicalPenX + ch.bearingX * glyphScale, m_nearest);
+        float top  = snapBitmapPixel(logicalPenY - ch.bearingY * glyphScale, m_nearest);
+        float right =
+                snapBitmapPixel(logicalPenX + (ch.bearingX + ch.width) * glyphScale, m_nearest);
+        float bottom =
+                snapBitmapPixel(logicalPenY + (ch.height - ch.bearingY) * glyphScale, m_nearest);
+        float width  = std::max(0.0f, right - left);
+        float height = std::max(0.0f, bottom - top);
 
         float vertices[6][5] = {
-                {xPos, yPos, 0.0f, 0.0f, 0.0f},
-                {xPos + width, yPos, 0.0f, 1.0f, 0.0f},
-                {xPos + width, yPos + height, 0.0f, 1.0f, 1.0f},
-                {xPos, yPos, 0.0f, 0.0f, 0.0f},
-                {xPos + width, yPos + height, 0.0f, 1.0f, 1.0f},
-                {xPos, yPos + height, 0.0f, 0.0f, 1.0f},
+                {left, top, 0.0f, ch.u0, ch.v0},
+                {left + width, top, 0.0f, ch.u1, ch.v0},
+                {left + width, top + height, 0.0f, ch.u1, ch.v1},
+                {left, top, 0.0f, ch.u0, ch.v0},
+                {left + width, top + height, 0.0f, ch.u1, ch.v1},
+                {left, top + height, 0.0f, ch.u0, ch.v1},
         };
-
-        RenderCommand::activeTexture(0);
-        RenderCommand::bindTexture2D(ch.texture);
 
         RenderCommand::uploadArrayBuffer(vertices, (uint32_t) sizeof(vertices), GL_DYNAMIC_DRAW);
         RenderCommand::renderArrays(GL_TRIANGLES, 0, 6);
 
-        penX += (float) (ch.advance >> 6) * scale;
+        logicalPenX += ch.advance * glyphScale;
     }
 
     GlStateManager::setDepthMask(true);
     GlStateManager::enableDepthTest();
 }
 
-void Font::renderShadow(std::wstring_view text, float x, float y, float scale, uint32_t argb)
+void Font::drawShadow(std::wstring_view text, float x, float y, float scale, uint32_t argb)
 {
     uint32_t shadow = mulColor(argb, 0.25f);
-    render(text, x + m_shadowOffsetX * scale, y + m_shadowOffsetY * scale, scale, shadow);
-    render(text, x, y, scale, argb);
+    draw(text, x + m_shadowOffsetX * scale, y + m_shadowOffsetY * scale, scale, shadow);
+    draw(text, x, y, scale, argb);
 }
 
-void Font::levelRender(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb)
+void Font::levelDraw(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb)
 {
     if (text.empty())
     {
@@ -300,9 +303,14 @@ void Font::levelRender(std::wstring_view text, const Vec3 &pos, float scale, uin
 
     RenderCommand::bindVertexArray(m_vao);
     RenderCommand::bindArrayBuffer(m_vbo);
+    if (m_atlas)
+    {
+        m_atlas->bind(0);
+    }
 
-    float penX = 0.0f;
-    float penY = 0.0f;
+    float glyphScale = scale * m_bitmapScale;
+    float penX       = 0.0f;
+    float penY       = 0.0f;
 
     for (wchar_t wc : text)
     {
@@ -310,48 +318,45 @@ void Font::levelRender(std::wstring_view text, const Vec3 &pos, float scale, uin
         if (cp == (uint32_t) L'\n')
         {
             penX = 0.0f;
-            penY -= 32.0f * scale;
+            penY -= m_lineHeight * scale;
             continue;
         }
 
-        const Glyph &ch = getOrCreateGlyph(cp);
-        if (!ch.texture)
+        const Glyph &ch = getGlyph(cp);
+        if (ch.advance <= 0.0f)
         {
             continue;
         }
 
-        float xPos = penX + (float) ch.bearingX * scale;
-        float yTop = penY + (float) ch.bearingY * scale;
+        float xPos = penX + ch.bearingX * glyphScale;
+        float yTop = penY + ch.bearingY * glyphScale;
 
-        float width  = (float) ch.width * scale;
-        float height = (float) ch.height * scale;
+        float width  = ch.width * glyphScale;
+        float height = ch.height * glyphScale;
 
         float x0 = pos.x + xPos;
         float y0 = pos.y + yTop;
         float z0 = pos.z;
 
         float vertices[6][5] = {
-                {x0, y0, z0, 0.0f, 0.0f},
-                {x0 + width, y0, z0, 1.0f, 0.0f},
-                {x0 + width, y0 - height, z0, 1.0f, 1.0f},
-                {x0, y0, z0, 0.0f, 0.0f},
-                {x0 + width, y0 - height, z0, 1.0f, 1.0f},
-                {x0, y0 - height, z0, 0.0f, 1.0f},
+                {x0, y0, z0, ch.u0, ch.v0},
+                {x0 + width, y0, z0, ch.u1, ch.v0},
+                {x0 + width, y0 - height, z0, ch.u1, ch.v1},
+                {x0, y0, z0, ch.u0, ch.v0},
+                {x0 + width, y0 - height, z0, ch.u1, ch.v1},
+                {x0, y0 - height, z0, ch.u0, ch.v1},
         };
-
-        RenderCommand::activeTexture(0);
-        RenderCommand::bindTexture2D(ch.texture);
 
         RenderCommand::uploadArrayBuffer(vertices, (uint32_t) sizeof(vertices), GL_DYNAMIC_DRAW);
         RenderCommand::renderArrays(GL_TRIANGLES, 0, 6);
 
-        penX += (float) (ch.advance >> 6) * scale;
+        penX += ch.advance * glyphScale;
     }
 
     GlStateManager::setDepthMask(true);
 }
 
-void Font::levelRenderShadow(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb)
+void Font::levelDrawShadow(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb)
 {
     uint32_t shadow = mulColor(argb, 0.25f);
 
@@ -364,55 +369,134 @@ void Font::levelRenderShadow(std::wstring_view text, const Vec3 &pos, float scal
     }
     oz *= scale;
 
-    levelRender(text, Vec3(pos.x + ox, pos.y - oy, pos.z - oz), scale, shadow);
-    levelRender(text, pos, scale, argb);
+    levelDraw(text, Vec3(pos.x + ox, pos.y - oy, pos.z - oz), scale, shadow);
+    levelDraw(text, pos, scale, argb);
 }
 
-const Font::Glyph &Font::getOrCreateGlyph(uint32_t codepoint)
+const Font::Glyph &Font::getGlyph(uint32_t codepoint) const
 {
-    auto it = m_glyphs.find(codepoint);
-    if (it != m_glyphs.end())
+    if (codepoint < m_glyphs.size())
     {
-        return it->second;
+        return m_glyphs[codepoint];
     }
 
-    if (FT_Load_Char(m_face, codepoint, FT_LOAD_RENDER) != 0)
+    if (m_fallbackCodepoint < m_glyphs.size())
     {
-        if (codepoint != (uint32_t) '?' &&
-            FT_Load_Char(m_face, (uint32_t) '?', FT_LOAD_RENDER) == 0)
+        return m_glyphs[m_fallbackCodepoint];
+    }
+
+    static const Glyph empty{};
+    return empty;
+}
+
+void Font::loadBitmapGlyphs()
+{
+    if (!m_atlas)
+    {
+        return;
+    }
+
+    m_glyphs.assign((size_t) m_glyphColumns * (size_t) m_glyphRows, Glyph{});
+
+    const std::vector<uint8_t> &sourcePixels = m_atlas->getPixels();
+    int sourceAtlasWidth                     = m_atlas->getPixelWidth();
+    int sourceAtlasHeight                    = m_atlas->getPixelHeight();
+    if (sourceAtlasWidth <= 0 || sourceAtlasHeight <= 0 || sourcePixels.empty())
+    {
+        return;
+    }
+
+    int paddedCellWidth  = m_cellPixelWidth + 2;
+    int paddedCellHeight = m_cellPixelHeight + 2;
+    int atlasWidth       = m_glyphColumns * paddedCellWidth;
+    int atlasHeight      = m_glyphRows * paddedCellHeight;
+    std::vector<uint8_t> paddedPixels((size_t) atlasWidth * (size_t) atlasHeight * (size_t) 4, 0);
+
+    for (int glyphY = 0; glyphY < m_glyphRows; glyphY++)
+    {
+        for (int glyphX = 0; glyphX < m_glyphColumns; glyphX++)
         {
-            return getOrCreateGlyph((uint32_t) '?');
+            Glyph glyph{};
+            int cellMinX = m_cellPixelWidth;
+            int cellMinY = m_cellPixelHeight;
+            int cellMaxX = -1;
+            int cellMaxY = -1;
+
+            for (int py = 0; py < m_cellPixelHeight; py++)
+            {
+                for (int px = 0; px < m_cellPixelWidth; px++)
+                {
+                    int atlasX   = glyphX * m_cellPixelWidth + px;
+                    int atlasY   = glyphY * m_cellPixelHeight + py;
+                    size_t index = ((size_t) atlasY * (size_t) sourceAtlasWidth + (size_t) atlasX) *
+                                   (size_t) 4;
+                    if (sourcePixels[index + 3] == 0)
+                    {
+                        continue;
+                    }
+
+                    cellMinX = std::min(cellMinX, px);
+                    cellMinY = std::min(cellMinY, py);
+                    cellMaxX = std::max(cellMaxX, px);
+                    cellMaxY = std::max(cellMaxY, py);
+                }
+            }
+
+            uint32_t codepoint = (uint32_t) (glyphY * m_glyphColumns + glyphX);
+            if (cellMaxX < cellMinX || cellMaxY < cellMinY)
+            {
+                glyph.advance       = codepoint == (uint32_t) ' ' ? 4.0f : 0.0f;
+                m_glyphs[codepoint] = glyph;
+                continue;
+            }
+
+            int glyphWidth  = cellMaxX - cellMinX + 1;
+            int glyphHeight = cellMaxY - cellMinY + 1;
+            int pixelX0     = glyphX * paddedCellWidth + 1;
+            int pixelY0     = glyphY * paddedCellHeight + 1;
+            int pixelX1     = pixelX0 + glyphWidth;
+            int pixelY1     = pixelY0 + glyphHeight;
+
+            for (int py = 0; py < glyphHeight; py++)
+            {
+                for (int px = 0; px < glyphWidth; px++)
+                {
+                    int sourceX = glyphX * m_cellPixelWidth + cellMinX + px;
+                    int sourceY = glyphY * m_cellPixelHeight + cellMinY + py;
+                    int targetX = pixelX0 + px;
+                    int targetY = pixelY0 + py;
+                    size_t sourceIndex =
+                            ((size_t) sourceY * (size_t) sourceAtlasWidth + (size_t) sourceX) *
+                            (size_t) 4;
+                    size_t targetIndex =
+                            ((size_t) targetY * (size_t) atlasWidth + (size_t) targetX) *
+                            (size_t) 4;
+                    paddedPixels[targetIndex + 0] = sourcePixels[sourceIndex + 0];
+                    paddedPixels[targetIndex + 1] = sourcePixels[sourceIndex + 1];
+                    paddedPixels[targetIndex + 2] = sourcePixels[sourceIndex + 2];
+                    paddedPixels[targetIndex + 3] = sourcePixels[sourceIndex + 3];
+                }
+            }
+
+            glyph.u0       = (float) pixelX0 / (float) atlasWidth;
+            glyph.v0       = (float) pixelY0 / (float) atlasHeight;
+            glyph.u1       = (float) pixelX1 / (float) atlasWidth;
+            glyph.v1       = (float) pixelY1 / (float) atlasHeight;
+            glyph.width    = (float) glyphWidth;
+            glyph.height   = (float) glyphHeight;
+            glyph.bearingX = (float) cellMinX;
+            glyph.bearingY = (float) ((m_cellPixelHeight - 1) - cellMinY);
+            glyph.advance  = (float) Mth::clampf(cellMaxX + 2, 2, m_cellPixelWidth);
+
+            m_glyphs[codepoint] = glyph;
         }
-        Glyph empty{};
-        auto [insIt, _] = m_glyphs.emplace(codepoint, empty);
-        return insIt->second;
     }
 
-    FT_GlyphSlot glyphSlot = m_face->glyph;
+    if ((size_t) ' ' < m_glyphs.size() && m_glyphs[(size_t) ' '].advance <= 0.0f)
+    {
+        m_glyphs[(size_t) ' '].advance = 4.0f;
+    }
 
-    uint32_t texture = RenderCommand::createTexture();
-    RenderCommand::bindTexture2D(texture);
-
-    RenderCommand::pixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-    uint32_t filter = m_nearest ? GL_NEAREST : GL_LINEAR;
-
-    RenderCommand::setTextureParameteri(GL_TEXTURE_MIN_FILTER, filter);
-    RenderCommand::setTextureParameteri(GL_TEXTURE_MAG_FILTER, filter);
-    RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    RenderCommand::setTextureParameteri(GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    RenderCommand::uploadTexture2D((int) glyphSlot->bitmap.width, (int) glyphSlot->bitmap.rows,
-                                   GL_RED, GL_RED, GL_UNSIGNED_BYTE, glyphSlot->bitmap.buffer);
-
-    Glyph glyph;
-    glyph.texture  = texture;
-    glyph.width    = (int) glyphSlot->bitmap.width;
-    glyph.height   = (int) glyphSlot->bitmap.rows;
-    glyph.bearingX = (int) glyphSlot->bitmap_left;
-    glyph.bearingY = (int) glyphSlot->bitmap_top;
-    glyph.advance  = (uint32_t) glyphSlot->advance.x;
-
-    auto [insertIt, _] = m_glyphs.emplace(codepoint, glyph);
-    return insertIt->second;
+    m_atlas = std::make_unique<Texture>(atlasWidth, atlasHeight, paddedPixels.data(), true);
+    setNearest(m_nearest);
 }

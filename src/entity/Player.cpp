@@ -1,8 +1,9 @@
 #include "Player.h"
 
+#include <cmath>
+
 Player::Player(Level *level, const std::wstring &name)
-    : LivingEntity(level), m_moveForward(false), m_moveBackward(false), m_moveLeft(false),
-      m_moveRight(false)
+    : LivingEntity(level), m_moveForwardInput(0.0f), m_moveStrafeInput(0.0f)
 {
     m_name = name;
 }
@@ -16,26 +17,25 @@ void Player::tick()
 
     Vec3 direction(0.0, 0.0, 0.0);
 
-    if (m_moveForward)
+    if (m_moveForwardInput != 0.0f)
     {
-        direction = direction.add(forward);
+        direction = direction.add(forward.scale(m_moveForwardInput));
     }
-    if (m_moveBackward)
+    if (m_moveStrafeInput != 0.0f)
     {
-        direction = direction.sub(forward);
-    }
-    if (m_moveLeft)
-    {
-        direction = direction.sub(right);
-    }
-    if (m_moveRight)
-    {
-        direction = direction.add(right);
+        direction = direction.add(right.scale(m_moveStrafeInput));
     }
 
-    if (direction.x != 0.0 || direction.z != 0.0)
+    double directionLength =
+            sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
+    if (directionLength > 1.0)
     {
-        setMoveIntent(direction.normalize());
+        direction = direction.scale(1.0 / directionLength);
+    }
+
+    if (direction.x != 0.0 || direction.y != 0.0 || direction.z != 0.0)
+    {
+        setMoveIntent(direction);
     }
 
     if (m_flying)
@@ -52,13 +52,11 @@ void Player::tick()
     Entity::tick();
 }
 
-void Player::setMoveForward(bool value) { m_moveForward = value; }
-
-void Player::setMoveBackward(bool value) { m_moveBackward = value; }
-
-void Player::setMoveLeft(bool value) { m_moveLeft = value; }
-
-void Player::setMoveRight(bool value) { m_moveRight = value; }
+void Player::setMoveInputs(float forward, float strafe)
+{
+    m_moveForwardInput = forward;
+    m_moveStrafeInput  = strafe;
+}
 
 void Player::setFlying(bool value) { m_flying = value; }
 

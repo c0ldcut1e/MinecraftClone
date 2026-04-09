@@ -2,6 +2,7 @@
 
 #include "../entity/LocalPlayer.h"
 #include "../rendering/Font.h"
+#include "../rendering/Framebuffer.h"
 #include "../rendering/Shader.h"
 #include "../scene/Camera.h"
 #include "../ui/ImGuiSystem.h"
@@ -13,6 +14,7 @@
 #include "Window.h"
 
 class LevelRenderer;
+class InputManager;
 class UIScene_DebugOverlay;
 
 class Minecraft
@@ -40,6 +42,9 @@ public:
     ChunkManager *getChunkManager() const;
 
     Font *getDefaultFont() const;
+    InputManager *getInputManager() const;
+    float getGammaPercent() const;
+    void setGammaPercent(float gammaPercent);
 
 private:
     Minecraft();
@@ -52,9 +57,11 @@ private:
     Minecraft &operator=(Minecraft &&) = delete;
 
     void renderFrame();
+    void setMouseLock(bool locked);
     void toggleMouseLock();
     void toggleImGuiOverlay();
     void toggleDebugOverlay();
+    void renderGammaPass();
 
     void initRegistries();
 
@@ -75,14 +82,20 @@ private:
     ChunkManager *m_chunkManager;
 
     Font *m_defaultFont;
+    Framebuffer *m_frameFramebuffer;
+    Shader *m_gammaShader;
+    uint32_t m_gammaFullscreenVao;
     UIController *m_uiController;
     ImGuiSystem *m_imguiSystem;
+    InputManager *m_inputManager;
     UIScene_DebugOverlay *m_debugOverlayScene;
 
     double m_farPlane;
     Mat4 m_projection;
     Vec3 m_playerSpawnPosition;
+    float m_gammaPercent;
 
+    bool m_inWorld;
     bool m_mouseLocked;
     bool m_restoreMouseLockAfterImGui;
 };

@@ -286,7 +286,7 @@ void LevelRenderer::onResize(int width, int height)
     }
 }
 
-void LevelRenderer::render(float partialTicks)
+void LevelRenderer::render(float partialTicks, Framebuffer *outputFramebuffer)
 {
     Minecraft *minecraft = Minecraft::getInstance();
     const Camera *camera = minecraft->getCamera();
@@ -359,7 +359,14 @@ void LevelRenderer::render(float partialTicks)
     renderRenderObjects(LevelRenderObjectStage::AFTER_ENTITIES);
     renderParticles(partialTicks);
 
-    activeSceneFramebuffer->unbind();
+    if (outputFramebuffer)
+    {
+        outputFramebuffer->bind();
+    }
+    else
+    {
+        activeSceneFramebuffer->unbind();
+    }
 
     renderFogPass(projection, activeSceneFramebuffer ? activeSceneFramebuffer : m_sceneFramebuffer);
     renderRenderObjects(LevelRenderObjectStage::AFTER_FOG);
@@ -750,10 +757,10 @@ void LevelRenderer::renderChunkGrid() const
 
 void LevelRenderer::renderParticles(float partialTicks)
 {
-    constexpr double particleRenderDistance   = 32.0;
-    constexpr double particleRenderDistanceSq = particleRenderDistance * particleRenderDistance;
+    constexpr double particleRenderDistance     = 32.0;
+    constexpr double particleRenderDistanceSq   = particleRenderDistance * particleRenderDistance;
     constexpr double particleFrustumRadiusScale = 1.41421356237;
-    constexpr float particleDepthAlphaCutoff = 0.1f;
+    constexpr float particleDepthAlphaCutoff    = 0.1f;
 
     ParticleEngine *particleEngine = m_level->getParticleEngine();
     if (!particleEngine)
@@ -805,9 +812,8 @@ void LevelRenderer::renderParticles(float partialTicks)
         {
             continue;
         }
-        if (!m_frustum.testSphere(pos,
-                                  std::max((double) particle.size * particleFrustumRadiusScale,
-                                           0.05)))
+        if (!m_frustum.testSphere(
+                    pos, std::max((double) particle.size * particleFrustumRadiusScale, 0.05)))
         {
             continue;
         }
@@ -828,7 +834,7 @@ void LevelRenderer::renderParticles(float partialTicks)
     }
 
     BufferBuilder *builder = Tesselator::getInstance()->getBuilderForLevel();
-    auto emitParticles = [&](bool depthOnly) {
+    auto emitParticles     = [&](bool depthOnly) {
         builder->begin(GL_TRIANGLES);
         builder->bindTexture(texture);
         builder->setAlphaCutoff(depthOnly ? particleDepthAlphaCutoff : -1.0f);
@@ -837,8 +843,8 @@ void LevelRenderer::renderParticles(float partialTicks)
         {
             const Vec3 &pos = particle.pos;
             uint32_t color  = depthOnly ? 0xFFFFFFFFu : particle.color;
-            Vec3 dx = right.scale((double) particle.size);
-            Vec3 dy = up.scale((double) particle.size);
+            Vec3 dx         = right.scale((double) particle.size);
+            Vec3 dy         = up.scale((double) particle.size);
 
             Vec3 p1 = pos.sub(dx).sub(dy);
             Vec3 p2 = pos.sub(dx).add(dy);
@@ -1158,7 +1164,7 @@ void LevelRenderer::renderEntityNameTags(float partialTicks)
         Vec3 textPos = pos.add(Vec3(0.0, height + 0.5, 0.0));
 
         GlStateManager::disableDepthTest();
-        font->levelRenderShadow(wstrUuid, textPos, 0.015f, 0xFFFFFFFF);
+        font->levelDrawShadow(wstrUuid, textPos, 0.015f, 0xFFFFFFFF);
     }
 }
 

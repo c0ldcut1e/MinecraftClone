@@ -1,13 +1,5 @@
 #include "LocalPlayer.h"
-
-#include <cmath>
-
-#include <GLFW/glfw3.h>
-
-#include "../core/Minecraft.h"
-#include "../world/LevelRenderer.h"
 #include "../world/block/Block.h"
-#include "../world/lighting/LightEngine.h"
 
 LocalPlayer::LocalPlayer(Level *level, const std::wstring &name, Camera *camera)
     : Player(level, name), m_camera(camera), m_mouseSensitivity(0.08f), m_jumpHeld(false)
@@ -27,59 +19,9 @@ void LocalPlayer::tick()
     Player::tick();
 }
 
-void LocalPlayer::onKeyPressed(int key)
-{
-    if (key == SDL_SCANCODE_W)
-    {
-        setMoveForward(true);
-    }
-    if (key == SDL_SCANCODE_S)
-    {
-        setMoveBackward(true);
-    }
-    if (key == SDL_SCANCODE_A)
-    {
-        setMoveLeft(true);
-    }
-    if (key == SDL_SCANCODE_D)
-    {
-        setMoveRight(true);
-    }
-    if (key == SDL_SCANCODE_SPACE)
-    {
-        m_jumpHeld = true;
-    }
-    if (key == SDL_SCANCODE_F)
-    {
-        setFlying(!m_flying);
-    }
-}
+void LocalPlayer::setJumpHeld(bool value) { m_jumpHeld = value; }
 
-void LocalPlayer::onKeyReleased(int key)
-{
-    if (key == SDL_SCANCODE_W)
-    {
-        setMoveForward(false);
-    }
-    if (key == SDL_SCANCODE_S)
-    {
-        setMoveBackward(false);
-    }
-    if (key == SDL_SCANCODE_A)
-    {
-        setMoveLeft(false);
-    }
-    if (key == SDL_SCANCODE_D)
-    {
-        setMoveRight(false);
-    }
-    if (key == SDL_SCANCODE_SPACE)
-    {
-        m_jumpHeld = false;
-    }
-}
-
-void LocalPlayer::onMouseMoved(double dx, double dy)
+void LocalPlayer::applyLookInput(double dx, double dy)
 {
     dx *= m_mouseSensitivity;
     dy *= m_mouseSensitivity;
@@ -104,28 +46,13 @@ void LocalPlayer::onMouseMoved(double dx, double dy)
     }
 }
 
-void LocalPlayer::onMouseButtonPressed(int button)
-{
-    if (button == SDL_BUTTON_LEFT)
-    {
-        handleLMB();
-    }
-    if (button == SDL_BUTTON_RIGHT)
-    {
-        handleRMB();
-    }
-}
-
 void LocalPlayer::clearInputs()
 {
-    setMoveForward(false);
-    setMoveBackward(false);
-    setMoveLeft(false);
-    setMoveRight(false);
+    setMoveInputs(0.0f, 0.0f);
     m_jumpHeld = false;
 }
 
-void LocalPlayer::handleLMB()
+void LocalPlayer::breakTargetedBlock()
 {
     Vec3 origin    = m_position.add(Vec3(0.0, 1.62, 0.0));
     Vec3 direction = m_front.normalize();
@@ -138,7 +65,7 @@ void LocalPlayer::handleLMB()
     delete hit;
 }
 
-void LocalPlayer::handleRMB()
+void LocalPlayer::placeTargetedBlock()
 {
     Vec3 origin    = m_position.add(Vec3(0.0, 1.62, 0.0));
     Vec3 direction = m_front.normalize();
@@ -150,6 +77,8 @@ void LocalPlayer::handleRMB()
 
     delete hit;
 }
+
+void LocalPlayer::toggleFlying() { setFlying(!isFlying()); }
 
 void LocalPlayer::destroyBlock(const BlockPos &pos) { m_level->setBlock(pos, Block::byId(0)); }
 

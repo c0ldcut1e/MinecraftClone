@@ -10,5 +10,5 @@ public:
 
 private:
     UILayer *m_layerRoot;
-    UIComponent *m_debugPanel;
+    UIComponent *m_debugMenu;
 };

@@ -14,18 +14,16 @@ public:
     void update(float partialTicks);
     void tick() override;
 
-    void onKeyPressed(int key);
-    void onKeyReleased(int key);
-    void onMouseMoved(double dx, double dy);
-    void onMouseButtonPressed(int button);
     void clearInputs();
+    void setJumpHeld(bool value);
+    void applyLookInput(double dx, double dy);
+    void breakTargetedBlock();
+    void placeTargetedBlock();
+    void toggleFlying();
 
     static constexpr uint64_t TYPE = 0x3000000000000001;
 
 private:
-    void handleLMB();
-    void handleRMB();
-
     void destroyBlock(const BlockPos &pos);
     void placeBlock(const BlockPos &pos, Direction *face, Block *block);
 

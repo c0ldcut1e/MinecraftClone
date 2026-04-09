@@ -44,7 +44,7 @@ public:
     explicit LevelRenderer(Level *level, int width, int height);
     ~LevelRenderer();
 
-    void render(float partialTicks);
+    void render(float partialTicks, Framebuffer *outputFramebuffer = nullptr);
     void onResize(int width, int height);
     void renderDynamicLightImGui();
 

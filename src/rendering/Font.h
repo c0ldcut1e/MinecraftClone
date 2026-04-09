@@ -1,23 +1,20 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
-#include <unordered_map>
+#include <vector>
 
 #include "../utils/math/Mat4.h"
 #include "../utils/math/Vec3.h"
 #include "Shader.h"
-
-struct FT_LibraryRec_;
-struct FT_FaceRec_;
-using FT_Library = FT_LibraryRec_ *;
-using FT_Face    = FT_FaceRec_ *;
+#include "Texture.h"
 
 class Font
 {
 public:
-    Font(const char *ttfPath, int pixelHeight);
+    Font(const char *fontPath, int pixelHeight);
     ~Font();
 
     Font(const Font &)            = delete;
@@ -30,30 +27,35 @@ public:
     void setShadowOffset(float x, float y, float z);
 
     float getWidth(std::wstring_view text, float scale) const;
+    float getAscent(float scale) const;
+    float getLineHeight(float scale) const;
+    float snapScale(float scale) const;
 
-    void render(std::wstring_view text, float x, float y, float scale, uint32_t argb);
-    void renderShadow(std::wstring_view text, float x, float y, float scale, uint32_t argb);
+    void draw(std::wstring_view text, float x, float y, float scale, uint32_t argb);
+    void drawShadow(std::wstring_view text, float x, float y, float scale, uint32_t argb);
 
-    void levelRender(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb);
-    void levelRenderShadow(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb);
+    void levelDraw(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb);
+    void levelDrawShadow(std::wstring_view text, const Vec3 &pos, float scale, uint32_t argb);
 
 private:
     struct Glyph
     {
-        uint32_t texture = 0;
-        int width        = 0;
-        int height       = 0;
-        int bearingX     = 0;
-        int bearingY     = 0;
-        uint32_t advance = 0;
+        float u0       = 0.0f;
+        float v0       = 0.0f;
+        float u1       = 0.0f;
+        float v1       = 0.0f;
+        float width    = 0.0f;
+        float height   = 0.0f;
+        float bearingX = 0.0f;
+        float bearingY = 0.0f;
+        float advance  = 0.0f;
     };
 
-    const Glyph &getOrCreateGlyph(uint32_t codepoint);
+    const Glyph &getGlyph(uint32_t codepoint) const;
+    void loadBitmapGlyphs();
 
     Shader m_shader;
-
-    FT_Library m_ft;
-    FT_Face m_face;
+    std::unique_ptr<Texture> m_atlas;
 
     Mat4 m_screenProjection;
     Mat4 m_levelView;
@@ -67,6 +69,14 @@ private:
     float m_shadowOffsetX;
     float m_shadowOffsetY;
     float m_shadowOffsetZ;
+    float m_ascent;
+    float m_lineHeight;
+    float m_bitmapScale;
+    int m_cellPixelWidth;
+    int m_cellPixelHeight;
+    int m_glyphColumns;
+    int m_glyphRows;
+    uint32_t m_fallbackCodepoint;
 
-    std::unordered_map<uint32_t, Glyph> m_glyphs;
+    std::vector<Glyph> m_glyphs;
 };

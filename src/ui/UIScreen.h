@@ -43,9 +43,17 @@ namespace UIScreen
         return virtualX * scaleX(actualWidth);
     }
 
-    inline float toActualY(float virtualY, int actualHeight)
+    inline float toActualY(float virtualY, int actualWidth, int actualHeight)
     {
-        return virtualY * scaleY(actualHeight);
+        if (actualWidth <= 0 || actualHeight <= 0)
+        {
+            return virtualY;
+        }
+
+        float uniformScale        = scaleUniform(actualWidth, actualHeight);
+        float scaledVirtualHeight = HEIGHT * uniformScale;
+        float verticalInset       = ((float) actualHeight - scaledVirtualHeight) * 0.5f;
+        return verticalInset + virtualY * uniformScale;
     }
 
     inline float toActualLength(float virtualLength, int actualWidth, int actualHeight)
@@ -53,10 +61,24 @@ namespace UIScreen
         return virtualLength * scaleUniform(actualWidth, actualHeight);
     }
 
+    inline float toActualOffsetX(float anchorVirtualX, float virtualX, int actualWidth,
+                                 int actualHeight)
+    {
+        return toActualX(anchorVirtualX, actualWidth) +
+               toActualLength(virtualX - anchorVirtualX, actualWidth, actualHeight);
+    }
+
+    inline float toActualOffsetY(float anchorVirtualY, float virtualY, int actualWidth,
+                                 int actualHeight)
+    {
+        return toActualY(anchorVirtualY, actualWidth, actualHeight) +
+               toActualLength(virtualY - anchorVirtualY, actualWidth, actualHeight);
+    }
+
     inline Rect toActualRect(float virtualX, float virtualY, float virtualWidth,
                              float virtualHeight, int actualWidth, int actualHeight)
     {
-        return {toActualX(virtualX, actualWidth), toActualY(virtualY, actualHeight),
+        return {toActualX(virtualX, actualWidth), toActualY(virtualY, actualWidth, actualHeight),
                 toActualLength(virtualWidth, actualWidth, actualHeight),
                 toActualLength(virtualHeight, actualWidth, actualHeight)};
     }

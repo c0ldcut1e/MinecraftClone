@@ -1,6 +1,7 @@
 #include "UIComponent_Panel.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 
 #include <glad/glad.h>
@@ -38,7 +39,7 @@ static void emitPanelQuad(BufferBuilder *builder, float x0, float y0, float x1, 
 
 UIComponent_Panel::UIComponent_Panel(std::unique_ptr<UIPanelProperties> properties)
     : UIComponent("ComponentPanel"), m_properties(std::move(properties)),
-      m_texture(m_properties ? m_properties->getTexturePath() : "textures/ui/panel.png")
+      m_texture(m_properties ? m_properties->getTexturePath() : "textures/ui/panel9grid.png")
 {}
 
 UIComponent_Panel::~UIComponent_Panel() {}
@@ -66,20 +67,22 @@ void UIComponent_Panel::render()
         return;
     }
 
-    float uiScale     = UIScreen::scaleUniform(actualWidth, actualHeight);
     float panelX      = UIScreen::toActualX(m_properties->x, actualWidth);
-    float panelY      = UIScreen::toActualY(m_properties->y, actualHeight);
+    float panelY      = UIScreen::toActualY(m_properties->y, actualWidth, actualHeight);
     float panelWidth  = UIScreen::toActualLength(m_properties->width, actualWidth, actualHeight);
     float panelHeight = UIScreen::toActualLength(m_properties->height, actualWidth, actualHeight);
 
-    constexpr float sourceSliceSize = 4.0f;
-    constexpr float renderSliceSize = 12.0f;
-    float slice                     = renderSliceSize * uiScale;
+    constexpr float panelSliceRatio = 12.0f / 96.0f;
+    float sourceSliceX = std::max(1.0f, (float) std::round((float) textureWidth * panelSliceRatio));
+    float sourceSliceY =
+            std::max(1.0f, (float) std::round((float) textureHeight * panelSliceRatio));
+    float sliceX = UIScreen::toActualLength(sourceSliceX, actualWidth, actualHeight);
+    float sliceY = UIScreen::toActualLength(sourceSliceY, actualWidth, actualHeight);
 
-    float left   = std::min(slice, panelWidth * 0.5f);
-    float right  = std::min(slice, panelWidth - left);
-    float top    = std::min(slice, panelHeight * 0.5f);
-    float bottom = std::min(slice, panelHeight - top);
+    float left   = std::min(sliceX, panelWidth * 0.5f);
+    float right  = std::min(sliceX, panelWidth - left);
+    float top    = std::min(sliceY, panelHeight * 0.5f);
+    float bottom = std::min(sliceY, panelHeight - top);
 
     float x0 = panelX;
     float x1 = panelX + left;
@@ -92,13 +95,13 @@ void UIComponent_Panel::render()
     float y3 = panelY + panelHeight;
 
     float u0 = 0.0f;
-    float u1 = sourceSliceSize / (float) textureWidth;
-    float u2 = ((float) textureWidth - sourceSliceSize) / (float) textureWidth;
+    float u1 = sourceSliceX / (float) textureWidth;
+    float u2 = ((float) textureWidth - sourceSliceX) / (float) textureWidth;
     float u3 = 1.0f;
 
     float v0 = 0.0f;
-    float v1 = sourceSliceSize / (float) textureHeight;
-    float v2 = ((float) textureHeight - sourceSliceSize) / (float) textureHeight;
+    float v1 = sourceSliceY / (float) textureHeight;
+    float v2 = ((float) textureHeight - sourceSliceY) / (float) textureHeight;
     float v3 = 1.0f;
 
     BufferBuilder *builder = Tesselator::getInstance()->getBuilderForScreen();

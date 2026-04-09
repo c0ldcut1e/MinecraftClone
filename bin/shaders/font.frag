@@ -8,7 +8,7 @@ uniform vec3 u_color;
 uniform float u_alpha;
 
 void main() {
-    float alpha = texture(u_font, v_uv).r;
-    if (alpha < 0.01) discard;
-    FragColor = vec4(u_color, alpha * u_alpha);
+    vec4 tex = texture(u_font, v_uv);
+    if (tex.a < 0.01) discard;
+    FragColor = vec4(u_color * tex.rgb, tex.a * u_alpha);
 }

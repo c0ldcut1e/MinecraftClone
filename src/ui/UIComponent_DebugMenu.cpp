@@ -1,10 +1,11 @@
-#include "UIComponent_DebugPanel.h"
+#include "UIComponent_DebugMenu.h"
 
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <cwchar>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 #include <glad/glad.h>
@@ -23,10 +24,6 @@
 #include "../world/chunk/ChunkManager.h"
 #include "../world/chunk/ChunkPos.h"
 #include "UIScreen.h"
-
-#if defined(__linux__)
-#include <unistd.h>
-#endif
 
 #ifndef GL_GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX
 #define GL_GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX 0x9047
@@ -221,13 +218,13 @@ static VramStats queryVramStats()
     return stats;
 }
 
-UIComponent_DebugPanel::UIComponent_DebugPanel()
+UIComponent_DebugMenu::UIComponent_DebugMenu()
     : UIComponent("ComponentDebugPanel"), m_statsRefreshTimer(0.0), m_statsRefreshInterval(0.25)
 {}
 
-UIComponent_DebugPanel::~UIComponent_DebugPanel() {}
+UIComponent_DebugMenu::~UIComponent_DebugMenu() {}
 
-void UIComponent_DebugPanel::tick()
+void UIComponent_DebugMenu::tick()
 {
     m_statsRefreshTimer += Time::getDelta();
     if (m_statsRefreshTimer >= m_statsRefreshInterval)
@@ -237,7 +234,7 @@ void UIComponent_DebugPanel::tick()
     }
 }
 
-void UIComponent_DebugPanel::refreshLines()
+void UIComponent_DebugMenu::refreshLines()
 {
     Minecraft *minecraft = Minecraft::getInstance();
     if (!minecraft)
@@ -525,7 +522,7 @@ void UIComponent_DebugPanel::refreshLines()
     m_cachedLines = std::move(lines);
 }
 
-void UIComponent_DebugPanel::render()
+void UIComponent_DebugMenu::render()
 {
     Minecraft *minecraft = Minecraft::getInstance();
     if (!minecraft)
@@ -544,14 +541,14 @@ void UIComponent_DebugPanel::render()
 
     Font *font      = minecraft->getDefaultFont();
     float uiScale   = UIScreen::scaleUniform(minecraft->getWidth(), minecraft->getHeight());
-    float fontScale = 1.3f * uiScale;
+    float fontScale = font ? font->snapScale(uiScale) : uiScale;
 
     float x0 = UIScreen::toActualX(20.0f, minecraft->getWidth());
-    float y0 = UIScreen::toActualY(20.0f, minecraft->getHeight());
+    float y0 = UIScreen::toActualY(20.0f, minecraft->getWidth(), minecraft->getHeight());
 
     float padX       = 10.0f * uiScale;
     float padY       = 8.0f * uiScale;
-    float lineHeight = 24.0f * uiScale;
+    float lineHeight = font ? font->getLineHeight(fontScale) : 24.0f * uiScale;
 
     float maxWidth = 0.0f;
     if (font)
@@ -575,7 +572,7 @@ void UIComponent_DebugPanel::render()
 
         for (uint32_t i = 0; i < (uint32_t) m_cachedLines.size(); i++)
         {
-            font->renderShadow(m_cachedLines[i], tx, ty + (float) i * lineHeight, fontScale, -1);
+            font->drawShadow(m_cachedLines[i], tx, ty + (float) i * lineHeight, fontScale, -1);
         }
     }
 }

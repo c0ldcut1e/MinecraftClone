@@ -73,7 +73,8 @@ void UIComponent_Crosshair::render()
     ensureCaptureTexture(captureWidth, captureHeight);
 
     int actualCenterX = (int) lroundf(UIScreen::toActualX(UIScreen::WIDTH * 0.5f, actualWidth));
-    int actualCenterY = (int) lroundf(UIScreen::toActualY(UIScreen::HEIGHT * 0.5f, actualHeight));
+    int actualCenterY =
+            (int) lroundf(UIScreen::toActualY(UIScreen::HEIGHT * 0.5f, actualWidth, actualHeight));
 
     int halfCaptureWidth  = m_captureWidth / 2;
     int halfCaptureHeight = m_captureHeight / 2;
@@ -113,7 +114,7 @@ void UIComponent_Crosshair::render()
     float halfSize = m_size * uiScale * 0.5f;
 
     float centerX = UIScreen::toActualX(UIScreen::WIDTH * 0.5f, actualWidth);
-    float centerY = UIScreen::toActualY(UIScreen::HEIGHT * 0.5f, actualHeight);
+    float centerY = UIScreen::toActualY(UIScreen::HEIGHT * 0.5f, actualWidth, actualHeight);
     float x0      = centerX - halfSize;
     float y0      = centerY - halfSize;
     float x1      = centerX + halfSize;

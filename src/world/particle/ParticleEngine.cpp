@@ -4,6 +4,7 @@
 
 #include "../../threading/ThreadStorage.h"
 #include "../../utils/Random.h"
+#include "../../utils/math/Mth.h"
 #include "ParticleRegistry.h"
 
 static double randomCentered(Random *random, double spread)
@@ -152,14 +153,14 @@ void ParticleEngine::spawnParticles(const std::vector<ParticleSpawnParams> &spaw
             particle.position    = params.position.add(spawnOffset);
             particle.oldPosition = particle.position;
             particle.velocity    = definition->velocity.add(velocityOffset);
-            particle.color    = definition->color;
-            particle.size     = definition->size;
-            particle.age      = 0.0f;
-            particle.lifetime = definition->lifetime;
-            particle.gravity  = definition->gravity;
-            particle.drag     = definition->drag;
-            particle.lit      = definition->lit;
-            particle.collides = definition->collides;
+            particle.color       = definition->color;
+            particle.size        = definition->size;
+            particle.age         = 0.0f;
+            particle.lifetime    = definition->lifetime;
+            particle.gravity     = definition->gravity;
+            particle.drag        = definition->drag;
+            particle.lit         = definition->lit;
+            particle.collides    = definition->collides;
 
             if (particle.lifetime <= 0 || particle.size <= 0.0f)
             {
@@ -188,7 +189,7 @@ void ParticleEngine::updateParticles(float delta, std::vector<Particle> *particl
         particle.velocity.y += (double) particle.gravity * (double) delta;
         particle.position = particle.position.add(particle.velocity.scale(delta));
 
-        float drag        = std::clamp(1.0f - particle.drag * delta, 0.0f, 1.0f);
+        float drag        = Mth::clampf(1.0f - particle.drag * delta, 0.0f, 1.0f);
         particle.velocity = particle.velocity.scale((double) drag);
 
         nextParticles.push_back(particle);
@@ -206,7 +207,7 @@ void ParticleEngine::buildRenderParticles(const std::vector<Particle> &particles
     for (const Particle &particle : particles)
     {
         float life = particle.lifetime > 0 ? particle.age / (float) particle.lifetime : 1.0f;
-        float fade = std::clamp(1.0f - life, 0.0f, 1.0f);
+        float fade = Mth::clampf(1.0f - life, 0.0f, 1.0f);
 
         uint8_t a = (uint8_t) ((float) ((particle.color >> 24) & 0xFF) * fade + 0.5f);
         if (a == 0)

@@ -34,7 +34,7 @@ static uint8_t packNormalizedByte(float value)
 
 static int8_t packSignedNormalizedByte(double value)
 {
-    double normalized = std::clamp(value, -1.0, 1.0);
+    double normalized = Mth::clamp(value, -1.0, 1.0);
     return (int8_t) std::lround(normalized * 127.0);
 }
 

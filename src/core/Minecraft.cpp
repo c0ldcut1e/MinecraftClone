@@ -12,6 +12,7 @@
 #include "../rendering/RenderCommand.h"
 #include "../rendering/Tesselator.h"
 #include "../ui/ImGuiSystem.h"
+#include "../ui/UIScene_DebugMenuPanel.h"
 #include "../ui/UIScene_DebugOverlay.h"
 #include "../ui/UIScene_HUD.h"
 #include "../utils/Time.h"
@@ -70,6 +71,7 @@ Minecraft::Minecraft()
     m_debugOverlayScene->setVisible(false);
     m_uiController->pushScene(m_debugOverlayScene);
     m_uiController->pushScene(new UIScene_HUD());
+    m_uiController->pushScene(new UIScene_DebugMenuPanel());
 
     Tesselator::getInstance()->getBuilderForScreen()->setScreenProjection(
             Mat4::orthographic(0.0, (double) m_width, (double) m_height, 0.0, -1.0, 1.0));
@@ -233,7 +235,7 @@ void Minecraft::start()
             m_level->tick();
             m_level->spawnParticle(ParticleType::SPLASH,
                                    m_playerSpawnPosition.add(Vec3(0.0, -65.0, 0.0)),
-                                   Vec3(2.5, 0.8, 2.5), 500);
+                                   Vec3(2.5, 0.8, 2.5), 10);
         }
 
         m_chunkManager->update(m_localPlayer->getPosition());

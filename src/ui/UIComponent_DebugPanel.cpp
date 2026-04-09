@@ -22,6 +22,7 @@
 #include "../world/chunk/Chunk.h"
 #include "../world/chunk/ChunkManager.h"
 #include "../world/chunk/ChunkPos.h"
+#include "UIScreen.h"
 
 #if defined(__linux__)
 #include <unistd.h>
@@ -542,14 +543,15 @@ void UIComponent_DebugPanel::render()
     }
 
     Font *font      = minecraft->getDefaultFont();
-    float fontScale = 1.3f;
+    float uiScale   = UIScreen::scaleUniform(minecraft->getWidth(), minecraft->getHeight());
+    float fontScale = 1.3f * uiScale;
 
-    float x0 = 20.0f;
-    float y0 = 20.0f;
+    float x0 = UIScreen::toActualX(20.0f, minecraft->getWidth());
+    float y0 = UIScreen::toActualY(20.0f, minecraft->getHeight());
 
-    float padX       = 10.0f;
-    float padY       = 8.0f;
-    float lineHeight = 24.0f;
+    float padX       = 10.0f * uiScale;
+    float padY       = 8.0f * uiScale;
+    float lineHeight = 24.0f * uiScale;
 
     float maxWidth = 0.0f;
     if (font)

@@ -13,6 +13,7 @@
 #include "../../../rendering/RenderCommand.h"
 #include "../../../rendering/Shader.h"
 #include "../../../ui/imgui/imgui.h"
+#include "../../../utils/math/Mth.h"
 #include "../../../world/Level.h"
 #include "../../../world/block/BlockRegistry.h"
 
@@ -181,7 +182,7 @@ static Vec3 getCameraOrientationOrFallback()
     if (const Camera *camera = minecraft->getCamera())
     {
         Vec3 front   = camera->getFront().normalize();
-        double pitch = asin(std::clamp(front.y, -1.0, 1.0)) * (180.0 / M_PI);
+        double pitch = asin(Mth::clamp(front.y, -1.0, 1.0)) * (180.0 / M_PI);
         double yaw   = -atan2(front.z, front.x) * (180.0 / M_PI) - 90.0;
         return Vec3(pitch, yaw, 0.0);
     }
@@ -506,7 +507,7 @@ void DynamicLightPipeline::renderImGui(Level *level)
     ImGui::SliderFloat("Strength", &m_strength, 0.0f, 4.0f);
     if (ImGui::SliderFloat("Resolution Scale", &m_lightBufferScale, 0.25f, 1.0f))
     {
-        m_lightBufferScale = std::clamp(m_lightBufferScale, 0.25f, 1.0f);
+        m_lightBufferScale = Mth::clampf(m_lightBufferScale, 0.25f, 1.0f);
         if (m_outputFramebuffer)
         {
             resize(m_outputFramebuffer->getWidth(), m_outputFramebuffer->getHeight());
@@ -693,7 +694,7 @@ void DynamicLightPipeline::collectLights(Level *level, const Vec3 &cameraPos)
         packed.up         = transformDirection(orientationMatrix, Vec3(0.0, 1.0, 0.0)).normalize();
         packed.width      = std::max(0.01f, light.width);
         packed.height     = std::max(0.01f, light.height);
-        packed.angle      = std::clamp(light.angle, 0.1f, 180.0f);
+        packed.angle      = Mth::clampf(light.angle, 0.1f, 180.0f);
         packed.distance   = std::max(0.1f, light.distance);
         appendLightEntry(&m_visibleLights, packed);
     }
@@ -1140,7 +1141,7 @@ void DynamicLightPipeline::renderAreaLightEditor(Level *level, AreaDynamicLight 
         {
             light.width      = std::max(0.01f, light.width);
             light.height     = std::max(0.01f, light.height);
-            light.angle      = std::clamp(light.angle, 0.1f, 179.9f);
+            light.angle      = Mth::clampf(light.angle, 0.1f, 179.9f);
             light.distance   = std::max(0.1f, light.distance);
             light.brightness = std::max(0.0f, light.brightness);
             level->updateAreaDynamicLight(light);

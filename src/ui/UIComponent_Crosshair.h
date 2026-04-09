@@ -13,7 +13,7 @@ public:
     void render() override;
 
 private:
-    void ensureCaptureTexture(int captureSize);
+    void ensureCaptureTexture(int captureWidth, int captureHeight);
 
     Shader m_shader;
 
@@ -21,7 +21,8 @@ private:
     uint32_t m_vbo;
 
     uint32_t m_captureTexture;
-    int m_captureSize;
+    int m_captureWidth;
+    int m_captureHeight;
 
     float m_alpha;
     float m_thickness;

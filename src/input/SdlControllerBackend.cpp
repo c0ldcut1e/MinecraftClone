@@ -87,7 +87,7 @@ void SdlControllerBackend::update(ControllerState &state, double deltaTime)
     bool navigateDownDown  = dpadDownDown || stickDownDown;
     bool navigateLeftDown  = dpadLeftDown || stickLeftDown;
     bool navigateRightDown = dpadRightDown || stickRightDown;
-    bool activateDown = SDL_GameControllerGetButton(m_controller, SDL_CONTROLLER_BUTTON_A) != 0;
+    bool activateDown = SDL_GameControllerGetButton(m_controller, SDL_CONTROLLER_BUTTON_B) != 0;
     state.uiNavigateUpPressed    = navigateUpDown && !m_previousUiNavigateUpDown;
     state.uiNavigateDownPressed  = navigateDownDown && !m_previousUiNavigateDownDown;
     state.uiNavigateLeftPressed  = navigateLeftDown && !m_previousUiNavigateLeftDown;

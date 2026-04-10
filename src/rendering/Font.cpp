@@ -169,6 +169,8 @@ float Font::getAscent(float scale) const { return m_ascent * scale; }
 
 float Font::getLineHeight(float scale) const { return m_lineHeight * scale; }
 
+float Font::getPixelSize(float scale) const { return (m_lineHeight - m_ascent) * scale; }
+
 float Font::snapScale(float scale) const
 {
     if (m_bitmapScale <= 0.0f)
@@ -238,20 +240,18 @@ void Font::draw(std::wstring_view text, float x, float y, float scale, uint32_t 
             continue;
         }
 
-        float left = snapBitmapPixel(logicalPenX + ch.bearingX * glyphScale, m_nearest);
-        float top  = snapBitmapPixel(logicalPenY - ch.bearingY * glyphScale, m_nearest);
-        float right =
-                snapBitmapPixel(logicalPenX + (ch.bearingX + ch.width) * glyphScale, m_nearest);
-        float bottom =
-                snapBitmapPixel(logicalPenY + (ch.height - ch.bearingY) * glyphScale, m_nearest);
-        float width  = std::max(0.0f, right - left);
-        float height = std::max(0.0f, bottom - top);
+        float left   = snapBitmapPixel(logicalPenX + ch.bearingX * glyphScale, m_nearest) + 0.5f;
+        float top    = snapBitmapPixel(logicalPenY - ch.bearingY * glyphScale, m_nearest) + 0.5f;
+        float width  = m_nearest ? std::max(1.0f, std::round(ch.width * glyphScale))
+                                 : ch.width * glyphScale;
+        float height = m_nearest ? std::max(1.0f, std::round(ch.height * glyphScale))
+                                 : ch.height * glyphScale;
 
         float vertices[6][5] = {
                 {left, top, 0.0f, ch.u0, ch.v0},
                 {left + width, top, 0.0f, ch.u1, ch.v0},
-                {left + width, top + height, 0.0f, ch.u1, ch.v1},
-                {left, top, 0.0f, ch.u0, ch.v0},
+                {left, top + height, 0.0f, ch.u0, ch.v1},
+                {left + width, top, 0.0f, ch.u1, ch.v0},
                 {left + width, top + height, 0.0f, ch.u1, ch.v1},
                 {left, top + height, 0.0f, ch.u0, ch.v1},
         };
@@ -341,8 +341,8 @@ void Font::levelDraw(std::wstring_view text, const Vec3 &pos, float scale, uint3
         float vertices[6][5] = {
                 {x0, y0, z0, ch.u0, ch.v0},
                 {x0 + width, y0, z0, ch.u1, ch.v0},
-                {x0 + width, y0 - height, z0, ch.u1, ch.v1},
-                {x0, y0, z0, ch.u0, ch.v0},
+                {x0, y0 - height, z0, ch.u0, ch.v1},
+                {x0 + width, y0, z0, ch.u1, ch.v0},
                 {x0 + width, y0 - height, z0, ch.u1, ch.v1},
                 {x0, y0 - height, z0, ch.u0, ch.v1},
         };

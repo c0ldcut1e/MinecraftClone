@@ -228,11 +228,6 @@ void GlStateManager::disableBlend()
 
 void GlStateManager::setBlendFunc(uint32_t src, uint32_t dst)
 {
-    if (s_blendSrc == src && s_blendDst == dst)
-    {
-        return;
-    }
-
     s_blendSrc = src;
     s_blendDst = dst;
     RenderCommand::setBlendFunc(src, dst);

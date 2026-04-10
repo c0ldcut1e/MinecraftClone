@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-#include "UIComponent.h"
+#include "component/UIComponent.h"
 
 class UILayer
 {

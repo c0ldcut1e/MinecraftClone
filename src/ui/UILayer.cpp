@@ -10,7 +10,7 @@ void UILayer::tick()
 {
     for (UIComponent *component : m_components)
     {
-        if (component)
+        if (component && component->isVisible())
         {
             component->tick();
         }
@@ -21,7 +21,7 @@ void UILayer::render()
 {
     for (UIComponent *component : m_components)
     {
-        if (component)
+        if (component && component->isVisible())
         {
             component->render();
         }

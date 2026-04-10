@@ -24,7 +24,7 @@ void BlockRegistry::init()
     BlockRegistry *registry = get();
 
     static Block s_air("air", false, "");
-    static Block s_worldBorder("world_border", true, "");
+    static Block s_worldBorder("world_border", true, "textures/block/bedrock.png");
     static Block s_bedrock("bedrock", true, "textures/block/bedrock.png");
     static Block s_stone("stone", true, "textures/block/stone.png");
     static Block s_cobblestone("cobblestone", true, "textures/block/cobblestone.png");
@@ -58,6 +58,7 @@ void BlockRegistry::init()
     s_torch.setUVRect(Direction::EAST, sideU0, sideV0, sideU1, sideV1);
     s_torch.setUVRect(Direction::WEST, sideU0, sideV0, sideU1, sideV1);
     s_torch.setUVRect(Direction::UP, 7.0f / 16.0f, 6.0f / 16.0f, 9.0f / 16.0f, 8.0f / 16.0f);
+    // TODO: add Direction::DOWN for UV rect
 
     static Block s_torchWall("torch_wall", false, "textures/block/torch.png");
     s_torchWall.setRenderShape(Block::RenderShape::TORCH);
@@ -91,7 +92,7 @@ void BlockRegistry::init()
     registry->registerValue("torch", &s_torch);
     registry->registerValue("torch_wall", &s_torchWall);
 
-    static Direction *directions[] = {Direction::UP,   Direction::DOWN, Direction::NORTH,
+    static Direction *directions[] = {Direction::UP,    Direction::DOWN, Direction::NORTH,
                                       Direction::SOUTH, Direction::EAST, Direction::WEST};
     std::vector<std::string> atlasPaths;
     std::unordered_set<std::string> seenPaths;

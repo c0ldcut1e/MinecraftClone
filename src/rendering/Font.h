@@ -29,6 +29,7 @@ public:
     float getWidth(std::wstring_view text, float scale) const;
     float getAscent(float scale) const;
     float getLineHeight(float scale) const;
+    float getPixelSize(float scale) const;
     float snapScale(float scale) const;
 
     void draw(std::wstring_view text, float x, float y, float scale, uint32_t argb);

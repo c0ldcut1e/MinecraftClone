@@ -1,0 +1,23 @@
+#pragma once
+
+#include <string>
+
+class UIComponent
+{
+public:
+    explicit UIComponent(const std::string &name);
+    virtual ~UIComponent();
+
+    virtual void tick();
+    virtual void render();
+
+    void setVisible(bool visible);
+    void toggleVisible();
+    bool isVisible() const;
+
+    const std::string &getName() const;
+
+private:
+    std::string m_name;
+    bool m_visible;
+};

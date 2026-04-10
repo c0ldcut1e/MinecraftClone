@@ -6,7 +6,7 @@
 #include "../rendering/Shader.h"
 #include "../scene/Camera.h"
 #include "../ui/ImGuiSystem.h"
-#include "../ui/UIController.h"
+#include "../ui/control/UIController.h"
 #include "../utils/Timer.h"
 #include "../utils/math/Mat4.h"
 #include "../world/Level.h"
